@@ -1,1 +1,1 @@
-Add Epic Games scanning to game scanner
+Add GOG game scanning to game scanner

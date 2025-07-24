@@ -17,6 +17,7 @@ class GameScanner:
         self.steam_paths = self._find_steam_paths()
         self.epic_games_paths = self._find_epic_games_paths()
         self.gog_paths = self._find_gog_paths()
+        self.xbox_paths = self._find_xbox_paths()
         self.game_cache_dir = "C:\\OptiScaler-GUI\\cache\\game_images"
         os.makedirs(self.game_cache_dir, exist_ok=True)
 
@@ -55,12 +56,24 @@ class GameScanner:
                 found_paths.append(path)
         return found_paths
 
+    def _find_xbox_paths(self):
+        # Common Xbox Games installation paths (user-defined or default for Xbox App)
+        paths = [
+            "C:\\XboxGames", # Common user-defined Xbox games folder
+            # "C:\\Program Files\\WindowsApps", # This folder is usually protected and difficult to access
+        ]
+        found_paths = []
+        for path in paths:
+            if os.path.exists(path):
+                found_paths.append(path)
+        return found_paths
+
     def scan_games(self):
         games = []
         games.extend(self._scan_steam_games())
         games.extend(self._scan_epic_games())
         games.extend(self._scan_gog_games())
-        # Add other game launchers here (Xbox)
+        games.extend(self._scan_xbox_games())
         return games
 
     def _scan_steam_games(self):
@@ -137,6 +150,28 @@ class GameScanner:
                             game_name = game_folder.replace("_", " ").replace("-", " ").title()
                             gog_games.append(Game(name=game_name, path=game_path))
         return gog_games
+
+    def _scan_xbox_games(self):
+        xbox_games = []
+        for xbox_path in self.xbox_paths:
+            if os.path.exists(xbox_path):
+                for game_folder in os.listdir(xbox_path):
+                    game_path = os.path.join(xbox_path, game_folder)
+                    if os.path.isdir(game_path):
+                        # Simple heuristic: check for .exe or common game files
+                        is_game = False
+                        for root, _, files in os.walk(game_path):
+                            for file in files:
+                                if file.endswith((".exe", ".dll", ".pak", ".bin")):
+                                    is_game = True
+                                    break
+                            if is_game:
+                                break
+                        
+                        if is_game:
+                            game_name = game_folder.replace("_", " ").replace("-", " ").title()
+                            xbox_games.append(Game(name=game_name, path=game_path))
+        return xbox_games
 
     def fetch_game_image(self, game_name):
         search_query = f"{game_name} game box art"
