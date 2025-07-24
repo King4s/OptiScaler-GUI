@@ -1,0 +1,8 @@
+{
+  "files.autoSave": "off",
+  "git.autorefresh": false,
+  "git.confirmSync": false,
+  "github.copilot.enable": {
+    "*": true
+  }
+}
