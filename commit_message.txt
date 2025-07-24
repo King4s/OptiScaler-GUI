@@ -1,1 +1,1 @@
-Update README and add CHANGELOG for version 0.1.0
+Add debug logging to file and fix import paths

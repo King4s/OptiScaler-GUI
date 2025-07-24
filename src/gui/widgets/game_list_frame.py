@@ -1,5 +1,5 @@
 import customtkinter as ctk
-from PIL import ImageTk, Image
+from PIL import Image
 import os
 from optiscaler.manager import OptiScalerManager
 
@@ -23,16 +23,31 @@ class GameListFrame(ctk.CTkScrollableFrame):
             # Game Image
             image_path = game.image_path
             if not image_path or not os.path.exists(image_path):
-                image_path = self.game_scanner.fetch_game_image(game.name)
+                image_path = self.game_scanner.fetch_game_image(game.name, game.appid)
                 if image_path:
                     game.image_path = image_path
 
             if game.image_path and os.path.exists(game.image_path):
                 img = Image.open(game.image_path)
-                img = img.resize((60, 80), Image.LANCZOS)
-                img_tk = ImageTk.PhotoImage(img)
-                img_label = ctk.CTkLabel(game_frame, image=img_tk, text="")
-                img_label.image = img_tk  # Keep a reference!
+                
+                # Calculate new size while maintaining aspect ratio
+                original_width, original_height = img.size
+                target_width = 60
+                target_height = 80
+
+                width_ratio = target_width / original_width
+                height_ratio = target_height / original_height
+
+                # Use the smaller ratio to fit within the bounds
+                scale_factor = min(width_ratio, height_ratio)
+
+                new_width = int(original_width * scale_factor)
+                new_height = int(original_height * scale_factor)
+
+                img = img.resize((new_width, new_height), Image.LANCZOS)
+
+                ctk_image = ctk.CTkImage(light_image=img, dark_image=img, size=(new_width, new_height))
+                img_label = ctk.CTkLabel(game_frame, image=ctk_image, text="")
                 img_label.grid(row=0, column=0, padx=5, pady=5, sticky="w")
             else:
                 placeholder_label = ctk.CTkLabel(game_frame, text="No Image")
