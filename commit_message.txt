@@ -1,1 +1,1 @@
-Implement INI comment parsing and display in GUI
+Implement dynamic widget rendering based on INI setting types
