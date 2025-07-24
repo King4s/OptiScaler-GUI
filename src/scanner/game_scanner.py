@@ -16,14 +16,15 @@ class GameScanner:
     def __init__(self):
         self.steam_paths = self._find_steam_paths()
         self.epic_games_paths = self._find_epic_games_paths()
-        self.game_cache_dir = "C:\OptiScaler-GUI\cache\game_images"
+        self.gog_paths = self._find_gog_paths()
+        self.game_cache_dir = "C:\\OptiScaler-GUI\\cache\\game_images"
         os.makedirs(self.game_cache_dir, exist_ok=True)
 
     def _find_steam_paths(self):
         # Common Steam installation paths
         paths = [
-            "C:\Program Files (x86)\Steam",
-            "C:\Program Files\Steam",
+            "C:\\Program Files (x86)\\Steam",
+            "C:\\Program Files\\Steam",
         ]
         found_paths = []
         for path in paths:
@@ -34,7 +35,19 @@ class GameScanner:
     def _find_epic_games_paths(self):
         # Common Epic Games installation paths
         paths = [
-            "C:\Program Files\Epic Games",
+            "C:\\Program Files\\Epic Games",
+        ]
+        found_paths = []
+        for path in paths:
+            if os.path.exists(path):
+                found_paths.append(path)
+        return found_paths
+
+    def _find_gog_paths(self):
+        # Common GOG installation paths
+        paths = [
+            "C:\\Program Files (x86)\\GOG Galaxy\\Games", # Default GOG Galaxy game installation path
+            os.path.join(os.path.expanduser("~"), "GOG Games"), # User-specific GOG Games folder
         ]
         found_paths = []
         for path in paths:
@@ -46,7 +59,8 @@ class GameScanner:
         games = []
         games.extend(self._scan_steam_games())
         games.extend(self._scan_epic_games())
-        # Add other game launchers here (GOG, Xbox)
+        games.extend(self._scan_gog_games())
+        # Add other game launchers here (Xbox)
         return games
 
     def _scan_steam_games(self):
@@ -101,6 +115,28 @@ class GameScanner:
                             game_name = game_folder.replace("_", " ").replace("-", " ").title()
                             epic_games.append(Game(name=game_name, path=game_path))
         return epic_games
+
+    def _scan_gog_games(self):
+        gog_games = []
+        for gog_path in self.gog_paths:
+            if os.path.exists(gog_path):
+                for game_folder in os.listdir(gog_path):
+                    game_path = os.path.join(gog_path, game_folder)
+                    if os.path.isdir(game_path):
+                        # Simple heuristic: check for .exe or common game files
+                        is_game = False
+                        for root, _, files in os.walk(game_path):
+                            for file in files:
+                                if file.endswith((".exe", ".dll", ".pak", ".bin")):
+                                    is_game = True
+                                    break
+                            if is_game:
+                                break
+                        
+                        if is_game:
+                            game_name = game_folder.replace("_", " ").replace("-", " ").title()
+                            gog_games.append(Game(name=game_name, path=game_path))
+        return gog_games
 
     def fetch_game_image(self, game_name):
         search_query = f"{game_name} game box art"

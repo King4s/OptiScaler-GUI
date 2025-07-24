@@ -1,1 +1,1 @@
-Implement dynamic widget rendering based on INI setting types
+Add Epic Games scanning to game scanner
