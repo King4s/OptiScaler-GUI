@@ -11,13 +11,14 @@ class DebugRedirector:
         self.widget = widget
         self.stdout = sys.stdout
         self.stderr = sys.stderr
-        self.log_file = open(log_file_path, "w", encoding="utf-8")
+        self.log_file = open(log_file_path, "w", encoding="utf-8", buffering=1) # Line buffering
 
     def write(self, text):
         self.widget.insert(ctk.END, text)
         self.widget.see(ctk.END)
         self.stdout.write(text) # Also print to original stdout
         self.log_file.write(text) # Write to log file
+        self.log_file.flush() # Force flush after each write
 
     def flush(self):
         self.stdout.flush()

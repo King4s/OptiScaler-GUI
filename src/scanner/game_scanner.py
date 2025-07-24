@@ -5,13 +5,13 @@ from PIL import Image
 from io import BytesIO
 import re
 import json
+import time
 
 class Game:
-    def __init__(self, name, path, appid=None, image_url=None, image_path=None):
+    def __init__(self, name, path, appid=None, image_path=None):
         self.name = name
         self.path = path
         self.appid = appid
-        self.image_url = image_url
         self.image_path = image_path
 
 class GameScanner:
@@ -23,6 +23,7 @@ class GameScanner:
         self.game_cache_dir = "C:\\OptiScaler-GUI\\cache\\game_images"
         os.makedirs(self.game_cache_dir, exist_ok=True)
         self.no_image_path = os.path.join("C:\\OptiScaler-GUI\\assets\\icons", "no_image.png")
+        self.steam_app_list = self._get_steam_app_list() # Load Steam app list on init
 
         # Common non-game folder names to exclude
         self.exclude_folders = [
@@ -135,39 +136,40 @@ class GameScanner:
                     if file_name.startswith("appmanifest_") and file_name.endswith(".acf"):
                         acf_path = os.path.join(steamapps_path, file_name)
                         
-                        # Try to parse using regex first for robustness
+                        # Robust parsing for .acf files using regex
                         try:
                             with open(acf_path, 'r', encoding='utf-8', errors='ignore') as f:
                                 content = f.read()
-                                appid_match = re.search(r'"appid"\s+"(\d+)"', content)
-                                name_match = re.search(r'"name"\s+"([^"]+)"', content)
-                                installdir_match = re.search(r'"installdir"\s+"([^"]+)"', content)
+                                # More flexible regex patterns with non-greedy matching
+                                appid_match = re.search(r'"appid"\s+"([^"]+?)"', content)
+                                name_match = re.search(r'"name"\s+"([^"]+?)"', content)
+                                installdir_match = re.search(r'"installdir"\s+"([^"]+?)"', content)
 
-                                if appid_match and name_match and installdir_match:
-                                    appid = appid_match.group(1)
-                                    name = name_match.group(1)
-                                    installdir = installdir_match.group(1)
+                                appid = appid_match.group(1) if appid_match else None
+                                name = name_match.group(1) if name_match else None
+                                installdir = installdir_match.group(1) if installdir_match else None
+
+                                if name and installdir: # We need at least name and installdir to proceed
                                     game_path = os.path.join(steamapps_path, "common", installdir)
                                     if os.path.exists(game_path) and self._is_game_folder(game_path):
-                                        steam_games.append(Game(name=name, path=game_path, appid=appid))
+                                        image_path = self.fetch_game_image(name, appid) # Pass name for lookup if appid is None
+                                        game = Game(name=name, path=game_path, appid=appid, image_path=image_path)
+                                        steam_games.append(game)
+                                        print(f"DEBUG: Scanned Steam Game - Name: {game.name}, AppID: {game.appid}, Image Path: {game.image_path}")
                                 else:
-                                    # Fallback to vdf.load if regex fails or doesn't find all fields
-                                    f.seek(0) # Reset file pointer
-                                    data = vdf.load(f)
-                                    appid = data['AppState']['appid']
-                                    name = data['AppState']['name']
-                                    install_dir = data['AppState']['installdir']
-                                    game_path = os.path.join(steamapps_path, "common", install_dir)
-                                    if os.path.exists(game_path) and self._is_game_folder(game_path):
-                                        steam_games.append(Game(name=name, path=game_path, appid=appid))
+                                    missing_fields = []
+                                    if not appid_match: missing_fields.append("appid")
+                                    if not name_match: missing_fields.append("name")
+                                    if not installdir_match: missing_fields.append("installdir")
+                                    print(f"Warning: Could not extract required fields {', '.join(missing_fields)} from {file_name} using regex. AppID: {appid_match.group(1) if appid_match else 'N/A'}, Name: {name_match.group(1) if name_match else 'N/A'}, InstallDir: {installdir_match.group(1) if installdir_match else 'N/A'}")
                         except Exception as e:
-                            print(f"Error parsing Steam appmanifest {file_name}: {e}")
+                            print(f"Error reading or parsing Steam appmanifest {file_name}: {e}")
 
                 # Also scan libraryfolders.vdf for other library locations
                 library_folders_path = os.path.join(steam_path, "steamapps", "libraryfolders.vdf")
                 if os.path.exists(library_folders_path):
                     try:
-                        with open(library_folders_path, 'r') as f:
+                        with open(library_folders_path, 'r', encoding='utf-8', errors='ignore') as f:
                             library_data = vdf.load(f)
                         
                         for key, lib_path_data in library_data['libraryfolders'].items():
@@ -178,40 +180,36 @@ class GameScanner:
                                     for game_folder in os.listdir(common_path):
                                         game_path = os.path.join(common_path, game_folder)
                                         if os.path.isdir(game_path) and self._is_game_folder(game_path):
-                                            # Check for appmanifest in this library folder
-                                            appmanifest_found = False
+                                            # Attempt to find appmanifest for this game folder
+                                            found_app_info = False
                                             for file_name in os.listdir(os.path.join(library_path, "steamapps")):
                                                 if file_name.startswith("appmanifest_") and file_name.endswith(".acf"):
                                                     acf_path = os.path.join(library_path, "steamapps", file_name)
                                                     try:
                                                         with open(acf_path, 'r', encoding='utf-8', errors='ignore') as f_acf:
                                                             content = f_acf.read()
-                                                            appid_match = re.search(r'"appid"\s+"(\d+)"', content)
-                                                            name_match = re.search(r'"name"\s+"([^"]+)"', content)
-                                                            installdir_match = re.search(r'"installdir"\s+"([^"]+)"', content)
+                                                            appid_match = re.search(r'"appid"\s+"([^"]+?)"', content)
+                                                            name_match = re.search(r'"name"\s+"([^"]+?)"', content)
+                                                            installdir_match = re.search(r'"installdir"\s+"([^"]+?)"', content)
 
-                                                            if appid_match and name_match and installdir_match:
-                                                                appid = appid_match.group(1)
-                                                                name = name_match.group(1)
-                                                                installdir = installdir_match.group(1)
-                                                                if installdir == game_folder: # Ensure it matches the current game folder
-                                                                    steam_games.append(Game(name=name, path=game_path, appid=appid))
-                                                                    appmanifest_found = True
-                                                            else:
-                                                                # Fallback to vdf.load if regex fails
-                                                                f_acf.seek(0)
-                                                                data = vdf.load(f_acf)
-                                                                if data['AppState']['installdir'] == game_folder:
-                                                                    appid = data['AppState']['appid']
-                                                                    name = data['AppState']['name']
-                                                                    steam_games.append(Game(name=name, path=game_path, appid=appid))
-                                                                    appmanifest_found = True
+                                                            appid = appid_match.group(1) if appid_match else None
+                                                            name = name_match.group(1) if name_match else None
+                                                            installdir = installdir_match.group(1) if installdir_match else None
+
+                                                            if name and installdir and installdir == game_folder:
+                                                                image_path = self.fetch_game_image(name, appid)
+                                                                game = Game(name=name, path=game_path, appid=appid, image_path=image_path)
+                                                                steam_games.append(game)
+                                                                print(f"DEBUG: Scanned Steam Game - Name: {game.name}, AppID: {game.appid}, Image Path: {game.image_path}")
+                                                                found_app_info = True
+                                                                break # Found appmanifest for this game folder
                                                     except Exception as e:
-                                                        print(f"Error parsing Steam appmanifest {file_name} in library folder: {e}")
+                                                        print(f"Error reading or parsing Steam appmanifest {file_name} in library folder: {e}")
                                             
-                                            if not appmanifest_found: # Fallback for games without manifest or if parsing fails
+                                            if not found_app_info: # Fallback if appmanifest not found or parsing fails
                                                 game_name = game_folder.replace("_", " ").replace("-", " ").title()
-                                                steam_games.append(Game(name=game_name, path=game_path))
+                                                image_path = self.fetch_game_image(game_name) # Attempt lookup with just name
+                                                steam_games.append(Game(name=game_name, path=game_path, image_path=image_path))
                     except Exception as e:
                         print(f"Error parsing Steam libraryfolders.vdf: {e}")
         return steam_games
@@ -227,7 +225,8 @@ class GameScanner:
                         if os.path.exists(os.path.join(game_path, ".egstore")) or \
                            any(f.endswith(".mancfg") for f in os.listdir(game_path)):
                             game_name = game_folder.replace("_", " ").replace("-", " ").title()
-                            epic_games.append(Game(name=game_name, path=game_path))
+                            image_path = self.fetch_game_image(game_name)
+                            epic_games.append(Game(name=game_name, path=game_path, image_path=image_path))
         return epic_games
 
     def _scan_gog_games(self):
@@ -246,7 +245,8 @@ class GameScanner:
                                     with open(info_file_path, 'r', encoding='utf-8') as f:
                                         game_info = json.load(f)
                                         game_name = game_info.get("gameTitle", game_folder.replace("_", " ").replace("-", " ").title())
-                                        gog_games.append(Game(name=game_name, path=game_path))
+                                        image_path = self.fetch_game_image(game_name)
+                                        gog_games.append(Game(name=game_name, path=game_path, image_path=image_path))
                                         info_file_found = True
                                         break
                                 except Exception as e:
@@ -265,10 +265,18 @@ class GameScanner:
                     game_path = os.path.join(xbox_path, game_folder)
                     if os.path.isdir(game_path) and self._is_game_folder(game_path):
                         game_name = game_folder.replace("_", " ").replace("-", " ").title()
-                        xbox_games.append(Game(name=game_name, path=game_path))
+                        image_path = self.fetch_game_image(game_name)
+                        xbox_games.append(Game(name=game_name, path=game_path, image_path=image_path))
         return xbox_games
 
     def fetch_game_image(self, game_name, appid=None):
+        # If appid is not provided, try to get it from the cached list
+        if not appid:
+            appid = self._get_appid_from_name(game_name)
+            if not appid:
+                # If still no appid, return placeholder
+                return self.no_image_path
+
         # Check if image already exists in cache
         for ext in ['png', 'jpg', 'jpeg', 'webp']:
             cached_path = os.path.join(self.game_cache_dir, f"{game_name.replace(' ', '_')}.{ext}")
@@ -276,18 +284,49 @@ class GameScanner:
                 return cached_path
 
         # Try Steam CDN for Steam games
-        if appid:
-            steam_image_url = f"https://cdn.akamai.steamstatic.com/steam/apps/{appid}/header.jpg"
-            try:
-                response = requests.get(steam_image_url, stream=True, timeout=5)
-                response.raise_for_status()
-                image = Image.open(BytesIO(response.content))
-                filename = f"{game_name.replace(' ', '_')}.jpg"
-                image_path = os.path.join(self.game_cache_dir, filename)
-                image.save(image_path)
-                return image_path
-            except Exception as e:
-                print(f"Error fetching Steam image for {game_name} (AppID: {appid}): {e}")
+        steam_image_url = f"https://cdn.akamai.steamstatic.com/steam/apps/{appid}/header.jpg"
+        try:
+            response = requests.get(steam_image_url, stream=True, timeout=5)
+            response.raise_for_status()
+            image = Image.open(BytesIO(response.content))
+            filename = f"{game_name.replace(' ', '_')}.jpg"
+            image_path = os.path.join(self.game_cache_dir, filename)
+            image.save(image_path)
+            return image_path
+        except Exception as e:
+            print(f"Error fetching Steam image for {game_name} (AppID: {appid}): {e}")
 
         # Return placeholder if no image found
         return self.no_image_path
+
+    def _get_steam_app_list(self):
+        app_list_cache_path = os.path.join(self.game_cache_dir, "steam_app_list.json")
+        
+        # Check if cached list exists and is recent (e.g., less than 7 days old)
+        if os.path.exists(app_list_cache_path):
+            last_modified = os.path.getmtime(app_list_cache_path)
+            if (time.time() - last_modified) < (7 * 24 * 60 * 60): # 7 days
+                try:
+                    with open(app_list_cache_path, 'r', encoding='utf-8') as f:
+                        return json.load(f)
+                except Exception as e:
+                    print(f"Error reading cached Steam app list: {e}")
+
+        # Fetch new list if cache is old or missing
+        print("Fetching fresh Steam app list from API...")
+        try:
+            response = requests.get("https://api.steampowered.com/ISteamApps/GetAppList/v2/", timeout=30)
+            response.raise_for_status()
+            app_list_data = response.json()
+            apps = {app['name'].lower(): str(app['appid']) for app in app_list_data['applist']['apps']}
+            
+            with open(app_list_cache_path, 'w', encoding='utf-8') as f:
+                json.dump(apps, f)
+            return apps
+        except Exception as e:
+            print(f"Error fetching Steam app list: {e}")
+            return {}
+
+    def _get_appid_from_name(self, game_name):
+        normalized_game_name = game_name.lower()
+        return self.steam_app_list.get(normalized_game_name)

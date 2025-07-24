@@ -18,7 +18,8 @@ class GameListFrame(ctk.CTkScrollableFrame):
         for i, game in enumerate(self.games):
             game_frame = ctk.CTkFrame(self)
             game_frame.grid(row=i, column=0, padx=5, pady=5, sticky="ew")
-            game_frame.grid_columnconfigure(1, weight=1)
+            game_frame.grid_columnconfigure(0, weight=0) # Image column, no stretching
+            game_frame.grid_columnconfigure(1, weight=1) # Info frame column, takes available space
 
             # Game Image
             image_path = game.image_path
@@ -27,31 +28,46 @@ class GameListFrame(ctk.CTkScrollableFrame):
                 if image_path:
                     game.image_path = image_path
 
+            # Define the target height for all images
+            target_height = 80
+
             if game.image_path and os.path.exists(game.image_path):
-                img = Image.open(game.image_path)
-                
-                # Calculate new size while maintaining aspect ratio
-                original_width, original_height = img.size
-                target_width = 60
-                target_height = 80
+                try:
+                    img = Image.open(game.image_path)
+                    
+                    original_width, original_height = img.size
 
-                width_ratio = target_width / original_width
-                height_ratio = target_height / original_height
+                    # Calculate new width to maintain aspect ratio with fixed height
+                    new_width = int(original_width * (target_height / original_height))
+                    new_height = target_height # Height is fixed
 
-                # Use the smaller ratio to fit within the bounds
-                scale_factor = min(width_ratio, height_ratio)
+                    img = img.resize((new_width, new_height), Image.LANCZOS)
 
-                new_width = int(original_width * scale_factor)
-                new_height = int(original_height * scale_factor)
-
-                img = img.resize((new_width, new_height), Image.LANCZOS)
-
-                ctk_image = ctk.CTkImage(light_image=img, dark_image=img, size=(new_width, new_height))
-                img_label = ctk.CTkLabel(game_frame, image=ctk_image, text="")
-                img_label.grid(row=0, column=0, padx=5, pady=5, sticky="w")
+                    # Create CTkImage with the *actual* new dimensions of the resized image
+                    ctk_image = ctk.CTkImage(light_image=img, dark_image=img, size=(new_width, new_height))
+                    img_label = ctk.CTkLabel(game_frame, image=ctk_image, text="")
+                    img_label.image = ctk_image # Keep a reference
+                    img_label.grid(row=0, column=0, sticky="w")
+                except Exception as e:
+                    # Fallback to placeholder if image loading fails
+                    default_aspect_ratio = 16/9 
+                    placeholder_width = int(target_height * default_aspect_ratio)
+                    placeholder_img = Image.new('RGB', (placeholder_width, target_height), color = 'gray')
+                    ctk_placeholder_image = ctk.CTkImage(light_image=placeholder_img, dark_image=placeholder_img, size=(placeholder_width, target_height))
+                    placeholder_label = ctk.CTkLabel(game_frame, image=ctk_placeholder_image, text=game.name, compound="center", font=("Arial", 10))
+                    placeholder_label.image = ctk_placeholder_image # Keep a reference
+                    placeholder_label.grid(row=0, column=0, sticky="w")
             else:
-                placeholder_label = ctk.CTkLabel(game_frame, text="No Image")
-                placeholder_label.grid(row=0, column=0, padx=5, pady=5, sticky="w")
+                # For placeholder, create a dynamically sized gray image based on a common aspect ratio
+                # Use a common aspect ratio (e.g., 16:9) to determine placeholder width
+                default_aspect_ratio = 16/9 
+                placeholder_width = int(target_height * default_aspect_ratio)
+
+                placeholder_img = Image.new('RGB', (placeholder_width, target_height), color = 'gray')
+                ctk_placeholder_image = ctk.CTkImage(light_image=placeholder_img, dark_image=placeholder_img, size=(placeholder_width, target_height))
+                placeholder_label = ctk.CTkLabel(game_frame, image=ctk_placeholder_image, text=game.name, compound="center", font=("Arial", 10))
+                placeholder_label.image = ctk_placeholder_image # Keep a reference
+                placeholder_label.grid(row=0, column=0, sticky="w")
 
             # Game Name and Path
             info_frame = ctk.CTkFrame(game_frame)
