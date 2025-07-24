@@ -1,1 +1,1 @@
-Add GOG game scanning to game scanner
+Add Xbox game scanning to game scanner

@@ -41,21 +41,26 @@ class SettingsEditorFrame(ctk.CTkScrollableFrame):
                     row += 1
 
                 widget = None
-                if data["type"] == "bool":
-                    widget = ctk.CTkSwitch(self, text="", onvalue="true", offvalue="false")
-                    if data["value"].lower() == "true":
-                        widget.select()
-                    else:
-                        widget.deselect()
+                if data["type"] == "bool_options":
+                    options_list = ["true", "false", "auto"]
+                    widget = ctk.CTkOptionMenu(self, values=options_list)
+                    widget.set(data["value"].lower())
                     widget.grid(row=row, column=0, columnspan=2, padx=20, pady=(0, 10), sticky="w")
                 elif data["type"] == "options":
-                    options_list = list(data["options"].values())
-                    widget = ctk.CTkOptionMenu(self, values=options_list)
+                    # Ensure 'auto' is handled correctly if it's a valid option
+                    display_options = list(data["options"].values())
+                    widget = ctk.CTkOptionMenu(self, values=display_options)
+                    
                     # Set initial value based on the current value
+                    current_value_found = False
                     for k, v in data["options"].items():
                         if k == data["value"]:
                             widget.set(v)
+                            current_value_found = True
                             break
+                    if not current_value_found and data["value"].lower() == "auto" and "auto" in display_options:
+                        widget.set("auto")
+
                     widget.grid(row=row, column=0, columnspan=2, padx=20, pady=(0, 10), sticky="ew")
                 else: # int, float, string
                     widget = ctk.CTkEntry(self)
@@ -72,15 +77,19 @@ class SettingsEditorFrame(ctk.CTkScrollableFrame):
         for section, keys in self.settings.items():
             for key, data in keys.items():
                 widget = self.widgets[f"{section}.{key}"]
-                if data["type"] == "bool":
+                if data["type"] == "bool_options":
                     self.settings[section][key]["value"] = widget.get()
                 elif data["type"] == "options":
                     selected_option_text = widget.get()
                     # Find the key (numeric value) corresponding to the selected text
+                    found_key = False
                     for k, v in data["options"].items():
                         if v == selected_option_text:
                             self.settings[section][key]["value"] = k
+                            found_key = True
                             break
+                    if not found_key and selected_option_text.lower() == "auto":
+                        self.settings[section][key]["value"] = "auto"
                 else:
                     self.settings[section][key]["value"] = widget.get()
         

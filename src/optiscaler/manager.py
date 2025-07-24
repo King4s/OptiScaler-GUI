@@ -92,10 +92,26 @@ class OptiScalerManager:
         return success
 
     def _infer_type(self, value, comment):
-        # Check for boolean
-        if value.lower() in ["true", "false"]:
-            return "bool", None
-        
+        # Check for boolean options (true, false, auto)
+        if "true or false" in comment.lower() or (value.lower() in ["true", "false", "auto"] and "auto" in comment.lower()):
+            return "bool_options", ["true", "false", "auto"]
+
+        # Check for options list in comments (e.g., "0 = Option A | 1 = Option B")
+        options_match = re.search(r'(\d+\s*=\s*[^|]+(?:\|\s*\d+\s*=\s*[^|]+)*)', comment)
+        if options_match:
+            options_str = options_match.group(1)
+            options = {}
+            for item in options_str.split('|'):
+                if '=' in item:
+                    k, v = item.split('=', 1)
+                    options[k.strip()] = v.strip()
+            if options:
+                # Check if 'auto' is also a valid option for this setting
+                if "auto" in value.lower() or "default (auto)" in comment.lower():
+                    if "auto" not in options.values(): # Ensure 'auto' is not already a display value
+                        options["auto"] = "auto" # Use "auto" as both key and value for simplicity
+                return "options", options
+
         # Check for integer
         try:
             int(value)
@@ -110,18 +126,7 @@ class OptiScalerManager:
         except ValueError:
             pass
 
-        # Check for options list in comments (e.g., "0 = Option A | 1 = Option B")
-        options_match = re.search(r'(\d+\s*=\s*[^|]+(?:\|\s*\d+\s*=\s*[^|]+)*)', comment)
-        if options_match:
-            options_str = options_match.group(1)
-            options = {}
-            for item in options_str.split('|'):
-                if '=' in item:
-                    k, v = item.split('=', 1)
-                    options[k.strip()] = v.strip()
-            if options:
-                return "options", options
-
+        # Default to string
         return "string", None
 
     def read_optiscaler_ini(self, ini_path):
