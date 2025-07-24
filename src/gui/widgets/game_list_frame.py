@@ -1,7 +1,7 @@
 import customtkinter as ctk
 from PIL import ImageTk, Image
 import os
-from ...optiscaler.manager import OptiScalerManager
+from optiscaler.manager import OptiScalerManager
 
 class GameListFrame(ctk.CTkScrollableFrame):
     def __init__(self, master, games, game_scanner, on_edit_settings, **kwargs):

@@ -1,1 +1,1 @@
-Refine INI parsing and widget rendering for different setting types
+Update README and add CHANGELOG for version 0.1.0

@@ -1,6 +1,6 @@
 import customtkinter as ctk
 import os
-from ...optiscaler.manager import OptiScalerManager
+from optiscaler.manager import OptiScalerManager
 
 class SettingsEditorFrame(ctk.CTkScrollableFrame):
     def __init__(self, master, game_path, **kwargs):
@@ -54,7 +54,7 @@ class SettingsEditorFrame(ctk.CTkScrollableFrame):
                     # Set initial value based on the current value
                     current_value_found = False
                     for k, v in data["options"].items():
-                        if k == data["value"]:
+                        if v == selected_option_text:
                             widget.set(v)
                             current_value_found = True
                             break

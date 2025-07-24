@@ -184,9 +184,7 @@ class GameScanner:
                     filename = f"{game_name.replace(' ', '_')}.{url.split('.')[-1]}"
                     image_path = self._download_image(url, filename)
                     if image_path:
-                        print(f"Downloaded image for {game_name} to {image_path}")
                         return image_path
-            print(f"No image found for: {game_name}")
             return None
         except Exception as e:
             print(f"Error fetching image for {game_name}: {e}")
