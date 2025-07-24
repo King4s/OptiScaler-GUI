@@ -1,0 +1,1 @@
+# This file will contain the OptiScaler installation and configuration logic.

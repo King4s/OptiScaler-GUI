@@ -1,0 +1,1 @@
+# This file will contain the settings editor widget.
