@@ -48,7 +48,7 @@ class OptiScalerManager:
             shutil.rmtree(extract_path)
         os.makedirs(extract_path)
 
-        print(f"Extracting {zip_path} to {extract_path}")
+        print(f"Extracting {zip_path} to {extracted_path}")
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.extractall(extract_path)
         print("Extraction complete.")
@@ -91,29 +91,42 @@ class OptiScalerManager:
         return success
 
     def read_optiscaler_ini(self, ini_path):
-        config = configparser.ConfigParser(allow_no_value=True, inline_comment_prefixes=';')
-        config.read(ini_path)
-        
         settings = {}
-        for section in config.sections():
-            settings[section] = {}
-            for key, value in config.items(section):
-                settings[section][key] = {"value": value, "comment": ""} # Placeholder for comment
-        
-        # This part needs more advanced parsing to extract comments/documentation
-        # configparser doesn't easily expose comments associated with keys.
-        # Will need to read file line by line to get comments.
-        
+        current_section = None
+        current_comments = []
+
+        with open(ini_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+
+                if line.startswith('[') and line.endswith(']'):
+                    current_section = line[1:-1]
+                    settings[current_section] = {}
+                    current_comments = []
+                elif line.startswith(';'):
+                    current_comments.append(line[1:].strip())
+                elif '=' in line:
+                    key, value = line.split('=', 1)
+                    key = key.strip()
+                    value = value.split(';', 1)[0].strip() # Remove inline comments
+                    
+                    if current_section:
+                        settings[current_section][key] = {
+                            "value": value,
+                            "comment": "\n".join(current_comments)
+                        }
+                    current_comments = []
         return settings
 
     def write_optiscaler_ini(self, ini_path, settings):
-        config = configparser.ConfigParser(allow_no_value=True)
-        for section, keys in settings.items():
-            config.add_section(section)
-            for key, data in keys.items():
-                config.set(section, key, data["value"])
-        
-        with open(ini_path, 'w') as configfile:
-            config.write(configfile)
-        print(f"OptiScaler.ini written to {ini_path}")
-
+        with open(ini_path, 'w') as f:
+            for section, keys in settings.items():
+                f.write(f"[{section}]\n")
+                for key, data in keys.items():
+                    if data["comment"]:
+                        for comment_line in data["comment"].split('\n'):
+                            f.write(f"; {comment_line}\n")
+                    f.write(f"{key}={data["value"]}\n")
+                f.write("\n") # Add a newline after each section for readability

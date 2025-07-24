@@ -6,6 +6,7 @@ class SettingsEditorFrame(ctk.CTkScrollableFrame):
     def __init__(self, master, game_path, **kwargs):
         super().__init__(master, **kwargs)
         self.grid_columnconfigure(0, weight=1)
+        self.grid_columnconfigure(1, weight=1) # Allow entry to expand
         self.game_path = game_path
         self.optiscaler_manager = OptiScalerManager()
         self.ini_path = os.path.join(self.game_path, "OptiScaler.ini")
@@ -26,17 +27,23 @@ class SettingsEditorFrame(ctk.CTkScrollableFrame):
         row = 0
         for section, keys in self.settings.items():
             section_label = ctk.CTkLabel(self, text=f"[{section}]", font=("Arial", 16, "bold"))
-            section_label.grid(row=row, column=0, padx=10, pady=(10, 5), sticky="w")
+            section_label.grid(row=row, column=0, columnspan=2, padx=10, pady=(10, 5), sticky="w")
             row += 1
 
             for key, data in keys.items():
-                key_label = ctk.CTkLabel(self, text=key)
-                key_label.grid(row=row, column=0, padx=20, pady=2, sticky="w")
+                key_label = ctk.CTkLabel(self, text=key, font=("Arial", 12, "bold"))
+                key_label.grid(row=row, column=0, padx=20, pady=(5, 0), sticky="w")
+                row += 1
+
+                if data["comment"]:
+                    comment_label = ctk.CTkLabel(self, text=data["comment"], wraplength=400, justify="left", font=("Arial", 10))
+                    comment_label.grid(row=row, column=0, columnspan=2, padx=25, pady=(0, 5), sticky="w")
+                    row += 1
 
                 # Simple entry for now, will be replaced with more specific widgets
                 entry = ctk.CTkEntry(self)
                 entry.insert(0, data["value"])
-                entry.grid(row=row, column=1, padx=10, pady=2, sticky="ew")
+                entry.grid(row=row, column=0, columnspan=2, padx=20, pady=(0, 10), sticky="ew")
                 self.widgets[f"{section}.{key}"] = entry
                 row += 1
         

@@ -1,0 +1,1 @@
+Implement OptiScaler installation and INI editing GUI
