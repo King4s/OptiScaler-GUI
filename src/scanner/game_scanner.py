@@ -6,6 +6,9 @@ from io import BytesIO
 import re
 import json
 import time
+from utils.config import config
+from utils.cache_manager import cache_manager
+from utils.performance import timed
 
 class Game:
     def __init__(self, name, path, appid=None, image_path=None):
@@ -20,9 +23,8 @@ class GameScanner:
         self.epic_games_paths = self._find_epic_games_paths()
         self.gog_paths = self._find_gog_paths()
         self.xbox_paths = self._find_xbox_paths()
-        self.game_cache_dir = "C:\\OptiScaler-GUI\\cache\\game_images"
-        os.makedirs(self.game_cache_dir, exist_ok=True)
-        self.no_image_path = os.path.join("C:\\OptiScaler-GUI\\assets\\icons", "no_image.png")
+        self.game_cache_dir = str(config.game_cache_dir)
+        self.no_image_path = config.no_image_path
         self.steam_app_list = self._get_steam_app_list() # Load Steam app list on init
 
         # Common non-game folder names to exclude
@@ -82,32 +84,52 @@ class GameScanner:
 
     def _is_game_folder(self, path):
         # Exclude common non-game folders
-        if any(exclude_name.lower() in os.path.basename(path).lower() for exclude_name in self.exclude_folders):
+        folder_name = os.path.basename(path).lower()
+        if any(exclude_name.lower() in folder_name for exclude_name in self.exclude_folders):
             return False
 
         # Check for common game executables or significant game content
         found_exe = False
         found_game_content = False
         file_count = 0
+        max_files_to_check = 1000  # Limit file checks for performance
 
-        for root, dirs, files in os.walk(path):
-            for file in files:
-                file_count += 1
-                if any(re.match(pattern, file.lower()) for pattern in self.game_exe_patterns):
-                    found_exe = True
-                if file.lower().endswith((".pak", ".uasset", ".dll", ".bin")) or \
-                   "unityplayer.dll" in file.lower() or "unrealengine" in root.lower():
-                    found_game_content = True
-            
-            # Limit depth of walk to avoid scanning entire drives for performance
-            if root != path and os.path.relpath(root, path).count(os.sep) > 2:
-                del dirs[:] # Don't recurse further
+        try:
+            for root, dirs, files in os.walk(path):
+                # Limit scan depth for performance
+                current_depth = os.path.relpath(root, path).count(os.sep)
+                if current_depth >= config.max_scan_depth:
+                    dirs[:] = []  # Don't recurse further
+                    continue
+                
+                for file in files:
+                    file_count += 1
+                    if file_count > max_files_to_check:
+                        break  # Stop if we've checked too many files
+                    
+                    file_lower = file.lower()
+                    if any(re.match(pattern, file_lower) for pattern in self.game_exe_patterns):
+                        found_exe = True
+                    if file_lower.endswith((".pak", ".uasset", ".dll", ".bin", ".unity3d")) or \
+                       "unityplayer.dll" in file_lower or "unrealengine" in root.lower():
+                        found_game_content = True
+                
+                if file_count > max_files_to_check:
+                    break
+                
+        except (PermissionError, OSError) as e:
+            print(f"Access denied or error scanning {path}: {e}")
+            return False
 
         # A folder is considered a game if it has an executable or significant game content
         # and a reasonable number of files (to filter out empty or very small folders)
-        return (found_exe or found_game_content) and file_count > 5 # Arbitrary threshold, can be tuned
+        return (found_exe or found_game_content) and file_count > 5
 
+    @timed("game_scan")
     def scan_games(self):
+        # Perform cache cleanup before scanning
+        cache_manager.cleanup_large_cache()
+        
         all_games = []
         all_games.extend(self._scan_steam_games())
         all_games.extend(self._scan_epic_games())
@@ -124,6 +146,7 @@ class GameScanner:
             if unique_id not in unique_games:
                 unique_games[unique_id] = game
         
+        print(f"Scan complete: Found {len(unique_games)} unique games")
         return list(unique_games.values())
 
     def _scan_steam_games(self):
@@ -269,6 +292,7 @@ class GameScanner:
                         xbox_games.append(Game(name=game_name, path=game_path, image_path=image_path))
         return xbox_games
 
+    @timed("image_fetch")
     def fetch_game_image(self, game_name, appid=None):
         # If appid is not provided, try to get it from the cached list
         if not appid:
@@ -278,20 +302,33 @@ class GameScanner:
                 return self.no_image_path
 
         # Check if image already exists in cache
+        safe_name = re.sub(r'[<>:"/\\|?*]', '_', game_name)  # Remove invalid filename chars
         for ext in ['png', 'jpg', 'jpeg', 'webp']:
-            cached_path = os.path.join(self.game_cache_dir, f"{game_name.replace(' ', '_')}.{ext}")
+            cached_path = os.path.join(self.game_cache_dir, f"{safe_name}.{ext}")
             if os.path.exists(cached_path):
                 return cached_path
 
         # Try Steam CDN for Steam games
         steam_image_url = f"https://cdn.akamai.steamstatic.com/steam/apps/{appid}/header.jpg"
         try:
-            response = requests.get(steam_image_url, stream=True, timeout=5)
+            response = requests.get(steam_image_url, stream=True, timeout=config.image_download_timeout)
             response.raise_for_status()
+            
+            # Load and optimize image
             image = Image.open(BytesIO(response.content))
-            filename = f"{game_name.replace(' ', '_')}.jpg"
+            
+            # Resize image to standard dimensions for consistency and memory savings
+            image.thumbnail(config.max_image_size, Image.Resampling.LANCZOS)
+            
+            # Convert to RGB if necessary (for JPEG saving)
+            if image.mode in ('RGBA', 'LA', 'P'):
+                rgb_image = Image.new('RGB', image.size, (255, 255, 255))
+                rgb_image.paste(image, mask=image.split()[-1] if image.mode == 'RGBA' else None)
+                image = rgb_image
+            
+            filename = f"{safe_name}.jpg"
             image_path = os.path.join(self.game_cache_dir, filename)
-            image.save(image_path)
+            image.save(image_path, 'JPEG', quality=config.image_quality, optimize=True)
             return image_path
         except Exception as e:
             print(f"Error fetching Steam image for {game_name} (AppID: {appid}): {e}")
@@ -300,14 +337,16 @@ class GameScanner:
         return self.no_image_path
 
     def _get_steam_app_list(self):
-        app_list_cache_path = os.path.join(self.game_cache_dir, "steam_app_list.json")
+        app_list_cache_path = config.steam_app_list_cache_path
         
-        # Check if cached list exists and is recent (e.g., less than 7 days old)
+        # Check if cached list exists and is recent
         if os.path.exists(app_list_cache_path):
             last_modified = os.path.getmtime(app_list_cache_path)
-            if (time.time() - last_modified) < (7 * 24 * 60 * 60): # 7 days
+            cache_age_days = (time.time() - last_modified) / (24 * 60 * 60)
+            if cache_age_days < config.steam_app_list_cache_days:
                 try:
                     with open(app_list_cache_path, 'r', encoding='utf-8') as f:
+                        print(f"Using cached Steam app list (age: {cache_age_days:.1f} days)")
                         return json.load(f)
                 except Exception as e:
                     print(f"Error reading cached Steam app list: {e}")
@@ -315,13 +354,24 @@ class GameScanner:
         # Fetch new list if cache is old or missing
         print("Fetching fresh Steam app list from API...")
         try:
-            response = requests.get("https://api.steampowered.com/ISteamApps/GetAppList/v2/", timeout=30)
+            response = requests.get("https://api.steampowered.com/ISteamApps/GetAppList/v2/", 
+                                  timeout=30, stream=True)
             response.raise_for_status()
             app_list_data = response.json()
-            apps = {app['name'].lower(): str(app['appid']) for app in app_list_data['applist']['apps']}
             
+            # Create a more memory-efficient lookup dictionary
+            apps = {}
+            for app in app_list_data['applist']['apps']:
+                # Only store apps with meaningful names (filter out DLCs, tools, etc.)
+                name = app['name'].strip().lower()
+                if len(name) > 2 and not name.startswith(('dlc', 'demo', 'beta', 'test')):
+                    apps[name] = str(app['appid'])
+            
+            # Save to cache
             with open(app_list_cache_path, 'w', encoding='utf-8') as f:
-                json.dump(apps, f)
+                json.dump(apps, f, separators=(',', ':'))  # Compact JSON
+            
+            print(f"Cached {len(apps)} Steam apps")
             return apps
         except Exception as e:
             print(f"Error fetching Steam app list: {e}")

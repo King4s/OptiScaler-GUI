@@ -2,6 +2,7 @@ import customtkinter as ctk
 from PIL import Image
 import os
 from optiscaler.manager import OptiScalerManager
+from CTkMessagebox import CTkMessagebox
 
 class GameListFrame(ctk.CTkScrollableFrame):
     def __init__(self, master, games, game_scanner, on_edit_settings, **kwargs):
@@ -74,11 +75,19 @@ class GameListFrame(ctk.CTkScrollableFrame):
             info_frame.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
             info_frame.grid_columnconfigure(0, weight=1)
 
+            # Game name
             name_label = ctk.CTkLabel(info_frame, text=game.name, font=("Arial", 14, "bold"))
             name_label.grid(row=0, column=0, sticky="w")
 
+            # Platform/Manager tag
+            if hasattr(game, 'platform') and game.platform:
+                tag_label = ctk.CTkLabel(info_frame, text=game.platform, font=("Arial", 10, "italic"),
+                                         fg_color="#444", text_color="#fff", corner_radius=6, padx=6, pady=2)
+                tag_label.grid(row=0, column=1, padx=8, sticky="w")
+
+            # Game path
             path_label = ctk.CTkLabel(info_frame, text=game.path, font=("Arial", 10))
-            path_label.grid(row=1, column=0, sticky="w")
+            path_label.grid(row=1, column=0, columnspan=2, sticky="w")
 
             # Buttons Frame
             buttons_frame = ctk.CTkFrame(game_frame, fg_color="transparent")
@@ -95,10 +104,22 @@ class GameListFrame(ctk.CTkScrollableFrame):
                                                  command=lambda g_path=game.path: self.on_edit_settings(g_path))
             edit_settings_button.grid(row=1, column=0, padx=5, pady=2, sticky="e")
 
+            # Open Folder Button
+            open_folder_button = ctk.CTkButton(buttons_frame, text="Open Folder",
+                                               command=lambda p=game.path: self._open_game_folder(p))
+            open_folder_button.grid(row=2, column=0, padx=5, pady=2, sticky="e")
+
     def _install_optiscaler_for_game(self, game):
         print(f"Installing OptiScaler for {game.name} at {game.path}")
         success = self.optiscaler_manager.install_optiscaler(game.path)
         if success:
-            ctk.CTkMessagebox(title="Success", message=f"OptiScaler installed successfully for {game.name}!")
+            CTkMessagebox(title="Success", message=f"OptiScaler installed successfully for {game.name}!")
         else:
-            ctk.CTkMessagebox(title="Error", message=f"Failed to install OptiScaler for {game.name}.")
+            CTkMessagebox(title="Error", message=f"Failed to install OptiScaler for {game.name}.")
+
+    def _open_game_folder(self, path):
+        import subprocess
+        if os.path.exists(path):
+            subprocess.Popen(f'explorer \"{path}\"')
+        else:
+            CTkMessagebox(title="Error", message="Game folder not found.")

@@ -3,3 +3,7 @@ requests
 Pillow
 beautifulsoup4
 lxml
+psutil
+py7zr
+vdf
+CTkMessagebox
