@@ -1,1 +1,1 @@
-Add Xbox game scanning to game scanner
+Refine INI parsing and widget rendering for different setting types
