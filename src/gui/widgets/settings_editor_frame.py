@@ -40,11 +40,29 @@ class SettingsEditorFrame(ctk.CTkScrollableFrame):
                     comment_label.grid(row=row, column=0, columnspan=2, padx=25, pady=(0, 5), sticky="w")
                     row += 1
 
-                # Simple entry for now, will be replaced with more specific widgets
-                entry = ctk.CTkEntry(self)
-                entry.insert(0, data["value"])
-                entry.grid(row=row, column=0, columnspan=2, padx=20, pady=(0, 10), sticky="ew")
-                self.widgets[f"{section}.{key}"] = entry
+                widget = None
+                if data["type"] == "bool":
+                    widget = ctk.CTkSwitch(self, text="", onvalue="true", offvalue="false")
+                    if data["value"].lower() == "true":
+                        widget.select()
+                    else:
+                        widget.deselect()
+                    widget.grid(row=row, column=0, columnspan=2, padx=20, pady=(0, 10), sticky="w")
+                elif data["type"] == "options":
+                    options_list = list(data["options"].values())
+                    widget = ctk.CTkOptionMenu(self, values=options_list)
+                    # Set initial value based on the current value
+                    for k, v in data["options"].items():
+                        if k == data["value"]:
+                            widget.set(v)
+                            break
+                    widget.grid(row=row, column=0, columnspan=2, padx=20, pady=(0, 10), sticky="ew")
+                else: # int, float, string
+                    widget = ctk.CTkEntry(self)
+                    widget.insert(0, data["value"])
+                    widget.grid(row=row, column=0, columnspan=2, padx=20, pady=(0, 10), sticky="ew")
+                
+                self.widgets[f"{section}.{key}"] = widget
                 row += 1
         
         save_button = ctk.CTkButton(self, text="Save Settings", command=self._save_settings)
@@ -54,7 +72,17 @@ class SettingsEditorFrame(ctk.CTkScrollableFrame):
         for section, keys in self.settings.items():
             for key, data in keys.items():
                 widget = self.widgets[f"{section}.{key}"]
-                self.settings[section][key]["value"] = widget.get()
+                if data["type"] == "bool":
+                    self.settings[section][key]["value"] = widget.get()
+                elif data["type"] == "options":
+                    selected_option_text = widget.get()
+                    # Find the key (numeric value) corresponding to the selected text
+                    for k, v in data["options"].items():
+                        if v == selected_option_text:
+                            self.settings[section][key]["value"] = k
+                            break
+                else:
+                    self.settings[section][key]["value"] = widget.get()
         
         self.optiscaler_manager.write_optiscaler_ini(self.ini_path, self.settings)
         ctk.CTkMessagebox(title="Settings Saved", message="OptiScaler settings saved successfully!")

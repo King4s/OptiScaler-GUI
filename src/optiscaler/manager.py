@@ -3,11 +3,12 @@ import zipfile
 import os
 import shutil
 import configparser
+import re
 
 class OptiScalerManager:
     def __init__(self):
         self.github_release_url = "https://api.github.com/repos/optiscaler/OptiScaler/releases/latest"
-        self.download_dir = "C:\OptiScaler-GUI\cache\optiscaler_downloads"
+        self.download_dir = "C:\\OptiScaler-GUI\\cache\\optiscaler_downloads"
         os.makedirs(self.download_dir, exist_ok=True)
 
     def _download_latest_release(self):
@@ -90,6 +91,39 @@ class OptiScalerManager:
         
         return success
 
+    def _infer_type(self, value, comment):
+        # Check for boolean
+        if value.lower() in ["true", "false"]:
+            return "bool", None
+        
+        # Check for integer
+        try:
+            int(value)
+            return "int", None
+        except ValueError:
+            pass
+
+        # Check for float
+        try:
+            float(value)
+            return "float", None
+        except ValueError:
+            pass
+
+        # Check for options list in comments (e.g., "0 = Option A | 1 = Option B")
+        options_match = re.search(r'(\d+\s*=\s*[^|]+(?:\|\s*\d+\s*=\s*[^|]+)*)', comment)
+        if options_match:
+            options_str = options_match.group(1)
+            options = {}
+            for item in options_str.split('|'):
+                if '=' in item:
+                    k, v = item.split('=', 1)
+                    options[k.strip()] = v.strip()
+            if options:
+                return "options", options
+
+        return "string", None
+
     def read_optiscaler_ini(self, ini_path):
         settings = {}
         current_section = None
@@ -101,7 +135,7 @@ class OptiScalerManager:
                 if not line:
                     continue
 
-                if line.startswith('[') and line.endswith(']'):
+                if line.startswith('['):
                     current_section = line[1:-1]
                     settings[current_section] = {}
                     current_comments = []
@@ -110,12 +144,17 @@ class OptiScalerManager:
                 elif '=' in line:
                     key, value = line.split('=', 1)
                     key = key.strip()
-                    value = value.split(';', 1)[0].strip() # Remove inline comments
+                    # Remove inline comments from value
+                    value_without_inline_comment = value.split(';', 1)[0].strip()
                     
+                    inferred_type, options = self._infer_type(value_without_inline_comment, "\n".join(current_comments))
+
                     if current_section:
                         settings[current_section][key] = {
-                            "value": value,
-                            "comment": "\n".join(current_comments)
+                            "value": value_without_inline_comment,
+                            "comment": "\n".join(current_comments),
+                            "type": inferred_type,
+                            "options": options
                         }
                     current_comments = []
         return settings

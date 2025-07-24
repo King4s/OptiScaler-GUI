@@ -1,1 +1,1 @@
-Implement OptiScaler installation and INI editing GUI
+Implement INI comment parsing and display in GUI
