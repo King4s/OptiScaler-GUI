@@ -1,0 +1,249 @@
+{
+  "ui": {
+    "app_title": "OptiScaler GUI",
+    "version": "Version",
+    "thanks_to": "Tak til",
+    "games_tab": "Spil",
+    "settings_tab": "Indstillinger",
+    "install_optiscaler": "Installer OptiScaler",
+    "edit_settings": "Rediger",
+    "uninstall": "Afinstaller",
+    "open_folder": "Åbn Mappe",
+    "games_found": "spil fundet",
+    "no_games": "Ingen spil fundet",
+    "back": "← Tilbage",
+    "save_settings": "Gem Indstillinger",
+    "auto_settings": "Auto Indstillinger",
+    "settings_title": "OptiScaler Indstillinger",
+    "section": "Sektion",
+    "setting": "Indstilling",
+    "value": "Værdi",
+    "description": "Beskrivelse",
+    "no_description_available": "Ingen beskrivelse tilgængelig",
+    "settings_saved": "Indstillinger Gemt",
+    "settings_saved_msg": "OptiScaler indstillinger er blevet gemt med succes til konfigurationsfilen."
+  },
+  "sections": {
+    "Upscalers": "Opskaleringstekologier",
+    "FrameGen": "Ramme Generering",
+    "OptiFG": "FSR 3.1 Ramme Generering",
+    "Inputs": "Input & Kontrole",
+    "Framerate": "Ramme Rate Begrænsning",
+    "XeSS": "Intel XeSS Indstillinger",
+    "FSR": "AMD FSR Indstillinger",
+    "DLSS": "NVIDIA DLSS Indstillinger",
+    "Nukems": "DLSS-til-FSR3 Ramme Generering",
+    "Menu": "In-Game Menu & Overlay",
+    "Spoofing": "Hardware Spoofing",
+    "Plugins": "Eksterne Plugins",
+    "NvApi": "NVIDIA API Indstillinger",
+    "Dx11withDx12": "DirectX 11 med DX12 Backend",
+    "Hooks": "Grafik API Hooks",
+    "Sharpness": "Billede Skarphed",
+    "OutputScaling": "Output Skalering",
+    "CAS": "Kontrast Adaptiv Skarphed",
+    "Log": "Logning & Debug",
+    "InitFlags": "Initialiserings Flag",
+    "UpscaleRatio": "Opskalerings Forhold Tilsidesæt",
+    "QualityOverrides": "Kvalitets Mode Tilsidesæt",
+    "DRS": "Dynamisk Opløsnings Skalering",
+    "HDR": "HDR Konfiguration",
+    "Hotfix": "Kompatibilitets Hotfixes"
+  },
+  "status": {
+    "scanning": "Scanner efter spil...",
+    "installing": "Installerer OptiScaler...",
+    "downloading": "Downloader OptiScaler...",
+    "ready": "Klar",
+    "progress": "Fremskridt",
+    "download_progress": "Download Fremskridt",
+    "install_progress": "Installations Fremskridt",
+    "downloading_short": "Downloader...",
+    "installing_short": "Installerer...",
+    "processing": "Behandler...",
+    "please_wait": "Vent venligst..."
+  },
+  "gpu": {
+    "nvidia_rtx": "NVIDIA RTX GPU",
+    "nvidia_gtx": "NVIDIA GTX GPU",
+    "amd_rdna": "AMD RDNA GPU",
+    "amd_older": "AMD Ældre GPU",
+    "intel_arc": "Intel Arc GPU",
+    "older_unknown": "Ældre/Ukendt GPU"
+  },
+  "technologies": {
+    "dlss": "DLSS",
+    "fsr": "FSR",
+    "xess": "XeSS"
+  },
+  "global_settings": {
+    "language": "Sprog",
+    "english": "English",
+    "danish": "Dansk",
+    "polish": "Polski",
+    "theme": "Tema",
+    "light": "Lys",
+    "dark": "Mørk",
+    "debug_mode": "Debug Tilstand"
+  },
+  "setting_values": {
+    "enabled": "Aktiveret",
+    "disabled": "Deaktiveret",
+    "auto": "Automatisk"
+  },
+  "optiscaler_settings": {
+    "upscalers": {
+      "dx11upscaler": "DirectX 11 opskalering teknologi - vælger FSR 2.2, FSR 3.1, XeSS eller DLSS til DX11 spil",
+      "dx12upscaler": "DirectX 12 opskalering teknologi - vælger XeSS, FSR 2.1/2.2/3.1 eller DLSS til DX12 spil",
+      "vulkanupscaler": "Vulkan opskalering teknologi - vælger FSR 2.1/2.2/3.1, XeSS eller DLSS til Vulkan spil"
+    },
+    "framegen": {
+      "fgtype": "Frame generation type - optifg bruger AMD FidelityFX, nukems bruger DLSS-til-FSR3 konvertering"
+    },
+    "optifg": {
+      "enabled": "Aktiver FSR 3.1 frame generation for at øge FPS ved at generere mellemliggende frames",
+      "highpriority": "Brug høj prioritet kommandokø til frame generation - kan forbedre eller forværre frame pacing",
+      "debugview": "Vis frame generation debug overlay med timing og performance information",
+      "allowasync": "Aktiver asynkron frame generation - kan forbedre performance men kan forårsage ustabilitet",
+      "hudfix": "Aktiver HUD fix for at forhindre UI elementer i at blive duplikeret i genererede frames",
+      "hudlimit": "Antal frames at forsinke HUD optagelse - højere værdier kan forårsage nedbrud",
+      "hudfixextended": "Udvidet HUD detektion for flere billedformater - kan forårsage nedbrud og langsomhed",
+      "hudfiximmadiate": "Optag ressourcer før shader udførelse - øger HUD detektion men kan påvirke performance",
+      "rectleft": "Venstre grænse for frame generation rektangel (0 = fuld skærm)",
+      "recttop": "Top grænse for frame generation rektangel (0 = fuld skærm)",
+      "rectwidth": "Bredde af frame generation rektangel (0 = fuld skærm)",
+      "rectheight": "Højde af frame generation rektangel (0 = fuld skærm)",
+      "alwaystrackheaps": "Spor altid ressource heaps uanset HUD fix indstilling - kan påvirke performance",
+      "makedepthcopy": "Opret kopi af dybde buffer til HUD fix - forhindrer visuelle artefakter",
+      "enabledepthscale": "Skaler dybde buffer for DLSS-D kompatibilitet med Unreal Engine",
+      "depthscalemax": "Maksimum dybde skala værdi når EnableDepthScale er aktiv",
+      "makemvcopy": "Opret kopi af bevægelsesvektorer til HUD fix - forhindrer visuelle artefakter",
+      "hudfixcloseaftercallback": "Luk HUD fix kommando liste efter swapchain callback - forhindrer artefakter",
+      "usemutexforswaphain": "Brug mutex til frame generation present kald - forbedrer stabilitet på bekostning af performance",
+      "framepackingtuning": "Aktiver tilpassede frame pacing parametre for bedre frame timing",
+      "fptsafetymarginims": "Sikkerhedsmargin i millisekunder for frame pacing - forhindrer frame drops",
+      "fptvariancefactor": "Varians faktor for frame pacing (0.0-1.0) - højere værdier tillader mere timing variation",
+      "fpthybridspin": "Tillad frame pacing at sove i stedet for spinning - reducerer CPU forbrug",
+      "fpthybridspintime": "Spin tid i timer enheder når hybrid spinning er aktiveret",
+      "fptwaitforsingleobjectonfence": "Brug WaitForSingleObject i stedet for spinning til fence synkronisering"
+    },
+    "inputs": {
+      "dlss": "Hook DLSS (nvngx.dll) og brug dens input parametre til opskalering",
+      "xess": "Hook XeSS (libxess.dll) og brug dens input parametre til opskalering",
+      "fsr2": "Hook FSR 2.x og brug dens input parametre til opskalering",
+      "fsr2pattern": "Brug pattern matching til at finde FSR 2.x metoder - gør spil indlæsning langsommere",
+      "fsr3": "Hook FSR 3.x og brug dens input parametre til opskalering",
+      "fsr3pattern": "Brug pattern matching til at finde FSR 3.x metoder - gør spil indlæsning langsommere",
+      "ffx": "Hook FidelityFX API (amd_fidelityfx_dx12.dll) for input parametre",
+      "enablehotswapping": "Tillad skift mellem spillets native opskalerer og OptiScaler uden genstart"
+    },
+    "framerate": {
+      "frameratelimit": "Frame rate grænse ved brug af Reflex teknologi - kræver Reflex support i spillet"
+    },
+    "xess": {
+      "buildpipelines": "Pre-byg XeSS rendering pipelines før initialisering for hurtigere opstart",
+      "createheaps": "Opret XeSS heap objekter før initialisering",
+      "networkmodel": "XeSS AI model valg - KPSS=0, Splat=1, Model 3-6=2-5",
+      "librarypath": "Brugerdefineret sti til libxess.dll fil",
+      "dx11librarypath": "Brugerdefineret sti til libxess_dx11.dll fil"
+    },
+    "fsr": {
+      "verticalfov": "Kamera vertikal synsfelt i grader (0-180) for FSR beregninger",
+      "horizontalfov": "Kamera horisontal synsfelt i grader - bruges hvis vertikal FOV ikke er tilgængelig",
+      "cameranear": "Kamera nær plan afstand for FSR dybde beregninger",
+      "camerafar": "Kamera fjern plan afstand for FSR dybde beregninger",
+      "usefsrinputvalues": "Brug kamera værdier fra FSR2/3 eller FFX inputs i stedet for manuelle indstillinger",
+      "debugview": "Vis FSR debug overlay med opskalerings information",
+      "upscalerindex": "FSR backend valg - 0=FSR 3.1.2, 1=FSR 2.3.2",
+      "velocityfactor": "Bevægelses vektor skalerings faktor (0.0-1.0) for FSR 3.1.1+",
+      "usereactivemaskfortransparency": "Brug DLSS reaktiv maske som gennemsigtigheds maske for FSR",
+      "dlssreactivemaskbias": "Bias for DLSS reaktiv maske med FSR (0.0-0.9) - højere værdier favoriserer nye frames",
+      "fsr4update": "Aktiver FSR 3.x til FSR 4 opgradering - afhænger af GPU kompatibilitet",
+      "fsrnonlinearsrgb": "Input indeholder perceptuel sRGB farver - kan forbedre FSR 4 billede kvalitet",
+      "fsrnonlinearpq": "Input indeholder perceptuel PQ farver - kan forbedre FSR 4 billede kvalitet",
+      "fsragilitysdkupgrade": "Opdater DirectX 12 Agility SDK for FSR 4 på Windows 10 - kræver D3D12_Optiscaler mappe",
+      "ffxdx12path": "Brugerdefineret sti til amd_fidelityfx_dx12.dll fil",
+      "ffxvkpath": "Brugerdefineret sti til amd_fidelityfx_vk.dll fil"
+    },
+    "dlss": {
+      "enabled": "Aktiver kald til originale NVIDIA DLSS biblioteker",
+      "librarypath": "Brugerdefineret sti til nvngx.dll eller _nvngx.dll fil",
+      "featurepath": "Sti til mappe der indeholder streamline/nvngx_dlss.dll for NVNGX API initialisering",
+      "nvngx_dlss_path": "Brugerdefineret sti til nvngx_dlss.dll fil",
+      "renderpresetoverride": "Aktiver tilpassede render preset tilsidesættelser for kvalitets indstillinger",
+      "renderpresetforall": "Render preset for alle kvalitets tilstande (0=Standard, 1-15=A-O)",
+      "renderpresetdlaa": "Render preset specifikt for DLAA tilstand",
+      "renderpresetultraquality": "Render preset for Ultra Kvalitet tilstand",
+      "renderpresetquality": "Render preset for Kvalitet tilstand",
+      "renderpresetbalanced": "Render preset for Balanceret tilstand",
+      "renderpresetperformance": "Render preset for Performance tilstand",
+      "renderpresetultraperformance": "Render preset for Ultra Performance tilstand",
+      "usegenericappidwithdlss": "Brug generisk app ID med DLSS - retter preset tilsidesættelser i nogle spil"
+    },
+    "nukems": {
+      "makedepthcopy": "Ret ødelagte visuals på AMD GPU'er i ikke-Unreal Engine spil - kan forårsage hakken"
+    },
+    "menu": {
+      "overlaymenu": "Aktiver i-spillet ImGui overlay menu for real-time konfiguration",
+      "scale": "UI skala for i-spillet menu (1.0-2.0) - skalerer automatisk ned under 900p",
+      "shortcutkey": "Tastatur genvej til at åbne i-spillet menu (standard: Insert tast)",
+      "extendedlimits": "Tillad udvidede skalerings forhold fra 0.1 til 6.0 i stedet for normale grænser",
+      "usehqfont": "Brug høj kvalitets font rendering - kan reducere VRAM forbrug",
+      "showfps": "Vis frame rate overlay på skærmen",
+      "fpsoverlaypos": "FPS overlay position - 0=Top Venstre, 1=Top Højre, 2=Bund Venstre, 3=Bund Højre",
+      "fpsoverlaytype": "FPS overlay detalje niveau - 0=Simpel, 1=Detaljeret, 2=Detaljeret+Graf, 3=Fuld, 4=Fuld+Graf",
+      "fpsshortcutkey": "Tastatur genvej til at skifte FPS overlay (standard: Page Up)",
+      "fpscycleshortcutkey": "Tastatur genvej til at cykle FPS overlay typer (standard: Page Down)",
+      "fpsoverlayhorizontal": "Brug horisontal layout for FPS overlay i stedet for vertikal",
+      "fpsoverlayalpha": "Baggrunds gennemsigtighed for FPS overlay (0.0-1.0)"
+    },
+    "spoofing": {
+      "spoofedgpuname": "GPU navn at rapportere til spil (standard: NVIDIA GeForce RTX 4090)",
+      "dxgi": "Aktiver NVIDIA GPU spoofing for DirectX Graphics Infrastructure",
+      "dxgiblacklist": "Spring DXGI spoofing over for specifikke metoder (adskil med |) - kun avancerede brugere",
+      "dxgivram": "Spoof mængde af VRAM i GB for DirectX applikationer",
+      "vulkan": "Aktiver NVIDIA GPU spoofing for Vulkan applikationer",
+      "vulkanextensionspoofing": "Aktiver NVIDIA extension spoofing for Vulkan",
+      "vulkanvram": "Spoof mængde af VRAM i GB for Vulkan applikationer",
+      "spoofhags": "Spoof hardware accelereret GPU scheduling - krævet for RTX 40xx DLSS-G uden HAGS",
+      "d3dfeaturelevel": "Tilsidesæt anmodet DirectX feature level"
+    },
+    "plugins": {
+      "path": "Mappe sti til at søge efter yderligere plugin DLL'er (standard: .\\plugins)",
+      "loadspecialk": "Indlæs SpecialK64.dll fra spil mappe - kræver SpecialK.dxgi konfigurations fil",
+      "loadreshade": "Indlæs ReShade64.dll fra spil mappe - omdøb ReShade DLL og placer ved siden af OptiScaler"
+    },
+    "nvapi": {
+      "overridenvapidll": "Tilsidesæt NVIDIA API bibliotek indlæsning - automatisk aktiveret for ikke-NVIDIA GPU'er",
+      "nvapidllpath": "Brugerdefineret sti til nvapi64.dll fil - lad auto bruge standard mappe"
+    },
+    "dx11withdx12": {
+      "texturesyncmethod": "Tekstur synkroniseringsmetode for DirectX 11 med DX12 backend - 0=Ingen (hurtigst), 1=Fence, 2=Fence+Flush, 3=Fence+Event, 4=Fence+Flush+Event, 5=Query",
+      "copybacksyncmethod": "Kopier-tilbage synkroniseringsmetode - samme muligheder som tekstur sync, anbefalet: 5=Query",
+      "syncafterdx12": "Start output kopier sync efter DirectX 12 udførelse - forbedrer kompatibilitet",
+      "usedelayedinit": "Forsinkel nogle operationer under D11wDx12 feature oprettelse - øger kompatibilitet men kan påvirke ydeevne",
+      "dontusentshared": "Brug lavere-niveau D3D11_RESOURCE_MISC_SHARED for bedre ydeevne men potentielt mindre kompatibilitet"
+    },
+    "hooks": {
+      "hookoriginalnvngxonly": "Kun hook NVNGX på registry niveau, spring lokale filer over - påkrævet for Uniscaler + Frame Generation"
+    },
+    "sharpness": {
+      "overridesharpness": "Tilsidesæt DLSS skarphed parameter med en fast skarphed værdi",
+      "sharpness": "Fast skarphed styrke (0.0-1.0, øvre grænse for RCAS er 1.3) - højere værdier øger billede skarphed"
+    },
+    "outputscaling": {
+      "enabled": "Aktiver output skalering for DirectX 12 og DirectX 11 med DX12 backends",
+      "multiplier": "Output skalerings forhold (0.5-3.0) - værdier over 1.0 opskalerer, under 1.0 nedskalerer",
+      "usefsr": "Brug AMD FSR til skalerings operationer - hvis deaktiveret, bruges bicubic skalering",
+      "downscaler": "Nedskalerings algoritme når FSR er deaktiveret - 0=Bicubic, 1=Lanczos, 2=Catmull-Rom, 3=MAGC"
+    },
+    "cas": {
+      "enabled": "Aktiver RCAS (Robust Contrast Adaptive Sharpening) for billede forbedring",
+      "motionsharpnessenabled": "Aktiver bevægelses-baseret skarphed som tilpasser sig til bevægelse i scenen",
+      "motionsharpness": "Skarphed intensitet baseret på bevægelse (-1.3 til 1.3) - negative værdier reducerer skarphed i bevægelse",
+      "motionthreshold": "Minimum pixel bevægelse for at udløse bevægelse skarphed (0.0-100.0)",
+      "motionscalelimit": "Maksimum pixel bevægelse for fuld bevægelse skarphed effekt (0.0-100.0)",
+      "motionsharpnessdebug": "Aktiver debug visualisering - rød fremhæver tilføjet skarphed, grøn viser reduceret skarphed"
+    }
+  }
+}

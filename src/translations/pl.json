@@ -1,0 +1,249 @@
+{
+  "ui": {
+    "app_title": "OptiScaler GUI",
+    "version": "Wersja",
+    "thanks_to": "Podziękowania dla",
+    "games_tab": "Gry",
+    "settings_tab": "Ustawienia",
+    "install_optiscaler": "Zainstaluj OptiScaler",
+    "edit_settings": "Edytuj",
+    "uninstall": "Odinstaluj",
+    "open_folder": "Otwórz Folder",
+    "games_found": "gier znaleziono",
+    "no_games": "Nie znaleziono gier",
+    "back": "← Wstecz",
+    "save_settings": "Zapisz Ustawienia",
+    "auto_settings": "Auto Ustawienia",
+    "settings_title": "Ustawienia OptiScaler",
+    "section": "Sekcja",
+    "setting": "Ustawienie",
+    "value": "Wartość",
+    "description": "Opis",
+    "no_description_available": "Brak dostępnego opisu",
+    "settings_saved": "Ustawienia Zapisane",
+    "settings_saved_msg": "Ustawienia OptiScaler zostały pomyślnie zapisane do pliku konfiguracyjnego."
+  },
+  "sections": {
+    "Upscalers": "Technologie Skalowania",
+    "FrameGen": "Generowanie Klatek",
+    "OptiFG": "FSR 3.1 Generowanie Klatek",
+    "Inputs": "Wejścia i Kontrole",
+    "Framerate": "Ograniczenie Klatek",
+    "XeSS": "Ustawienia Intel XeSS",
+    "FSR": "Ustawienia AMD FSR",
+    "DLSS": "Ustawienia NVIDIA DLSS",
+    "Nukems": "DLSS-do-FSR3 Generowanie Klatek",
+    "Menu": "Menu W Grze i Nakładka",
+    "Spoofing": "Podszywanie się pod Sprzęt",
+    "Plugins": "Zewnętrzne Wtyczki",
+    "NvApi": "Ustawienia NVIDIA API",
+    "Dx11withDx12": "DirectX 11 z DX12 Backend",
+    "Hooks": "Haki API Grafiki",
+    "Sharpness": "Wyostrzanie Obrazu",
+    "OutputScaling": "Skalowanie Wyjścia",
+    "CAS": "Adaptacyjne Wyostrzanie Kontrastu",
+    "Log": "Logowanie i Debug",
+    "InitFlags": "Flagi Inicjalizacji",
+    "UpscaleRatio": "Nadpisanie Współczynnika Skalowania",
+    "QualityOverrides": "Nadpisanie Trybu Jakości",
+    "DRS": "Dynamiczne Skalowanie Rozdzielczości",
+    "HDR": "Konfiguracja HDR",
+    "Hotfix": "Poprawki Kompatybilności"
+  },
+  "status": {
+    "scanning": "Skanowanie gier...",
+    "installing": "Instalowanie OptiScaler...",
+    "downloading": "Pobieranie OptiScaler...",
+    "ready": "Gotowy",
+    "progress": "Postęp",
+    "download_progress": "Postęp Pobierania",
+    "install_progress": "Postęp Instalacji",
+    "downloading_short": "Pobieranie...",
+    "installing_short": "Instalowanie...",
+    "processing": "Przetwarzanie...",
+    "please_wait": "Proszę czekać..."
+  },
+  "gpu": {
+    "nvidia_rtx": "NVIDIA RTX GPU",
+    "nvidia_gtx": "NVIDIA GTX GPU",
+    "amd_rdna": "AMD RDNA GPU",
+    "amd_older": "AMD Starszy GPU",
+    "intel_arc": "Intel Arc GPU",
+    "older_unknown": "Starszy/Nieznany GPU"
+  },
+  "technologies": {
+    "dlss": "DLSS",
+    "fsr": "FSR",
+    "xess": "XeSS"
+  },
+  "global_settings": {
+    "language": "Język",
+    "english": "English",
+    "danish": "Dansk",
+    "polish": "Polski",
+    "theme": "Motyw",
+    "light": "Jasny",
+    "dark": "Ciemny",
+    "debug_mode": "Tryb Debug"
+  },
+  "setting_values": {
+    "enabled": "Włączone",
+    "disabled": "Wyłączone",
+    "auto": "Automatyczne"
+  },
+  "optiscaler_settings": {
+    "upscalers": {
+      "dx11upscaler": "Technologia skalowania DirectX 11 - wybiera FSR 2.2, FSR 3.1, XeSS lub DLSS dla gier DX11",
+      "dx12upscaler": "Technologia skalowania DirectX 12 - wybiera XeSS, FSR 2.1/2.2/3.1 lub DLSS dla gier DX12",
+      "vulkanupscaler": "Technologia skalowania Vulkan - wybiera FSR 2.1/2.2/3.1, XeSS lub DLSS dla gier Vulkan"
+    },
+    "framegen": {
+      "fgtype": "Typ generowania klatek - optifg używa AMD FidelityFX, nukems używa konwersji DLSS-na-FSR3"
+    },
+    "optifg": {
+      "enabled": "Włącz generowanie klatek FSR 3.1 aby zwiększyć FPS przez generowanie pośrednich klatek",
+      "highpriority": "Użyj kolejki poleceń o wysokim priorytecie dla generowania klatek - może poprawić lub pogorszyć rytm klatek",
+      "debugview": "Pokaż nakładkę debug generowania klatek z informacjami o czasach i wydajności",
+      "allowasync": "Włącz asynchroniczne generowanie klatek - może poprawić wydajność ale może powodować niestabilność",
+      "hudfix": "Włącz poprawkę HUD aby zapobiec duplikowaniu elementów UI w generowanych klatkach",
+      "hudlimit": "Liczba klatek do opóźnienia przechwytywania HUD - wyższe wartości mogą powodować awarie",
+      "hudfixextended": "Rozszerzone wykrywanie HUD dla większej liczby formatów obrazu - może powodować awarie i spowolnienia",
+      "hudfiximmadiate": "Przechwytuj zasoby przed wykonaniem shadera - zwiększa wykrywanie HUD ale może wpłynąć na wydajność",
+      "rectleft": "Lewa granica prostokąta generowania klatek (0 = pełny ekran)",
+      "recttop": "Górna granica prostokąta generowania klatek (0 = pełny ekran)",
+      "rectwidth": "Szerokość prostokąta generowania klatek (0 = pełny ekran)",
+      "rectheight": "Wysokość prostokąta generowania klatek (0 = pełny ekran)",
+      "alwaystrackheaps": "Zawsze śledź sterty zasobów niezależnie od ustawienia poprawki HUD - może wpłynąć na wydajność",
+      "makedepthcopy": "Utwórz kopię bufora głębi dla poprawki HUD - zapobiega artefaktom wizualnym",
+      "enabledepthscale": "Skaluj bufor głębi dla kompatybilności DLSS-D z Unreal Engine",
+      "depthscalemax": "Maksymalna wartość skali głębi gdy EnableDepthScale jest aktywne",
+      "makemvcopy": "Utwórz kopię wektorów ruchu dla poprawki HUD - zapobiega artefaktom wizualnym",
+      "hudfixcloseaftercallback": "Zamknij listę poleceń poprawki HUD po wywołaniu zwrotnym swapchain - zapobiega artefaktom",
+      "usemutexforswaphain": "Użyj mutex dla wywołań present generowania klatek - poprawia stabilność kosztem wydajności",
+      "framepackingtuning": "Włącz niestandardowe parametry rytmu klatek dla lepszego taktowania klatek",
+      "fptsafetymarginims": "Margines bezpieczeństwa w milisekundach dla rytmu klatek - zapobiega spadkom klatek",
+      "fptvariancefactor": "Współczynnik wariancji dla rytmu klatek (0.0-1.0) - wyższe wartości pozwalają na większą zmienność czasu",
+      "fpthybridspin": "Pozwól rytmowi klatek na sen zamiast wirowania - zmniejsza zużycie CPU",
+      "fpthybridspintime": "Czas wirowania w jednostkach timera gdy hybrydowe wirowanie jest włączone",
+      "fptwaitforsingleobjectonfence": "Użyj WaitForSingleObject zamiast wirowania dla synchronizacji fence"
+    },
+    "inputs": {
+      "dlss": "Podłącz DLSS (nvngx.dll) i użyj jego parametrów wejściowych do skalowania",
+      "xess": "Podłącz XeSS (libxess.dll) i użyj jego parametrów wejściowych do skalowania",
+      "fsr2": "Podłącz FSR 2.x i użyj jego parametrów wejściowych do skalowania",
+      "fsr2pattern": "Użyj dopasowania wzorców do znajdowania metod FSR 2.x - spowalnia ładowanie gry",
+      "fsr3": "Podłącz FSR 3.x i użyj jego parametrów wejściowych do skalowania",
+      "fsr3pattern": "Użyj dopasowania wzorców do znajdowania metod FSR 3.x - spowalnia ładowanie gry",
+      "ffx": "Podłącz FidelityFX API (amd_fidelityfx_dx12.dll) dla parametrów wejściowych",
+      "enablehotswapping": "Pozwól na przełączanie między natywnym skalerem gry a OptiScaler bez restartu"
+    },
+    "framerate": {
+      "frameratelimit": "Limit klatek na sekundę używający technologii Reflex - wymaga wsparcia Reflex w grze"
+    },
+    "xess": {
+      "buildpipelines": "Zbuduj z góry potoki renderowania XeSS przed inicjalizacją dla szybszego uruchamiania",
+      "createheaps": "Utwórz obiekty sterty XeSS przed inicjalizacją",
+      "networkmodel": "Wybór modelu AI XeSS - KPSS=0, Splat=1, Modele 3-6=2-5",
+      "librarypath": "Niestandardowa ścieżka do pliku libxess.dll",
+      "dx11librarypath": "Niestandardowa ścieżka do pliku libxess_dx11.dll"
+    },
+    "fsr": {
+      "verticalfov": "Pole widzenia kamery w pionie w stopniach (0-180) dla obliczeń FSR",
+      "horizontalfov": "Pole widzenia kamery w poziomie w stopniach - używane gdy pionowe FOV niedostępne",
+      "cameranear": "Odległość bliskiej płaszczyzny kamery dla obliczeń głębi FSR",
+      "camerafar": "Odległość dalekiej płaszczyzny kamery dla obliczeń głębi FSR",
+      "usefsrinputvalues": "Użyj wartości kamery z wejść FSR2/3 lub FFX zamiast ręcznych ustawień",
+      "debugview": "Pokaż nakładkę debug FSR z informacjami o skalowaniu",
+      "upscalerindex": "Wybór backendu FSR - 0=FSR 3.1.2, 1=FSR 2.3.2",
+      "velocityfactor": "Współczynnik skalowania wektora ruchu (0.0-1.0) dla FSR 3.1.1+",
+      "usereactivemaskfortransparency": "Użyj reaktywnej maski DLSS jako maski przezroczystości dla FSR",
+      "dlssreactivemaskbias": "Bias dla reaktywnej maski DLSS z FSR (0.0-0.9) - wyższe wartości faworyzują nowe klatki",
+      "fsr4update": "Włącz upgrade FSR 3.x do FSR 4 - zależy od kompatybilności GPU",
+      "fsrnonlinearsrgb": "Wejście zawiera perceptualne kolory sRGB - może poprawić jakość obrazu FSR 4",
+      "fsrnonlinearpq": "Wejście zawiera perceptualne kolory PQ - może poprawić jakość obrazu FSR 4",
+      "fsragilitysdkupgrade": "Zaktualizuj DirectX 12 Agility SDK dla FSR 4 na Windows 10 - wymaga folderu D3D12_Optiscaler",
+      "ffxdx12path": "Niestandardowa ścieżka do pliku amd_fidelityfx_dx12.dll",
+      "ffxvkpath": "Niestandardowa ścieżka do pliku amd_fidelityfx_vk.dll"
+    },
+    "dlss": {
+      "enabled": "Włącz wywołania do oryginalnych bibliotek NVIDIA DLSS",
+      "librarypath": "Niestandardowa ścieżka do pliku nvngx.dll lub _nvngx.dll",
+      "featurepath": "Ścieżka do folderu zawierającego streamline/nvngx_dlss.dll dla inicjalizacji NVNGX API",
+      "nvngx_dlss_path": "Niestandardowa ścieżka do pliku nvngx_dlss.dll",
+      "renderpresetoverride": "Włącz niestandardowe nadpisania presetów renderowania dla ustawień jakości",
+      "renderpresetforall": "Preset renderowania dla wszystkich trybów jakości (0=Domyślny, 1-15=A-O)",
+      "renderpresetdlaa": "Preset renderowania specjalnie dla trybu DLAA",
+      "renderpresetultraquality": "Preset renderowania dla trybu Ultra Jakość",
+      "renderpresetquality": "Preset renderowania dla trybu Jakość",
+      "renderpresetbalanced": "Preset renderowania dla trybu Zrównoważony",
+      "renderpresetperformance": "Preset renderowania dla trybu Wydajność",
+      "renderpresetultraperformance": "Preset renderowania dla trybu Ultra Wydajność",
+      "usegenericappidwithdlss": "Użyj ogólnego ID aplikacji z DLSS - naprawia nadpisania presetów w niektórych grach"
+    },
+    "nukems": {
+      "makedepthcopy": "Napraw zepsute wizualizacje na GPU AMD w grach innych niż Unreal Engine - może powodować czkawki"
+    },
+    "menu": {
+      "overlaymenu": "Włącz nakładkę menu ImGui w grze dla konfiguracji w czasie rzeczywistym",
+      "scale": "Skala UI dla menu w grze (1.0-2.0) - automatycznie skaluje w dół poniżej 900p",
+      "shortcutkey": "Skrót klawiszowy do otwierania menu w grze (domyślnie: klawisz Insert)",
+      "extendedlimits": "Pozwól na rozszerzone współczynniki skalowania od 0.1 do 6.0 zamiast normalnych limitów",
+      "usehqfont": "Użyj renderowania fontów wysokiej jakości - może zmniejszyć zużycie VRAM",
+      "showfps": "Wyświetl nakładkę licznika klatek na ekranie",
+      "fpsoverlaypos": "Pozycja nakładki FPS - 0=Góra Lewo, 1=Góra Prawo, 2=Dół Lewo, 3=Dół Prawo",
+      "fpsoverlaytype": "Poziom szczegółowości nakładki FPS - 0=Prosty, 1=Szczegółowy, 2=Szczegółowy+Wykres, 3=Pełny, 4=Pełny+Wykres",
+      "fpsshortcutkey": "Skrót klawiszowy do przełączania nakładki FPS (domyślnie: Page Up)",
+      "fpscycleshortcutkey": "Skrót klawiszowy do cyklicznego przełączania typów nakładki FPS (domyślnie: Page Down)",
+      "fpsoverlayhorizontal": "Użyj układu poziomego dla nakładki FPS zamiast pionowego",
+      "fpsoverlayalpha": "Przezroczystość tła dla nakładki FPS (0.0-1.0)"
+    },
+    "spoofing": {
+      "spoofedgpuname": "Nazwa GPU do raportowania grom (domyślnie: NVIDIA GeForce RTX 4090)",
+      "dxgi": "Włącz spoofing GPU NVIDIA dla DirectX Graphics Infrastructure",
+      "dxgiblacklist": "Pomiń spoofing DXGI dla określonych metod (oddziel z |) - tylko dla zaawansowanych użytkowników",
+      "dxgivram": "Spoofuj ilość VRAM w GB dla aplikacji DirectX",
+      "vulkan": "Włącz spoofing GPU NVIDIA dla aplikacji Vulkan",
+      "vulkanextensionspoofing": "Włącz spoofing rozszerzeń NVIDIA dla Vulkan",
+      "vulkanvram": "Spoofuj ilość VRAM w GB dla aplikacji Vulkan",
+      "spoofhags": "Spoofuj sprzętowo przyspieszane planowanie GPU - wymagane dla RTX 40xx DLSS-G bez HAGS",
+      "d3dfeaturelevel": "Nadpisz żądany poziom funkcji DirectX"
+    },
+    "plugins": {
+      "path": "Ścieżka katalogu do wyszukiwania dodatkowych DLL wtyczek (domyślnie: .\\plugins)",
+      "loadspecialk": "Załaduj SpecialK64.dll z folderu gry - wymaga pliku konfiguracyjnego SpecialK.dxgi",
+      "loadreshade": "Załaduj ReShade64.dll z folderu gry - zmień nazwę DLL ReShade i umieść obok OptiScaler"
+    },
+    "nvapi": {
+      "overridenvapidll": "Nadpisz ładowanie biblioteki NVIDIA API - automatycznie włączane dla kart innych niż NVIDIA",
+      "nvapidllpath": "Niestandardowa ścieżka do pliku nvapi64.dll - zostaw auto aby użyć domyślnego folderu"
+    },
+    "dx11withdx12": {
+      "texturesyncmethod": "Metoda synchronizacji tekstur dla DirectX 11 z backendem DX12 - 0=Brak (najszybsza), 1=Fence, 2=Fence+Flush, 3=Fence+Event, 4=Fence+Flush+Event, 5=Query",
+      "copybacksyncmethod": "Metoda synchronizacji copy-back - te same opcje co sync tekstur, zalecana: 5=Query",
+      "syncafterdx12": "Rozpocznij sync kopiowania wyjścia po wykonaniu DirectX 12 - poprawia kompatybilność",
+      "usedelayedinit": "Opóźnij niektóre operacje podczas tworzenia funkcji D11wDx12 - zwiększa kompatybilność ale może wpłynąć na wydajność",
+      "dontusentshared": "Użyj niższego poziomu D3D11_RESOURCE_MISC_SHARED dla lepszej wydajności ale potencjalnie mniejszej kompatybilności"
+    },
+    "hooks": {
+      "hookoriginalnvngxonly": "Podłącz NVNGX tylko na poziomie rejestru, pomiń pliki lokalne - wymagane dla Uniscaler + Generowanie Klatek"
+    },
+    "sharpness": {
+      "overridesharpness": "Nadpisz parametr ostrości DLSS stałą wartością ostrości",
+      "sharpness": "Stała siła ostrości (0.0-1.0, górny limit dla RCAS to 1.3) - wyższe wartości zwiększają ostrość obrazu"
+    },
+    "outputscaling": {
+      "enabled": "Włącz skalowanie wyjścia dla DirectX 12 i DirectX 11 z backendami DX12",
+      "multiplier": "Współczynnik skalowania wyjścia (0.5-3.0) - wartości powyżej 1.0 skalują w górę, poniżej 1.0 w dół",
+      "usefsr": "Użyj AMD FSR do operacji skalowania - jeśli wyłączony, używane jest skalowanie bicubic",
+      "downscaler": "Algorytm skalowania w dół gdy FSR jest wyłączony - 0=Bicubic, 1=Lanczos, 2=Catmull-Rom, 3=MAGC"
+    },
+    "cas": {
+      "enabled": "Włącz RCAS (Robust Contrast Adaptive Sharpening) do poprawy obrazu",
+      "motionsharpnessenabled": "Włącz wyostrzanie oparte na ruchu, które dostosowuje się do ruchu w scenie",
+      "motionsharpness": "Intensywność wyostrzania oparta na ruchu (-1.3 do 1.3) - wartości ujemne zmniejszają ostrość podczas ruchu",
+      "motionthreshold": "Minimalny ruch piksela aby wywołać wyostrzanie ruchu (0.0-100.0)",
+      "motionscalelimit": "Maksymalny ruch piksela dla pełnego efektu wyostrzania ruchu (0.0-100.0)",
+      "motionsharpnessdebug": "Włącz wizualizację debugowania - czerwony podświetla dodaną ostrość, zielony pokazuje zmniejszoną ostrość"
+    }
+  }
+}

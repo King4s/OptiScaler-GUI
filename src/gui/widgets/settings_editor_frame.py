@@ -1,7 +1,9 @@
 ﻿import customtkinter as ctk
 import os
 from optiscaler.manager import OptiScalerManager
-from utils.i18n import t
+import customtkinter as ctk
+from pathlib import Path
+from utils.translation_manager import t, get_translation_manager
 from utils.debug import debug_log
 
 class SettingsEditorFrame(ctk.CTkScrollableFrame):
@@ -73,13 +75,16 @@ class SettingsEditorFrame(ctk.CTkScrollableFrame):
         row += 1
         
         for section, keys in self.settings.items():
-            # Section header
+            # Section header with translated title
             section_frame = ctk.CTkFrame(self, fg_color=("gray85", "gray25"))
             section_frame.grid(row=row, column=0, columnspan=2, padx=10, pady=(20, 10), sticky="ew")
             section_frame.grid_columnconfigure(0, weight=1)
             
-            section_label = ctk.CTkLabel(section_frame, text=f"[{section}]", 
-                                       font=("Arial", 16, "bold"))
+            # Get translated section title
+            tm = get_translation_manager()
+            section_title = tm.get_section_title(section)
+            section_label = ctk.CTkLabel(section_frame, text=f"[{section_title}]", 
+                                       font=("Arial", 18, "bold"))
             section_label.grid(row=0, column=0, padx=15, pady=10, sticky="w")
             row += 1
 
@@ -91,20 +96,19 @@ class SettingsEditorFrame(ctk.CTkScrollableFrame):
                 
                 # Setting name
                 key_label = ctk.CTkLabel(setting_frame, text=key, 
-                                       font=("Arial", 12, "bold"))
+                                       font=("Arial", 14, "bold"))
                 key_label.grid(row=0, column=0, padx=15, pady=(10, 5), sticky="w")
 
-                # Setting description - ALWAYS show something for debugging
-                # Description
+                # Setting description
                 description = self._get_setting_description(section, key)
                 if description:
                     desc_text = description
                 else:
-                    desc_text = t("no_description_available", default="[No description available]")
+                    desc_text = t("ui.no_description_available")
                 
                 desc_label = ctk.CTkLabel(setting_frame, text=desc_text, 
-                                        wraplength=300, justify="left", 
-                                        font=("Arial", 10))
+                                        wraplength=400, justify="left", 
+                                        font=("Arial", 12))
                 desc_label.grid(row=1, column=0, padx=15, pady=(0, 5), sticky="w")
 
                 # Setting widget
@@ -119,23 +123,35 @@ class SettingsEditorFrame(ctk.CTkScrollableFrame):
         self._create_buttons(row)
         
     def _get_setting_description(self, section, key):
-        """Get user-friendly description for a setting"""
-        setting_key = f"{section.lower()}_{key.lower()}_desc"
-        
-        # Try to get translation, fallback to None if not found
-        desc = t(setting_key)
-        
-        if desc == setting_key:  # Translation not found
-            return None
-        
-        return desc
+        """Get user-friendly description for a setting using new translation system"""
+        tm = get_translation_manager()
+        return tm.get_setting_description(section, key)
         
     def _create_setting_widget(self, parent, data):
         """Create appropriate widget for setting data"""
         if data["type"] == "bool_options":
-            options_list = ["true", "false", "auto"]
-            widget = ctk.CTkOptionMenu(parent, values=options_list)
-            widget.set(data["value"].lower())
+            # Create user-friendly labels for true/false/auto using translation system
+            tm = get_translation_manager()
+            friendly_options = [
+                tm.get_setting_value_label("true"),    # Enabled
+                tm.get_setting_value_label("false"),   # Disabled  
+                tm.get_setting_value_label("auto")     # Auto
+            ]
+            raw_values = ["true", "false", "auto"]
+            
+            widget = ctk.CTkOptionMenu(parent, values=friendly_options)
+            
+            # Set the current value by mapping raw to friendly
+            current_raw = data["value"].lower()
+            if current_raw in raw_values:
+                index = raw_values.index(current_raw)
+                widget.set(friendly_options[index])
+            else:
+                widget.set(friendly_options[0])  # Default to enabled
+                
+            # Store mapping for saving later
+            widget._raw_values = raw_values
+            widget._friendly_values = friendly_options
             return widget
         elif data["type"] == "options":
             display_options = list(data["options"].values())
@@ -166,13 +182,13 @@ class SettingsEditorFrame(ctk.CTkScrollableFrame):
         button_frame.grid_columnconfigure(1, weight=1)
         button_frame.grid_columnconfigure(2, weight=1)
         
-        back_button = ctk.CTkButton(button_frame, text=t("back"), command=self._go_back)
+        back_button = ctk.CTkButton(button_frame, text=t("ui.back"), command=self._go_back)
         back_button.grid(row=0, column=0, padx=5, pady=10, sticky="ew")
         
-        auto_button = ctk.CTkButton(button_frame, text=t("auto_settings"), command=self._apply_auto_settings)
+        auto_button = ctk.CTkButton(button_frame, text=t("ui.auto_settings"), command=self._apply_auto_settings)
         auto_button.grid(row=0, column=1, padx=5, pady=10, sticky="ew")
         
-        save_button = ctk.CTkButton(button_frame, text=t("save_settings"), command=self._save_settings)
+        save_button = ctk.CTkButton(button_frame, text=t("ui.save_settings"), command=self._save_settings)
         save_button.grid(row=0, column=2, padx=5, pady=10, sticky="ew")
 
     def _detect_gpu(self):
@@ -405,7 +421,11 @@ class SettingsEditorFrame(ctk.CTkScrollableFrame):
                 for key, data in keys.items():
                     widget = self.widgets[f"{section}.{key}"]
                     if data["type"] == "bool_options":
-                        self.settings[section][key]["value"] = widget.get()
+                        # Map friendly labels back to raw values using translation system
+                        selected_friendly = widget.get()
+                        tm = get_translation_manager()
+                        raw_value = tm.get_raw_value_from_label(selected_friendly)
+                        self.settings[section][key]["value"] = raw_value
                     elif data["type"] == "options":
                         selected_option_text = widget.get()
                         found_key = False
@@ -423,7 +443,7 @@ class SettingsEditorFrame(ctk.CTkScrollableFrame):
             
             try:
                 from CTkMessagebox import CTkMessagebox
-                CTkMessagebox(title=t("settings_saved"), message=t("settings_saved_msg"))
+                CTkMessagebox(title=t("ui.settings_saved"), message=t("ui.settings_saved_msg"))
             except:
                 print("Settings saved successfully!")
                 

@@ -42,6 +42,7 @@ class I18n:
             "setting": "Setting",
             "value": "Value",
             "description": "Description",
+            "no_description_available": "No description available",
             
             # Status Messages  
             "status_scanning": "Scanning for games...",
@@ -157,6 +158,13 @@ class I18n:
             "log_logtoconsole_desc": "Display log messages in console",
             "log_logtofile_desc": "Save log messages to file",
             "log_openconsole_desc": "Open console window on startup",
+            
+            # Setting Value Options (for true/false/auto dropdowns)
+            "setting_enabled": "Enabled",
+            "setting_disabled": "Disabled", 
+            "setting_auto": "Automatic",
+            "settings_saved": "Settings Saved",
+            "settings_saved_msg": "OptiScaler settings have been saved successfully!",
         }
         
         # Danish translations
@@ -184,6 +192,7 @@ class I18n:
             "setting": "Indstilling",
             "value": "Værdi",
             "description": "Beskrivelse",
+            "no_description_available": "Ingen beskrivelse tilgængelig",
             
             # Status Messages
             "status_scanning": "Scanner efter spil...",
@@ -299,6 +308,13 @@ class I18n:
             "log_logtoconsole_desc": "Vis log beskeder i konsol",
             "log_logtofile_desc": "Gem log beskeder til fil",
             "log_openconsole_desc": "Åbn konsol vindue ved opstart",
+            
+            # Setting Value Options (for true/false/auto dropdowns)
+            "setting_enabled": "Aktiveret",
+            "setting_disabled": "Deaktiveret", 
+            "setting_auto": "Automatisk",
+            "settings_saved": "Indstillinger Gemt",
+            "settings_saved_msg": "OptiScaler indstillinger er blevet gemt succesfuldt!",
         }
         
         # Polish translations
@@ -326,6 +342,7 @@ class I18n:
             "setting": "Ustawienie",
             "value": "Wartość",
             "description": "Opis",
+            "no_description_available": "Brak dostępnego opisu",
             
             # Status Messages
             "status_scanning": "Skanowanie gier...",
@@ -441,6 +458,13 @@ class I18n:
             "log_logtoconsole_desc": "Wyświetl wiadomości dziennika w konsoli",
             "log_logtofile_desc": "Zapisz wiadomości dziennika do pliku",
             "log_openconsole_desc": "Otwórz okno konsoli przy uruchomieniu",
+            
+            # Setting Value Options (for true/false/auto dropdowns)
+            "setting_enabled": "Włączone",
+            "setting_disabled": "Wyłączone", 
+            "setting_auto": "Automatyczne",
+            "settings_saved": "Ustawienia Zapisane",
+            "settings_saved_msg": "Ustawienia OptiScaler zostały pomyślnie zapisane!",
         }
 
     def set_language(self, language_code):

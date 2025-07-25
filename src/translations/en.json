@@ -1,0 +1,249 @@
+{
+  "ui": {
+    "app_title": "OptiScaler GUI",
+    "version": "Version",
+    "thanks_to": "Thanks to",
+    "games_tab": "Games",
+    "settings_tab": "Settings",
+    "install_optiscaler": "Install OptiScaler",
+    "edit_settings": "Edit",
+    "uninstall": "Uninstall",
+    "open_folder": "Open Folder",
+    "games_found": "games found",
+    "no_games": "No games found",
+    "back": "← Back",
+    "save_settings": "Save Settings",
+    "auto_settings": "Auto Settings",
+    "settings_title": "OptiScaler Settings",
+    "section": "Section",
+    "setting": "Setting",
+    "value": "Value",
+    "description": "Description",
+    "no_description_available": "No description available",
+    "settings_saved": "Settings Saved",
+    "settings_saved_msg": "OptiScaler settings have been successfully saved to the configuration file."
+  },
+  "sections": {
+    "Upscalers": "Upscaling Technologies",
+    "FrameGen": "Frame Generation",
+    "OptiFG": "FSR 3.1 Frame Generation",
+    "Inputs": "Input & Controls",
+    "Framerate": "Frame Rate Limiting",
+    "XeSS": "Intel XeSS Settings",
+    "FSR": "AMD FSR Settings",
+    "DLSS": "NVIDIA DLSS Settings",
+    "Nukems": "DLSS-to-FSR3 Frame Generation",
+    "Menu": "In-Game Menu & Overlay",
+    "Spoofing": "Hardware Spoofing",
+    "Plugins": "External Plugins",
+    "NvApi": "NVIDIA API Settings",
+    "Dx11withDx12": "DirectX 11 with DX12 Backend",
+    "Hooks": "Graphics API Hooks",
+    "Sharpness": "Image Sharpening",
+    "OutputScaling": "Output Scaling",
+    "CAS": "Contrast Adaptive Sharpening",
+    "Log": "Logging & Debug",
+    "InitFlags": "Initialization Flags",
+    "UpscaleRatio": "Upscale Ratio Override",
+    "QualityOverrides": "Quality Mode Overrides",
+    "DRS": "Dynamic Resolution Scaling",
+    "HDR": "HDR Configuration",
+    "Hotfix": "Compatibility Hotfixes"
+  },
+  "status": {
+    "scanning": "Scanning for games...",
+    "installing": "Installing OptiScaler...",
+    "downloading": "Downloading OptiScaler...",
+    "ready": "Ready",
+    "progress": "Progress",
+    "download_progress": "Download Progress",
+    "install_progress": "Installation Progress",
+    "downloading_short": "Downloading...",
+    "installing_short": "Installing...",
+    "processing": "Processing...",
+    "please_wait": "Please wait..."
+  },
+  "gpu": {
+    "nvidia_rtx": "NVIDIA RTX GPU",
+    "nvidia_gtx": "NVIDIA GTX GPU",
+    "amd_rdna": "AMD RDNA GPU",
+    "amd_older": "AMD Older GPU",
+    "intel_arc": "Intel Arc GPU",
+    "older_unknown": "Older/Unknown GPU"
+  },
+  "technologies": {
+    "dlss": "DLSS",
+    "fsr": "FSR",
+    "xess": "XeSS"
+  },
+  "global_settings": {
+    "language": "Language",
+    "english": "English",
+    "danish": "Dansk",
+    "polish": "Polski",
+    "theme": "Theme",
+    "light": "Light",
+    "dark": "Dark",
+    "debug_mode": "Debug Mode"
+  },
+  "setting_values": {
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "auto": "Auto"
+  },
+  "optiscaler_settings": {
+    "upscalers": {
+      "dx11upscaler": "DirectX 11 upscaling technology - chooses FSR 2.2, FSR 3.1, XeSS, or DLSS for DX11 games",
+      "dx12upscaler": "DirectX 12 upscaling technology - chooses XeSS, FSR 2.1/2.2/3.1, or DLSS for DX12 games",
+      "vulkanupscaler": "Vulkan upscaling technology - chooses FSR 2.1/2.2/3.1, XeSS, or DLSS for Vulkan games"
+    },
+    "framegen": {
+      "fgtype": "Frame generation type - optifg uses AMD FidelityFX, nukems uses DLSS-to-FSR3 conversion"
+    },
+    "optifg": {
+      "enabled": "Enable FSR 3.1 frame generation to boost FPS by generating intermediate frames",
+      "highpriority": "Use high priority command queue for frame generation - may improve or worsen frame pacing",
+      "debugview": "Show frame generation debug overlay with timing and performance information",
+      "allowasync": "Enable asynchronous frame generation - may improve performance but can cause instability",
+      "hudfix": "Enable HUD fix to prevent UI elements from being duplicated in generated frames",
+      "hudlimit": "Number of frames to delay HUD capture - higher values may cause crashes",
+      "hudfixextended": "Extended HUD detection for more image formats - may cause crashes and slowdowns",
+      "hudfiximmadiate": "Capture resources before shader execution - increases HUD detection but may impact performance",
+      "rectleft": "Left boundary of frame generation rectangle (0 = full screen)",
+      "recttop": "Top boundary of frame generation rectangle (0 = full screen)",
+      "rectwidth": "Width of frame generation rectangle (0 = full screen)",
+      "rectheight": "Height of frame generation rectangle (0 = full screen)",
+      "alwaystrackheaps": "Always track resource heaps regardless of HUD fix setting - may impact performance",
+      "makedepthcopy": "Create copy of depth buffer for HUD fix - prevents visual artifacts",
+      "enabledepthscale": "Scale depth buffer for DLSS-D compatibility with Unreal Engine",
+      "depthscalemax": "Maximum depth scale value when EnableDepthScale is active",
+      "makemvcopy": "Create copy of motion vectors for HUD fix - prevents visual artifacts",
+      "hudfixcloseaftercallback": "Close HUD fix command list after swapchain callback - prevents artifacts",
+      "usemutexforswaphain": "Use mutex for frame generation present calls - improves stability at cost of performance",
+      "framepackingtuning": "Enable custom frame pacing parameters for better frame timing",
+      "fptsafetymarginims": "Safety margin in milliseconds for frame pacing - prevents frame drops",
+      "fptvariancefactor": "Variance factor for frame pacing (0.0-1.0) - higher values allow more timing variation",
+      "fpthybridspin": "Allow frame pacing to sleep instead of spinning - reduces CPU usage",
+      "fpthybridspintime": "Spin time in timer units when hybrid spinning is enabled",
+      "fptwaitforsingleobjectonfence": "Use WaitForSingleObject instead of spinning for fence synchronization"
+    },
+    "inputs": {
+      "dlss": "Hook DLSS (nvngx.dll) and use its input parameters for upscaling",
+      "xess": "Hook XeSS (libxess.dll) and use its input parameters for upscaling",
+      "fsr2": "Hook FSR 2.x and use its input parameters for upscaling",
+      "fsr2pattern": "Use pattern matching to find FSR 2.x methods - slows game loading",
+      "fsr3": "Hook FSR 3.x and use its input parameters for upscaling",
+      "fsr3pattern": "Use pattern matching to find FSR 3.x methods - slows game loading",
+      "ffx": "Hook FidelityFX API (amd_fidelityfx_dx12.dll) for input parameters",
+      "enablehotswapping": "Allow switching between game's native upscaler and OptiScaler without restart"
+    },
+    "framerate": {
+      "frameratelimit": "Frame rate limit using Reflex technology - requires Reflex support in game"
+    },
+    "xess": {
+      "buildpipelines": "Pre-build XeSS rendering pipelines before initialization for faster startup",
+      "createheaps": "Create XeSS heap objects before initialization",
+      "networkmodel": "XeSS AI model selection - KPSS=0, Splat=1, Models 3-6=2-5",
+      "librarypath": "Custom path to libxess.dll file",
+      "dx11librarypath": "Custom path to libxess_dx11.dll file"
+    },
+    "fsr": {
+      "verticalfov": "Camera vertical field of view in degrees (0-180) for FSR calculations",
+      "horizontalfov": "Camera horizontal field of view in degrees - used if vertical FOV unavailable",
+      "cameranear": "Camera near plane distance for FSR depth calculations",
+      "camerafar": "Camera far plane distance for FSR depth calculations",
+      "usefsrinputvalues": "Use camera values from FSR2/3 or FFX inputs instead of manual settings",
+      "debugview": "Show FSR debug overlay with upscaling information",
+      "upscalerindex": "FSR backend selection - 0=FSR 3.1.2, 1=FSR 2.3.2",
+      "velocityfactor": "Motion vector scaling factor (0.0-1.0) for FSR 3.1.1+",
+      "usereactivemaskfortransparency": "Use DLSS reactive mask as transparency mask for FSR",
+      "dlssreactivemaskbias": "Bias for DLSS reactive mask with FSR (0.0-0.9) - higher values favor new frames",
+      "fsr4update": "Enable FSR 3.x to FSR 4 upgrade - depends on GPU compatibility",
+      "fsrnonlinearsrgb": "Input contains perceptual sRGB colors - may improve FSR 4 image quality",
+      "fsrnonlinearpq": "Input contains perceptual PQ colors - may improve FSR 4 image quality",
+      "fsragilitysdkupgrade": "Update DirectX 12 Agility SDK for FSR 4 on Windows 10 - requires D3D12_Optiscaler folder",
+      "ffxdx12path": "Custom path to amd_fidelityfx_dx12.dll file",
+      "ffxvkpath": "Custom path to amd_fidelityfx_vk.dll file"
+    },
+    "dlss": {
+      "enabled": "Enable calls to original NVIDIA DLSS libraries",
+      "librarypath": "Custom path to nvngx.dll or _nvngx.dll file",
+      "featurepath": "Path to folder containing streamline/nvngx_dlss.dll for NVNGX API initialization",
+      "nvngx_dlss_path": "Custom path to nvngx_dlss.dll file",
+      "renderpresetoverride": "Enable custom render preset overrides for quality settings",
+      "renderpresetforall": "Render preset for all quality modes (0=Default, 1-15=A-O)",
+      "renderpresetdlaa": "Render preset specifically for DLAA mode",
+      "renderpresetultraquality": "Render preset for Ultra Quality mode",
+      "renderpresetquality": "Render preset for Quality mode",
+      "renderpresetbalanced": "Render preset for Balanced mode",
+      "renderpresetperformance": "Render preset for Performance mode",
+      "renderpresetultraperformance": "Render preset for Ultra Performance mode",
+      "usegenericappidwithdlss": "Use generic app ID with DLSS - fixes preset overrides in some games"
+    },
+    "nukems": {
+      "makedepthcopy": "Fix broken visuals on AMD GPUs in non-Unreal Engine games - may cause stutters"
+    },
+    "menu": {
+      "overlaymenu": "Enable in-game ImGui overlay menu for real-time configuration",
+      "scale": "UI scale for in-game menu (1.0-2.0) - automatically scales down below 900p",
+      "shortcutkey": "Keyboard shortcut to open in-game menu (default: Insert key)",
+      "extendedlimits": "Allow extended scaling ratios from 0.1 to 6.0 instead of normal limits",
+      "usehqfont": "Use high quality font rendering - may reduce VRAM usage",
+      "showfps": "Display frame rate overlay on screen",
+      "fpsoverlaypos": "FPS overlay position - 0=Top Left, 1=Top Right, 2=Bottom Left, 3=Bottom Right",
+      "fpsoverlaytype": "FPS overlay detail level - 0=Simple, 1=Detailed, 2=Detailed+Graph, 3=Full, 4=Full+Graph",
+      "fpsshortcutkey": "Keyboard shortcut to toggle FPS overlay (default: Page Up)",
+      "fpscycleshortcutkey": "Keyboard shortcut to cycle FPS overlay types (default: Page Down)",
+      "fpsoverlayhorizontal": "Use horizontal layout for FPS overlay instead of vertical",
+      "fpsoverlayalpha": "Background transparency for FPS overlay (0.0-1.0)"
+    },
+    "spoofing": {
+      "spoofedgpuname": "GPU name to report to games (default: NVIDIA GeForce RTX 4090)",
+      "dxgi": "Enable NVIDIA GPU spoofing for DirectX Graphics Infrastructure",
+      "dxgiblacklist": "Skip DXGI spoofing for specific methods (separate with |) - advanced users only",
+      "dxgivram": "Spoof amount of VRAM in GB for DirectX applications",
+      "vulkan": "Enable NVIDIA GPU spoofing for Vulkan applications",
+      "vulkanextensionspoofing": "Enable NVIDIA extension spoofing for Vulkan",
+      "vulkanvram": "Spoof amount of VRAM in GB for Vulkan applications",
+      "spoofhags": "Spoof hardware accelerated GPU scheduling - required for RTX 40xx DLSS-G without HAGS",
+      "d3dfeaturelevel": "Override requested DirectX feature level"
+    },
+    "plugins": {
+      "path": "Directory path to search for additional plugin DLLs (default: .\\plugins)",
+      "loadspecialk": "Load SpecialK64.dll from game folder - requires SpecialK.dxgi config file",
+      "loadreshade": "Load ReShade64.dll from game folder - rename ReShade DLL and place next to OptiScaler"
+    },
+    "nvapi": {
+      "overridenvapidll": "Override NVIDIA API library loading - automatically enabled for non-NVIDIA GPUs",
+      "nvapidllpath": "Custom path to nvapi64.dll file - leave auto to use default folder"
+    },
+    "dx11withdx12": {
+      "texturesyncmethod": "Texture synchronization method for DirectX 11 with DX12 backend - 0=None (fastest), 1=Fence, 2=Fence+Flush, 3=Fence+Event, 4=Fence+Flush+Event, 5=Query",
+      "copybacksyncmethod": "Copy-back synchronization method - same options as texture sync, recommended: 5=Query",
+      "syncafterdx12": "Start output copy sync after DirectX 12 execution - improves compatibility",
+      "usedelayedinit": "Delay some operations during D11wDx12 feature creation - increases compatibility but may impact performance",
+      "dontusentshared": "Use lower-level D3D11_RESOURCE_MISC_SHARED for better performance but potentially less compatibility"
+    },
+    "hooks": {
+      "hookoriginalnvngxonly": "Only hook NVNGX at registry level, skip local files - required for Uniscaler + Frame Generation"
+    },
+    "sharpness": {
+      "overridesharpness": "Override DLSS sharpness parameter with a fixed sharpness value",
+      "sharpness": "Fixed sharpness strength (0.0-1.0, upper limit for RCAS is 1.3) - higher values increase image sharpness"
+    },
+    "outputscaling": {
+      "enabled": "Enable output scaling for DirectX 12 and DirectX 11 with DX12 backends",
+      "multiplier": "Output scaling ratio (0.5-3.0) - values above 1.0 upscale, below 1.0 downscale",
+      "usefsr": "Use AMD FSR for scaling operations - if disabled, bicubic scaling is used",
+      "downscaler": "Downscaling algorithm when FSR is disabled - 0=Bicubic, 1=Lanczos, 2=Catmull-Rom, 3=MAGC"
+    },
+    "cas": {
+      "enabled": "Enable RCAS (Robust Contrast Adaptive Sharpening) for image enhancement",
+      "motionsharpnessenabled": "Enable motion-based sharpening that adapts to movement in the scene",
+      "motionsharpness": "Sharpening intensity based on motion (-1.3 to 1.3) - negative values reduce sharpness in motion",
+      "motionthreshold": "Minimum pixel movement to trigger motion sharpening (0.0-100.0)",
+      "motionscalelimit": "Maximum pixel movement for full motion sharpness effect (0.0-100.0)",
+      "motionsharpnessdebug": "Enable debug visualization - red highlights added sharpness, green shows reduced sharpness"
+    }
+  }
+}

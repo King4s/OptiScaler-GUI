@@ -1,6 +1,6 @@
 import customtkinter as ctk
 import os
-from utils.i18n import t, i18n
+from utils.translation_manager import t, get_translation_manager, get_languages, set_language
 from utils.debug import debug_log
 from utils.config import get_config_value, set_config_value
 import webbrowser
@@ -51,8 +51,9 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
         lang_label.grid(row=1, column=0, padx=15, pady=5, sticky="w")
         
         self.language_var = ctk.StringVar()
-        current_lang = i18n.current_language
-        language_names = i18n.get_languages()
+        tm = get_translation_manager()
+        current_lang = tm.current_language
+        language_names = get_languages()
         self.language_var.set(language_names.get(current_lang, "English"))
         
         language_menu = ctk.CTkOptionMenu(lang_frame,
@@ -186,10 +187,10 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
     
     def _on_language_change(self, language_name):
         """Handle language change"""
-        languages = i18n.get_languages()
+        languages = get_languages()
         for code, name in languages.items():
             if name == language_name:
-                i18n.set_language(code)
+                set_language(code)
                 # Notify main window to refresh
                 if self.on_language_change:
                     self.on_language_change()

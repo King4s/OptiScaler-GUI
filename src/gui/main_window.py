@@ -5,7 +5,7 @@ import threading
 from scanner.game_scanner import GameScanner
 from gui.widgets.game_list_frame import GameListFrame
 from gui.widgets.global_settings_frame import GlobalSettingsFrame
-from utils.i18n import t
+from utils.translation_manager import t
 from utils.debug import set_debug_enabled, is_debug_enabled
 from utils.progress import ProgressManager
 
@@ -47,7 +47,7 @@ class MainWindow(ctk.CTk):
         # Navigation buttons
         self.games_btn = ctk.CTkButton(
             self.header_frame, 
-            text=t("games"),
+            text=t("ui.games_tab"),
             command=self.show_game_list,
             width=100
         )
@@ -55,7 +55,7 @@ class MainWindow(ctk.CTk):
         
         self.settings_btn = ctk.CTkButton(
             self.header_frame,
-            text=t("settings"), 
+            text=t("ui.settings_tab"), 
             command=self.show_settings,
             width=100
         )
@@ -66,7 +66,7 @@ class MainWindow(ctk.CTk):
         self.debug_var.set(is_debug_enabled())
         self.debug_checkbox = ctk.CTkCheckBox(
             self.header_frame,
-            text=t("debug"),
+            text=t("global_settings.debug_mode"),
             variable=self.debug_var,
             command=self._toggle_debug
         )

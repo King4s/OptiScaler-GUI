@@ -3,7 +3,7 @@ from PIL import Image
 import os
 from optiscaler.manager import OptiScalerManager
 from CTkMessagebox import CTkMessagebox
-from utils.i18n import t
+from utils.translation_manager import t
 
 class GameListFrame(ctk.CTkScrollableFrame):
     def __init__(self, master, games, game_scanner, on_edit_settings, **kwargs):
@@ -100,17 +100,17 @@ class GameListFrame(ctk.CTkScrollableFrame):
 
             # Install/Uninstall Button (dynamic based on installation status)
             if is_installed:
-                action_button = ctk.CTkButton(buttons_frame, text=t("uninstall") + " OptiScaler", 
+                action_button = ctk.CTkButton(buttons_frame, text=t("ui.uninstall") + " OptiScaler", 
                                             fg_color="#d32f2f", hover_color="#b71c1c",
                                             command=lambda g=game: self._uninstall_optiscaler_for_game(g))
             else:
-                action_button = ctk.CTkButton(buttons_frame, text=t("install_optiscaler"),
+                action_button = ctk.CTkButton(buttons_frame, text=t("ui.install_optiscaler"),
                                             command=lambda g=game: self._install_optiscaler_for_game(g))
             action_button.grid(row=0, column=0, padx=5, pady=2, sticky="e")
 
             # Edit Settings Button (only show if installed)
             if is_installed:
-                edit_settings_button = ctk.CTkButton(buttons_frame, text=t("edit_settings"),
+                edit_settings_button = ctk.CTkButton(buttons_frame, text=t("ui.edit_settings"),
                                                    command=lambda g_path=game.path: self.on_edit_settings(g_path))
                 edit_settings_button.grid(row=1, column=0, padx=5, pady=2, sticky="e")
                 row_offset = 2
@@ -118,7 +118,7 @@ class GameListFrame(ctk.CTkScrollableFrame):
                 row_offset = 1
 
             # Open Folder Button
-            open_folder_button = ctk.CTkButton(buttons_frame, text=t("open_folder"),
+            open_folder_button = ctk.CTkButton(buttons_frame, text=t("ui.open_folder"),
                                              command=lambda p=game.path: self._open_game_folder(p))
             open_folder_button.grid(row=row_offset, column=0, padx=5, pady=2, sticky="e")
 
