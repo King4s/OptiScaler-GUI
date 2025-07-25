@@ -475,3 +475,8 @@ class I18n:
 
 # Global instance
 i18n = I18n()
+
+# Convenience function for translations
+def t(key, **kwargs):
+    """Shortcut function for getting translations"""
+    return i18n.get(key, **kwargs)
