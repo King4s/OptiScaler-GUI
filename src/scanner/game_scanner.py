@@ -9,6 +9,7 @@ import time
 from utils.config import config
 from utils.cache_manager import cache_manager
 from utils.performance import timed
+from utils.debug import debug_log
 
 class Game:
     def __init__(self, name, path, appid=None, image_path=None):
@@ -178,7 +179,7 @@ class GameScanner:
                                         image_path = self.fetch_game_image(name, appid) # Pass name for lookup if appid is None
                                         game = Game(name=name, path=game_path, appid=appid, image_path=image_path)
                                         steam_games.append(game)
-                                        print(f"DEBUG: Scanned Steam Game - Name: {game.name}, AppID: {game.appid}, Image Path: {game.image_path}")
+                                        debug_log(f"Scanned Steam Game - Name: {game.name}, AppID: {game.appid}, Image Path: {game.image_path}")
                                 else:
                                     missing_fields = []
                                     if not appid_match: missing_fields.append("appid")
@@ -223,7 +224,7 @@ class GameScanner:
                                                                 image_path = self.fetch_game_image(name, appid)
                                                                 game = Game(name=name, path=game_path, appid=appid, image_path=image_path)
                                                                 steam_games.append(game)
-                                                                print(f"DEBUG: Scanned Steam Game - Name: {game.name}, AppID: {game.appid}, Image Path: {game.image_path}")
+                                                                debug_log(f"Scanned Steam Game - Name: {game.name}, AppID: {game.appid}, Image Path: {game.image_path}")
                                                                 found_app_info = True
                                                                 break # Found appmanifest for this game folder
                                                     except Exception as e:

@@ -62,3 +62,14 @@ class Config:
 
 # Global configuration instance
 config = Config()
+
+# Simple config value functions for backwards compatibility
+def get_config_value(key, default=None):
+    """Get configuration value"""
+    # This would be extended with a JSON config file in the future
+    return default
+
+def set_config_value(key, value):
+    """Set configuration value"""
+    # This would be extended with a JSON config file in the future
+    return True

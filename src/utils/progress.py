@@ -31,7 +31,7 @@ class ProgressFrame(ctk.CTkFrame):
         """Show the progress bar with a message"""
         self.status_label.configure(text=message)
         self.progress_bar.set(0)
-        self.grid()
+        self.grid(row=0, column=0, sticky="ew")
         
     def update_progress(self, value, message=None):
         """Update progress bar value (0.0 to 1.0)"""

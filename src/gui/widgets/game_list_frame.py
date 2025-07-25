@@ -3,6 +3,7 @@ from PIL import Image
 import os
 from optiscaler.manager import OptiScalerManager
 from CTkMessagebox import CTkMessagebox
+from utils.i18n import t
 
 class GameListFrame(ctk.CTkScrollableFrame):
     def __init__(self, master, games, game_scanner, on_edit_settings, **kwargs):
@@ -94,28 +95,68 @@ class GameListFrame(ctk.CTkScrollableFrame):
             buttons_frame.grid(row=0, column=2, padx=5, pady=5, sticky="e")
             buttons_frame.grid_columnconfigure(0, weight=1)
 
-            # Install Button
-            install_button = ctk.CTkButton(buttons_frame, text="Install OptiScaler",
-                                           command=lambda g=game: self._install_optiscaler_for_game(g))
-            install_button.grid(row=0, column=0, padx=5, pady=2, sticky="e")
+            # Check if OptiScaler is installed
+            is_installed = self.optiscaler_manager.is_optiscaler_installed(game.path)
 
-            # Edit Settings Button
-            edit_settings_button = ctk.CTkButton(buttons_frame, text="Edit Settings",
-                                                 command=lambda g_path=game.path: self.on_edit_settings(g_path))
-            edit_settings_button.grid(row=1, column=0, padx=5, pady=2, sticky="e")
+            # Install/Uninstall Button (dynamic based on installation status)
+            if is_installed:
+                action_button = ctk.CTkButton(buttons_frame, text=t("uninstall") + " OptiScaler", 
+                                            fg_color="#d32f2f", hover_color="#b71c1c",
+                                            command=lambda g=game: self._uninstall_optiscaler_for_game(g))
+            else:
+                action_button = ctk.CTkButton(buttons_frame, text=t("install_optiscaler"),
+                                            command=lambda g=game: self._install_optiscaler_for_game(g))
+            action_button.grid(row=0, column=0, padx=5, pady=2, sticky="e")
+
+            # Edit Settings Button (only show if installed)
+            if is_installed:
+                edit_settings_button = ctk.CTkButton(buttons_frame, text=t("edit_settings"),
+                                                   command=lambda g_path=game.path: self.on_edit_settings(g_path))
+                edit_settings_button.grid(row=1, column=0, padx=5, pady=2, sticky="e")
+                row_offset = 2
+            else:
+                row_offset = 1
 
             # Open Folder Button
-            open_folder_button = ctk.CTkButton(buttons_frame, text="Open Folder",
-                                               command=lambda p=game.path: self._open_game_folder(p))
-            open_folder_button.grid(row=2, column=0, padx=5, pady=2, sticky="e")
+            open_folder_button = ctk.CTkButton(buttons_frame, text=t("open_folder"),
+                                             command=lambda p=game.path: self._open_game_folder(p))
+            open_folder_button.grid(row=row_offset, column=0, padx=5, pady=2, sticky="e")
 
     def _install_optiscaler_for_game(self, game):
         print(f"Installing OptiScaler for {game.name} at {game.path}")
         success = self.optiscaler_manager.install_optiscaler(game.path)
         if success:
             CTkMessagebox(title="Success", message=f"OptiScaler installed successfully for {game.name}!")
+            # Refresh the game list to update button states
+            self._refresh_display()
         else:
             CTkMessagebox(title="Error", message=f"Failed to install OptiScaler for {game.name}.")
+
+    def _uninstall_optiscaler_for_game(self, game):
+        """Uninstall OptiScaler from the selected game"""
+        print(f"Uninstalling OptiScaler for {game.name} at {game.path}")
+        
+        # Show confirmation dialog
+        result = CTkMessagebox(title="Confirm Uninstall", 
+                              message=f"Are you sure you want to uninstall OptiScaler from {game.name}?\n\nThis will remove all OptiScaler files from the game directory.",
+                              icon="question", option_1="Cancel", option_2="Uninstall")
+        
+        if result.get() == "Uninstall":
+            success, message = self.optiscaler_manager.uninstall_optiscaler(game.path)
+            if success:
+                CTkMessagebox(title="Success", message=f"OptiScaler uninstalled successfully!\n\n{message}")
+                # Refresh the game list to update button states
+                self._refresh_display()
+            else:
+                CTkMessagebox(title="Error", message=f"Failed to uninstall OptiScaler: {message}")
+
+    def _refresh_display(self):
+        """Refresh the game list display to update button states"""
+        # Clear current display
+        for widget in self.winfo_children():
+            widget.destroy()
+        # Recreate the display
+        self._display_games()
 
     def _open_game_folder(self, path):
         import subprocess

@@ -6,6 +6,7 @@ import configparser
 import re
 import threading
 import subprocess
+from utils.debug import debug_log
 
 class OptiScalerManager:
     def __init__(self):
@@ -27,7 +28,7 @@ class OptiScalerManager:
                     break
 
             if not archive_asset:
-                print("DEBUG: No .7z asset found in release assets.")
+                debug_log("No .7z asset found in release assets.")
                 return None
 
             download_url = archive_asset["browser_download_url"]
@@ -42,10 +43,10 @@ class OptiScalerManager:
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE
                     )
-                    print(f"DEBUG: Archive {archive_filename} exists and is valid, skipping download.")
+                    debug_log(f"Archive {archive_filename} exists and is valid, skipping download.")
                     return archive_filename
                 except Exception as e:
-                    print(f"DEBUG: Existing archive is invalid or corrupt, will re-download: {e}")
+                    debug_log(f"Existing archive is invalid or corrupt, will re-download: {e}")
                     os.remove(archive_filename)
 
             # Download if not present or invalid
@@ -56,7 +57,7 @@ class OptiScalerManager:
                         f.write(chunk)
             return archive_filename
         except Exception as e:
-            print(f"DEBUG: Exception in _download_latest_release: {e}")
+            debug_log(f"Exception in _download_latest_release: {e}")
             return None
 
     def _extract_release(self, archive_path, game_path=None):
@@ -83,27 +84,27 @@ class OptiScalerManager:
         return extract_path
 
     def install_optiscaler(self, game_path):
-        print("DEBUG: install_optiscaler start", game_path)
+        debug_log("install_optiscaler start", game_path)
         zip_path = self._download_latest_release()
-        print("DEBUG: zip_path", zip_path)
+        debug_log("zip_path", zip_path)
         if not zip_path:
-            print("DEBUG: Download failed")
+            debug_log("Download failed")
             return False
 
         extracted_path = self._extract_release(zip_path, game_path=game_path)
-        print("DEBUG: extracted_path", extracted_path)
+        debug_log("extracted_path", extracted_path)
         if not extracted_path:
-            print("DEBUG: Extract failed")
+            debug_log("Extract failed")
             return False
 
         # Auto-detect Unreal Engine (Engine/Binaries/Win64 exists)
         unreal_dir = os.path.join(game_path, "Engine", "Binaries", "Win64")
         if os.path.isdir(unreal_dir):
             dest_dir = unreal_dir
-            print(f"DEBUG: Detected Unreal Engine, using {dest_dir} as destination.")
+            debug_log(f"Detected Unreal Engine, using {dest_dir} as destination.")
         else:
             dest_dir = game_path
-            print(f"DEBUG: Using game root as destination: {dest_dir}")
+            debug_log(f"Using game root as destination: {dest_dir}")
 
         os.makedirs(dest_dir, exist_ok=True)
 
@@ -125,7 +126,7 @@ class OptiScalerManager:
                         print(f"ERROR: Failed to copy {file}: {e}")
                         success = False
 
-        print("DEBUG: install_optiscaler success?", success)
+        debug_log("install_optiscaler success?", success)
         return success
 
     def _infer_type(self, value, comment):
@@ -380,3 +381,99 @@ class OptiScalerManager:
             return True, 'OptiScaler setup completed successfully.'
         except Exception as e:
             return False, f'Error during setup: {e}'
+
+    def uninstall_optiscaler(self, game_path):
+        """
+        Uninstall OptiScaler from a game directory
+        """
+        debug_log(f"Starting OptiScaler uninstall from: {game_path}")
+        
+        try:
+            # Auto-detect Unreal Engine (Engine/Binaries/Win64 exists)
+            unreal_dir = os.path.join(game_path, "Engine", "Binaries", "Win64")
+            if os.path.isdir(unreal_dir):
+                install_dir = unreal_dir
+                debug_log(f"Detected Unreal Engine, removing from: {install_dir}")
+            else:
+                install_dir = game_path
+                debug_log(f"Using game root directory: {install_dir}")
+
+            removed_files = []
+            removed_dirs = []
+            
+            # List of OptiScaler files to remove
+            optiscaler_files = [
+                "OptiScaler.dll",
+                "OptiScaler.ini", 
+                "OptiScaler.log",
+                "nvngx.dll",  # DLSS override file
+                "amd_fidelityfx_dx12.dll",
+                "amd_fidelityfx_vk.dll", 
+                "libxess_dx11.dll",
+                "libxess.dll",
+                "Remove OptiScaler.bat"
+            ]
+            
+            # Remove individual files
+            for filename in optiscaler_files:
+                file_path = os.path.join(install_dir, filename)
+                if os.path.exists(file_path):
+                    try:
+                        os.remove(file_path)
+                        removed_files.append(filename)
+                        debug_log(f"Removed file: {filename}")
+                    except Exception as e:
+                        debug_log(f"Failed to remove {filename}: {e}")
+            
+            # List of OptiScaler directories to remove
+            optiscaler_dirs = [
+                "D3D12_Optiscaler",
+                "DlssOverrides", 
+                "Licenses"
+            ]
+            
+            # Remove directories
+            for dirname in optiscaler_dirs:
+                dir_path = os.path.join(install_dir, dirname)
+                if os.path.exists(dir_path):
+                    try:
+                        shutil.rmtree(dir_path)
+                        removed_dirs.append(dirname)
+                        debug_log(f"Removed directory: {dirname}")
+                    except Exception as e:
+                        debug_log(f"Failed to remove directory {dirname}: {e}")
+            
+            # Create summary
+            if removed_files or removed_dirs:
+                summary = f"Successfully removed OptiScaler from {game_path}\n"
+                if removed_files:
+                    summary += f"Files removed: {', '.join(removed_files)}\n"
+                if removed_dirs:
+                    summary += f"Directories removed: {', '.join(removed_dirs)}"
+                debug_log("Uninstall completed successfully")
+                return True, summary
+            else:
+                return False, "No OptiScaler files found to remove"
+                
+        except Exception as e:
+            debug_log(f"Error during uninstall: {e}")
+            return False, f"Error during uninstall: {e}"
+
+    def is_optiscaler_installed(self, game_path):
+        """
+        Check if OptiScaler is installed in the given game directory
+        """
+        # Auto-detect Unreal Engine (Engine/Binaries/Win64 exists)
+        unreal_dir = os.path.join(game_path, "Engine", "Binaries", "Win64")
+        if os.path.isdir(unreal_dir):
+            check_dir = unreal_dir
+        else:
+            check_dir = game_path
+            
+        # Check for key OptiScaler files
+        key_files = ["OptiScaler.dll", "OptiScaler.ini"]
+        
+        for filename in key_files:
+            if os.path.exists(os.path.join(check_dir, filename)):
+                return True
+        return False

@@ -4,13 +4,10 @@ import os
 import threading
 from scanner.game_scanner import GameScanner
 from gui.widgets.game_list_frame import GameListFrame
-from gui.widgets.global_settings_frame import GlobalSettingsFrame
+from gui.widgets.settings_frame import SettingsFrame
 from utils.i18n import t
-from utils.debug import set_debug_enabled, is_debug_enabled
+from utils.debug import set_debug_enabled, debug_enabled
 from utils.progress import ProgressManager
-
-# Application version
-VERSION = "1.0.0"
 
 class MainWindow(ctk.CTk):
     def __init__(self):
@@ -63,7 +60,7 @@ class MainWindow(ctk.CTk):
         
         # Debug toggle
         self.debug_var = ctk.BooleanVar()
-        self.debug_var.set(is_debug_enabled())
+        self.debug_var.set(debug_enabled)
         self.debug_checkbox = ctk.CTkCheckBox(
             self.header_frame,
             text=t("debug"),
@@ -89,7 +86,7 @@ class MainWindow(ctk.CTk):
         # Progress bar (initially hidden)
         from utils.progress import ProgressFrame, progress_manager
         self.progress_frame = ProgressFrame(self.footer_frame)
-        # Don't grid it immediately - let it stay hidden
+        self.progress_frame.grid(row=0, column=0, sticky="ew")
         
         # Register with progress manager
         progress_manager.register_progress_frame("main", self.progress_frame)
@@ -107,16 +104,8 @@ class MainWindow(ctk.CTk):
             for widget in self.content_frame.winfo_children():
                 widget.destroy()
             
-            # Get games from scanner
-            games = self.scanner.scan_games()
-            
             # Create new game list frame
-            self.current_frame = GameListFrame(
-                self.content_frame, 
-                games=games,
-                game_scanner=self.scanner,
-                on_edit_settings=self.edit_game_settings
-            )
+            self.current_frame = GameListFrame(self.content_frame, self.scanner)
             self.current_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
             
             # Update navigation buttons
@@ -138,8 +127,8 @@ class MainWindow(ctk.CTk):
             for widget in self.content_frame.winfo_children():
                 widget.destroy()
             
-            # Create settings frame with refresh callback
-            self.current_frame = GlobalSettingsFrame(self.content_frame, on_language_change=self.refresh_ui)
+            # Create settings frame
+            self.current_frame = SettingsFrame(self.content_frame)
             self.current_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
             
             # Update navigation buttons
@@ -160,29 +149,5 @@ class MainWindow(ctk.CTk):
         if hasattr(self, 'current_frame') and self.current_frame:
             if isinstance(self.current_frame, GameListFrame):
                 self.show_game_list()
-            elif isinstance(self.current_frame, GlobalSettingsFrame):
+            elif isinstance(self.current_frame, SettingsFrame):
                 self.show_settings()
-    
-    def edit_game_settings(self, game_path):
-        """Edit settings for a specific game"""
-        try:
-            from gui.widgets.settings_editor_frame import SettingsEditorFrame
-            
-            # Clear current content
-            for widget in self.content_frame.winfo_children():
-                widget.destroy()
-            
-            # Create settings editor frame
-            self.current_frame = SettingsEditorFrame(
-                self.content_frame,
-                game_path=game_path,
-                on_back=self.show_game_list
-            )
-            self.current_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
-            
-            # Update navigation buttons - both enabled during editing
-            self.games_btn.configure(state="normal")
-            self.settings_btn.configure(state="normal")
-            
-        except Exception as e:
-            print(f"ERROR: Failed to show game settings editor: {e}")

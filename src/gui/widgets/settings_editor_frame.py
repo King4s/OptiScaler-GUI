@@ -2,10 +2,11 @@
 import os
 from optiscaler.manager import OptiScalerManager
 from utils.i18n import t
+from utils.debug import debug_log
 
 class SettingsEditorFrame(ctk.CTkScrollableFrame):
     def __init__(self, master, game_path, on_back=None, **kwargs):
-        print(f"DEBUG: Creating SettingsEditorFrame for path: {game_path}")
+        debug_log(f"Creating SettingsEditorFrame for path: {game_path}")
         super().__init__(master, **kwargs)
         self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=1)
@@ -16,23 +17,23 @@ class SettingsEditorFrame(ctk.CTkScrollableFrame):
         self.settings = {}
         self.widgets = {}
 
-        print(f"DEBUG: Looking for ini file at: {self.ini_path}")
+        debug_log(f"Looking for ini file at: {self.ini_path}")
         self._load_settings()
-        print(f"DEBUG: Settings loaded, creating widgets...")
+        debug_log(f"Settings loaded, creating widgets...")
         self._create_widgets()
-        print(f"DEBUG: SettingsEditorFrame created successfully")
+        debug_log(f"SettingsEditorFrame created successfully")
 
     def _load_settings(self):
         if os.path.exists(self.ini_path):
             try:
                 self.settings = self.optiscaler_manager.read_optiscaler_ini(self.ini_path)
-                print(f"DEBUG: Loaded settings: {len(self.settings)} sections")
+                debug_log(f"Loaded settings: {len(self.settings)} sections")
             except Exception as e:
                 print(f"ERROR: Failed to read ini file: {e}")
                 self.settings = {}
         else:
-            print(f"DEBUG: OptiScaler.ini not found at {self.ini_path}")
-            print(f"DEBUG: You need to install OptiScaler first")
+            debug_log(f"OptiScaler.ini not found at {self.ini_path}")
+            debug_log(f"You need to install OptiScaler first")
             self.settings = {}
 
     def _create_widgets(self):
@@ -86,25 +87,29 @@ class SettingsEditorFrame(ctk.CTkScrollableFrame):
                 # Create frame for each setting
                 setting_frame = ctk.CTkFrame(self, fg_color=("gray90", "gray20"))
                 setting_frame.grid(row=row, column=0, columnspan=2, padx=15, pady=5, sticky="ew")
-                setting_frame.grid_columnconfigure(1, weight=1)
+                setting_frame.grid_columnconfigure(0, weight=1)
                 
                 # Setting name
                 key_label = ctk.CTkLabel(setting_frame, text=key, 
                                        font=("Arial", 12, "bold"))
-                key_label.grid(row=0, column=0, padx=15, pady=(10, 5), sticky="nw")
+                key_label.grid(row=0, column=0, padx=15, pady=(10, 5), sticky="w")
 
-                # Setting description
+                # Setting description - ALWAYS show something for debugging
                 description = self._get_setting_description(section, key)
                 if description:
-                    desc_label = ctk.CTkLabel(setting_frame, text=description, 
-                                            wraplength=400, justify="left", 
-                                            font=("Arial", 10),
-                                            text_color=("gray60", "gray50"))
-                    desc_label.grid(row=1, column=0, columnspan=2, padx=15, pady=(0, 5), sticky="w")
+                    desc_text = description
+                else:
+                    desc_text = f"[DEBUG: No description for {section}.{key}]"
+                
+                desc_label = ctk.CTkLabel(setting_frame, text=desc_text, 
+                                        wraplength=300, justify="left", 
+                                        font=("Arial", 10),
+                                        text_color=("blue", "cyan"))  # Meget synlig farve
+                desc_label.grid(row=1, column=0, padx=15, pady=(0, 5), sticky="w")
 
                 # Setting widget
                 widget = self._create_setting_widget(setting_frame, data)
-                widget.grid(row=2, column=0, columnspan=2, padx=15, pady=(5, 15), sticky="ew")
+                widget.grid(row=2, column=0, padx=15, pady=(5, 15), sticky="ew")
                 
                 # Store widget reference
                 self.widgets[f"{section}.{key}"] = widget
@@ -115,12 +120,38 @@ class SettingsEditorFrame(ctk.CTkScrollableFrame):
         
     def _get_setting_description(self, section, key):
         """Get user-friendly description for a setting"""
+        # Debug: Print actual section and key names
+        print(f"ACTUAL SETTING: section='{section}', key='{key}'")
+        
+        # Hardcoded test descriptions to debug the issue
+        test_descriptions = {
+            "fsr_enabled": "TEST: Enable AMD FidelityFX Super Resolution",
+            "dlss_enabled": "TEST: Enable NVIDIA DLSS technology", 
+            "xess_enabled": "TEST: Enable Intel XeSS upscaling",
+            "upscaler_enabled": "TEST: Enable upscaling technology",
+            "debug": "TEST: Enable debug output and logging",
+        }
+        
+        # First try hardcoded test
+        if key.lower() in test_descriptions:
+            debug_log(f"Using hardcoded description for {key}")
+            return test_descriptions[key.lower()]
+        
         setting_key = f"{section.lower()}_{key.lower()}_desc"
+        
+        # Debug output
+        debug_log(f"Looking for description key: {setting_key}")
+        print(f"LOOKING FOR: {setting_key}")
         
         # Try to get translation, fallback to None if not found
         desc = t(setting_key)
+        debug_log(f"Translation result: {desc}")
+        
         if desc == setting_key:  # Translation not found
+            debug_log(f"No translation found for {setting_key}")
             return None
+        
+        debug_log(f"Found description: {desc}")
         return desc
         
     def _create_setting_widget(self, parent, data):
@@ -355,14 +386,14 @@ class SettingsEditorFrame(ctk.CTkScrollableFrame):
 
     def _go_back(self):
         """Go back to game list"""
-        print("DEBUG: Going back to game list...")
+        debug_log("Going back to game list...")
         try:
             if self.on_back:
                 # Use the callback function provided by MainWindow
                 self.on_back()
             else:
                 # Fallback to old method
-                print("DEBUG: No callback provided, using fallback method...")
+                debug_log("No callback provided, using fallback method...")
                 current = self
                 main_window = None
                 
