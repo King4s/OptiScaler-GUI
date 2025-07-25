@@ -95,16 +95,16 @@ class SettingsEditorFrame(ctk.CTkScrollableFrame):
                 key_label.grid(row=0, column=0, padx=15, pady=(10, 5), sticky="w")
 
                 # Setting description - ALWAYS show something for debugging
+                # Description
                 description = self._get_setting_description(section, key)
                 if description:
                     desc_text = description
                 else:
-                    desc_text = f"[DEBUG: No description for {section}.{key}]"
+                    desc_text = t("no_description_available", default="[No description available]")
                 
                 desc_label = ctk.CTkLabel(setting_frame, text=desc_text, 
                                         wraplength=300, justify="left", 
-                                        font=("Arial", 10),
-                                        text_color=("blue", "cyan"))  # Meget synlig farve
+                                        font=("Arial", 10))
                 desc_label.grid(row=1, column=0, padx=15, pady=(0, 5), sticky="w")
 
                 # Setting widget
@@ -120,38 +120,14 @@ class SettingsEditorFrame(ctk.CTkScrollableFrame):
         
     def _get_setting_description(self, section, key):
         """Get user-friendly description for a setting"""
-        # Debug: Print actual section and key names
-        print(f"ACTUAL SETTING: section='{section}', key='{key}'")
-        
-        # Hardcoded test descriptions to debug the issue
-        test_descriptions = {
-            "fsr_enabled": "TEST: Enable AMD FidelityFX Super Resolution",
-            "dlss_enabled": "TEST: Enable NVIDIA DLSS technology", 
-            "xess_enabled": "TEST: Enable Intel XeSS upscaling",
-            "upscaler_enabled": "TEST: Enable upscaling technology",
-            "debug": "TEST: Enable debug output and logging",
-        }
-        
-        # First try hardcoded test
-        if key.lower() in test_descriptions:
-            debug_log(f"Using hardcoded description for {key}")
-            return test_descriptions[key.lower()]
-        
         setting_key = f"{section.lower()}_{key.lower()}_desc"
-        
-        # Debug output
-        debug_log(f"Looking for description key: {setting_key}")
-        print(f"LOOKING FOR: {setting_key}")
         
         # Try to get translation, fallback to None if not found
         desc = t(setting_key)
-        debug_log(f"Translation result: {desc}")
         
         if desc == setting_key:  # Translation not found
-            debug_log(f"No translation found for {setting_key}")
             return None
         
-        debug_log(f"Found description: {desc}")
         return desc
         
     def _create_setting_widget(self, parent, data):
