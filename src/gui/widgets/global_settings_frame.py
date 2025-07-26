@@ -19,7 +19,7 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
         """Create the global settings interface"""
         
         # Title
-        title_label = ctk.CTkLabel(self, text=t("global_settings_title"), 
+        title_label = ctk.CTkLabel(self, text=t("ui.global_settings_title"), 
                                  font=("Arial", 20, "bold"))
         title_label.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="w")
         
@@ -42,12 +42,12 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
         lang_frame.grid_columnconfigure(1, weight=1)
         
         # Section title
-        lang_title = ctk.CTkLabel(lang_frame, text=t("language_settings"), 
+        lang_title = ctk.CTkLabel(lang_frame, text=t("ui.language_settings"), 
                                 font=("Arial", 16, "bold"))
         lang_title.grid(row=0, column=0, columnspan=2, padx=15, pady=(15, 5), sticky="w")
         
         # Language selector
-        lang_label = ctk.CTkLabel(lang_frame, text=t("interface_language"))
+        lang_label = ctk.CTkLabel(lang_frame, text=t("ui.interface_language"))
         lang_label.grid(row=1, column=0, padx=15, pady=5, sticky="w")
         
         self.language_var = ctk.StringVar()
@@ -64,7 +64,7 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
         
         # Language info
         lang_info = ctk.CTkLabel(lang_frame, 
-                               text=t("language_restart_note"),
+                               text=t("ui.language_restart_note"),
                                font=("Arial", 10),
                                text_color="gray")
         lang_info.grid(row=2, column=0, columnspan=2, padx=15, pady=(0, 15), sticky="w")
@@ -76,33 +76,33 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
         app_frame.grid_columnconfigure(1, weight=1)
         
         # Section title
-        app_title = ctk.CTkLabel(app_frame, text=t("app_settings"), 
+        app_title = ctk.CTkLabel(app_frame, text=t("ui.app_settings"), 
                                font=("Arial", 16, "bold"))
         app_title.grid(row=0, column=0, columnspan=2, padx=15, pady=(15, 5), sticky="w")
         
         # Debug mode setting
-        debug_label = ctk.CTkLabel(app_frame, text=t("debug_mode"))
+        debug_label = ctk.CTkLabel(app_frame, text=t("ui.debug_mode"))
         debug_label.grid(row=1, column=0, padx=15, pady=5, sticky="w")
         
         self.debug_var = ctk.BooleanVar()
         debug_switch = ctk.CTkSwitch(app_frame, 
-                                   text=t("enable_debug"),
+                                   text=t("ui.enable_debug"),
                                    variable=self.debug_var,
                                    command=self._on_debug_toggle)
         debug_switch.grid(row=1, column=1, padx=15, pady=5, sticky="w")
         
         # Auto-update checking
-        update_label = ctk.CTkLabel(app_frame, text=t("auto_update_check"))
+        update_label = ctk.CTkLabel(app_frame, text=t("ui.auto_update_check"))
         update_label.grid(row=2, column=0, padx=15, pady=5, sticky="w")
         
         self.update_var = ctk.BooleanVar(value=True)
         update_switch = ctk.CTkSwitch(app_frame,
-                                    text=t("check_for_updates"),
+                                    text=t("ui.check_for_updates"),
                                     variable=self.update_var)
         update_switch.grid(row=2, column=1, padx=15, pady=5, sticky="w")
         
         # Theme setting
-        theme_label = ctk.CTkLabel(app_frame, text=t("appearance_theme"))
+        theme_label = ctk.CTkLabel(app_frame, text=t("ui.appearance_theme"))
         theme_label.grid(row=3, column=0, padx=15, pady=5, sticky="w")
         
         self.theme_var = ctk.StringVar(value="System")
@@ -119,7 +119,7 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
         cache_frame.grid_columnconfigure(1, weight=1)
         
         # Section title
-        cache_title = ctk.CTkLabel(cache_frame, text=t("cache_settings"), 
+        cache_title = ctk.CTkLabel(cache_frame, text=t("ui.cache_settings"), 
                                  font=("Arial", 16, "bold"))
         cache_title.grid(row=0, column=0, columnspan=2, padx=15, pady=(15, 5), sticky="w")
         
@@ -130,13 +130,13 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
         
         # Clear cache button
         clear_button = ctk.CTkButton(cache_frame,
-                                   text=t("clear_cache"),
+                                   text=t("ui.clear_cache"),
                                    command=self._clear_cache)
         clear_button.grid(row=2, column=0, padx=15, pady=(5, 15), sticky="w")
         
         # Open cache folder button
         open_button = ctk.CTkButton(cache_frame,
-                                  text=t("open_cache_folder"),
+                                  text=t("ui.open_cache_folder"),
                                   command=self._open_cache_folder)
         open_button.grid(row=2, column=1, padx=15, pady=(5, 15), sticky="w")
     
@@ -147,18 +147,18 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
         about_frame.grid_columnconfigure(0, weight=1)
         
         # Section title
-        about_title = ctk.CTkLabel(about_frame, text=t("about"), 
+        about_title = ctk.CTkLabel(about_frame, text=t("ui.about"), 
                                  font=("Arial", 16, "bold"))
         about_title.grid(row=0, column=0, padx=15, pady=(15, 5), sticky="w")
         
         # App info
         from gui.main_window import VERSION
-        app_info = f"{t('app_title')} v{VERSION}"
+        app_info = f"{t('ui.app_title')} v{VERSION}"
         info_label = ctk.CTkLabel(about_frame, text=app_info, font=("Arial", 12, "bold"))
         info_label.grid(row=1, column=0, padx=15, pady=5, sticky="w")
         
         # Description
-        desc_text = t("app_description")
+        desc_text = t("ui.app_description")
         desc_label = ctk.CTkLabel(about_frame, text=desc_text, wraplength=400)
         desc_label.grid(row=2, column=0, padx=15, pady=5, sticky="w")
         
@@ -168,13 +168,13 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
         
         # GitHub link
         github_button = ctk.CTkButton(links_frame,
-                                    text=t("view_on_github"),
+                                    text=t("ui.view_on_github"),
                                     command=lambda: webbrowser.open("https://github.com/optiscaler/OptiScaler"))
         github_button.grid(row=0, column=0, padx=(0, 10))
         
         # OptiScaler link
         optiscaler_button = ctk.CTkButton(links_frame,
-                                        text=t("optiscaler_project"),
+                                        text=t("ui.optiscaler_project"),
                                         command=lambda: webbrowser.open("https://github.com/optiscaler/OptiScaler"))
         optiscaler_button.grid(row=0, column=1, padx=(10, 0))
         
@@ -187,13 +187,37 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
     
     def _on_language_change(self, language_name):
         """Handle language change"""
+        print(f"DEBUG: Language change requested to: {language_name}")
         languages = get_languages()
         for code, name in languages.items():
             if name == language_name:
+                print(f"DEBUG: Setting language to code: {code}")
                 set_language(code)
-                # Notify main window to refresh
+                print(f"DEBUG: Language set, current language is now: {get_translation_manager().current_language}")
+                # Try different callback approaches
                 if self.on_language_change:
-                    self.on_language_change()
+                    print(f"DEBUG: Callback function: {self.on_language_change}")
+                    print(f"DEBUG: Callback type: {type(self.on_language_change)}")
+                    print(f"DEBUG: Callback method name: {getattr(self.on_language_change, '__name__', 'Unknown')}")
+                    print("DEBUG: Calling refresh callback directly")
+                    try:
+                        # Test if the callback is callable
+                        if callable(self.on_language_change):
+                            print("DEBUG: Callback is callable, invoking...")
+                            # Try both with and without explicit call to see if there's a difference
+                            print("DEBUG: About to call callback method...")
+                            result = self.on_language_change()
+                            print(f"DEBUG: Callback result: {result}")
+                            print("DEBUG: Callback execution completed")
+                            print("DEBUG: Refresh callback completed successfully")
+                        else:
+                            print("DEBUG: Callback is not callable!")
+                    except Exception as e:
+                        print(f"DEBUG: Error in refresh callback: {e}")
+                        import traceback
+                        traceback.print_exc()
+                else:
+                    print("DEBUG: No callback function available")
                 break
     
     def _on_debug_toggle(self):
@@ -231,13 +255,13 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
         import shutil
         from CTkMessagebox import CTkMessagebox
         
-        result = CTkMessagebox(title=t("confirm_clear_cache"),
-                             message=t("clear_cache_warning"),
+        result = CTkMessagebox(title=t("ui.confirm_clear_cache"),
+                             message=t("ui.clear_cache_warning"),
                              icon="question",
-                             option_1=t("cancel"),
-                             option_2=t("clear"))
+                             option_1=t("ui.cancel"),
+                             option_2=t("ui.clear"))
         
-        if result.get() == t("clear"):
+        if result.get() == t("ui.clear"):
             try:
                 cache_dir = "cache"
                 if os.path.exists(cache_dir):
@@ -247,11 +271,11 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
                             if file != ".gitkeep":  # Keep .gitkeep files
                                 os.remove(os.path.join(root, file))
                 
-                CTkMessagebox(title=t("success"), message=t("cache_cleared"))
+                CTkMessagebox(title=t("ui.success"), message=t("ui.cache_cleared"))
                 # Refresh cache info
                 self._create_cache_section()
             except Exception as e:
-                CTkMessagebox(title=t("error"), message=f"{t('failed_to_clear_cache')}: {e}")
+                CTkMessagebox(title=t("ui.error"), message=f"{t('ui.failed_to_clear_cache')}: {e}")
     
     def _open_cache_folder(self):
         """Open cache folder in file explorer"""
@@ -261,4 +285,4 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
             subprocess.Popen(f'explorer "{cache_dir}"')
         else:
             from CTkMessagebox import CTkMessagebox
-            CTkMessagebox(title=t("error"), message=t("cache_folder_not_found"))
+            CTkMessagebox(title=t("ui.error"), message=t("ui.cache_folder_not_found"))
