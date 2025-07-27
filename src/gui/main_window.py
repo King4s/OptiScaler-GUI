@@ -1,12 +1,12 @@
 import customtkinter as ctk
 import sys
-import os
 import threading
+from pathlib import Path
 from scanner.game_scanner import GameScanner
 from gui.widgets.game_list_frame import GameListFrame
 from gui.widgets.global_settings_frame import GlobalSettingsFrame
 from utils.translation_manager import t
-from utils.debug import set_debug_enabled, is_debug_enabled
+from utils.debug import set_debug_enabled, is_debug_enabled, debug_log
 from utils.progress import ProgressManager, progress_manager
 
 # Application version
@@ -39,10 +39,10 @@ class MainWindow(ctk.CTk):
         self.show_game_list()
     
     def _create_header(self):
-        """Create header with navigation and debug toggle"""
+        """Create header with navigation"""
         self.header_frame = ctk.CTkFrame(self, height=50)
         self.header_frame.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
-        self.header_frame.grid_columnconfigure(1, weight=1)
+        self.header_frame.grid_columnconfigure(2, weight=1)
         self.header_frame.grid_propagate(False)
         
         # Navigation buttons
@@ -60,18 +60,17 @@ class MainWindow(ctk.CTk):
             command=self.show_settings,
             width=100
         )
-        self.settings_btn.grid(row=0, column=1, padx=5, pady=5, sticky="w")
+        self.settings_btn.grid(row=0, column=1, padx=5, pady=5)
         
-        # Debug toggle
-        self.debug_var = ctk.BooleanVar()
-        self.debug_var.set(is_debug_enabled())
-        self.debug_checkbox = ctk.CTkCheckBox(
+        # Log tab (initially hidden)
+        self.log_btn = ctk.CTkButton(
             self.header_frame,
-            text=t("global_settings.debug_mode"),
-            variable=self.debug_var,
-            command=self._toggle_debug
+            text=t("ui.log_tab"),
+            command=self.show_log,
+            width=100
         )
-        self.debug_checkbox.grid(row=0, column=2, padx=5, pady=5, sticky="e")
+        # Initially hide log button
+        self._update_log_button_visibility()
     
     def _create_content_area(self):
         """Create main content area"""
@@ -92,11 +91,37 @@ class MainWindow(ctk.CTk):
         # Register with progress manager
         progress_manager.register_progress_overlay("main", self.progress_overlay)
     
-    def _toggle_debug(self):
-        """Toggle debug output"""
-        enabled = self.debug_var.get()
-        set_debug_enabled(enabled)
-        print(f"Debug {'enabled' if enabled else 'disabled'}")
+    def _update_log_button_visibility(self):
+        """Update log button visibility based on debug mode"""
+        if is_debug_enabled():
+            self.log_btn.grid(row=0, column=2, padx=5, pady=5)
+        else:
+            self.log_btn.grid_remove()
+    
+    def show_log(self):
+        """Show the debug log window"""
+        try:
+            # Clear current content
+            for widget in self.content_frame.winfo_children():
+                widget.destroy()
+            
+            # Create log frame
+            from gui.widgets.log_frame import LogFrame
+            self.current_frame = LogFrame(self.content_frame)
+            self.current_frame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+            
+        except Exception as e:
+            debug_log(f"ERROR: Failed to show log: {e}")
+    
+    def refresh_ui(self):
+        """Refresh UI components - called when debug mode changes"""
+        self._update_log_button_visibility()
+        # Refresh current frame if it's settings to update debug toggle
+        if hasattr(self, 'current_frame') and hasattr(self.current_frame, '_create_debug_section'):
+            try:
+                self.current_frame._create_debug_section()
+            except:
+                pass
     
     def show_game_list(self):
         """Show the game list with progress feedback"""
@@ -105,6 +130,19 @@ class MainWindow(ctk.CTk):
             for widget in self.content_frame.winfo_children():
                 widget.destroy()
             
+            # Update the content frame to ensure proper sizing
+            self.content_frame.update_idletasks()
+            
+            # Small delay to ensure UI is ready
+            self.after(50, self._start_scanning_with_progress)
+            
+        except Exception as e:
+            debug_log(f"ERROR: Failed to start game scanning: {e}")
+            self._display_scan_error(e)
+    
+    def _start_scanning_with_progress(self):
+        """Start scanning with progress overlay after UI is ready"""
+        try:
             # Show progress overlay while scanning
             progress_manager.start_indeterminate("main", "Game Scanner", "Scanning for installed games...")
             
@@ -117,8 +155,9 @@ class MainWindow(ctk.CTk):
                     # Update UI in main thread
                     self.after(0, lambda: self._display_games(games))
                 except Exception as e:
-                    print(f"ERROR: Failed to scan games: {e}")
-                    self.after(0, lambda: self._display_scan_error(e))
+                    debug_log(f"ERROR: Failed to scan games: {e}")
+                    error = e  # Capture error in local variable
+                    self.after(0, lambda err=error: self._display_scan_error(err))
             
             # Start scanning in background
             import threading
@@ -126,7 +165,7 @@ class MainWindow(ctk.CTk):
             scan_thread.start()
             
         except Exception as e:
-            print(f"ERROR: Failed to start game scanning: {e}")
+            debug_log(f"ERROR: Failed to start game scanning: {e}")
             progress_manager.hide_progress("main")
             self._display_scan_error(e)
     
@@ -149,7 +188,7 @@ class MainWindow(ctk.CTk):
             self.settings_btn.configure(state="normal")
             
         except Exception as e:
-            print(f"ERROR: Failed to display games: {e}")
+            debug_log(f"ERROR: Failed to display games: {e}")
             self._display_scan_error(e)
     
     def _display_scan_error(self, error):
@@ -172,8 +211,10 @@ class MainWindow(ctk.CTk):
             for widget in self.content_frame.winfo_children():
                 widget.destroy()
             
-            # Create settings frame with refresh callback
-            self.current_frame = GlobalSettingsFrame(self.content_frame, on_language_change=self.refresh_ui)
+            # Create settings frame with refresh callback and main window reference
+            self.current_frame = GlobalSettingsFrame(self.content_frame, 
+                                                    on_language_change=self.refresh_ui,
+                                                    main_window=self)
             self.current_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
             
             # Update navigation buttons
@@ -181,14 +222,20 @@ class MainWindow(ctk.CTk):
             self.settings_btn.configure(state="disabled")
             
         except Exception as e:
-            print(f"ERROR: Failed to show settings: {e}")
+            debug_log(f"ERROR: Failed to show settings: {e}")
     
     def refresh_ui(self):
-        """Refresh the UI after language change"""
+        """Refresh the UI after language/debug mode changes"""
         # Update header text
         self.games_btn.configure(text=t("ui.games_tab"))
         self.settings_btn.configure(text=t("ui.settings_tab"))
-        self.debug_checkbox.configure(text=t("global_settings.debug_mode"))
+        
+        # Update log button visibility based on debug mode
+        self._update_log_button_visibility()
+        
+        # Update log button text if visible
+        if is_debug_enabled():
+            self.log_btn.configure(text=t("ui.log_tab"))
         
         # Refresh current frame
         if hasattr(self, 'current_frame') and self.current_frame:
@@ -207,11 +254,12 @@ class MainWindow(ctk.CTk):
             manager = OptiScalerManager()
             
             # Auto-detect Unreal Engine (Engine/Binaries/Win64 exists)
-            unreal_dir = os.path.join(game_path, "Engine", "Binaries", "Win64")
-            if os.path.isdir(unreal_dir):
-                optiscaler_path = unreal_dir
+            game_path = Path(game_path)
+            unreal_dir = game_path / "Engine" / "Binaries" / "Win64"
+            if unreal_dir.is_dir():
+                optiscaler_path = str(unreal_dir)
             else:
-                optiscaler_path = game_path
+                optiscaler_path = str(game_path)
             
             # Clear current content
             for widget in self.content_frame.winfo_children():
@@ -233,7 +281,7 @@ class MainWindow(ctk.CTk):
                     # Update UI in main thread
                     self.after(0, lambda: self._display_settings_editor(editor_frame))
                 except Exception as e:
-                    print(f"ERROR: Failed to create settings editor: {e}")
+                    debug_log(f"ERROR: Failed to create settings editor: {e}")
                     self.after(0, lambda: self._display_settings_error(e))
             
             # Start loading in background
@@ -242,7 +290,7 @@ class MainWindow(ctk.CTk):
             load_thread.start()
             
         except Exception as e:
-            print(f"ERROR: Failed to start settings editor loading: {e}")
+            debug_log(f"ERROR: Failed to start settings editor loading: {e}")
             progress_manager.hide_progress("main")
             self._display_settings_error(e)
     
@@ -259,7 +307,7 @@ class MainWindow(ctk.CTk):
             self.settings_btn.configure(state="normal")
             
         except Exception as e:
-            print(f"ERROR: Failed to display settings editor: {e}")
+            debug_log(f"ERROR: Failed to display settings editor: {e}")
             self._display_settings_error(e)
     
     def _display_settings_error(self, error):

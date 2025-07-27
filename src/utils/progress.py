@@ -47,17 +47,35 @@ class ProgressOverlay(ctk.CTkFrame):
         self.status_label.configure(text=message)
         self.progress_bar.set(0)
         
-        # Center the overlay on the parent
-        self.update_idletasks()
-        parent_width = self.master.winfo_width()
-        parent_height = self.master.winfo_height()
-        overlay_width = 300
-        overlay_height = 120
+        # Use relative positioning for better centering
+        self.place(relx=0.5, rely=0.5, anchor="center")
         
-        x = (parent_width - overlay_width) // 2
-        y = (parent_height - overlay_height) // 2
+        # If relative positioning doesn't work, fallback to absolute
+        self.after(10, self._verify_positioning)
         
-        self.place(x=x, y=y)
+    def _verify_positioning(self):
+        """Verify and correct positioning if needed"""
+        try:
+            # Check if the overlay is visible and properly positioned
+            if self.winfo_viewable():
+                x = self.winfo_x()
+                y = self.winfo_y()
+                
+                # If positioned at (0,0) or negative, recalculate
+                if x <= 0 or y <= 0:
+                    self.master.update_idletasks()
+                    parent_width = self.master.winfo_width()
+                    parent_height = self.master.winfo_height()
+                    
+                    if parent_width > 1 and parent_height > 1:
+                        x = (parent_width - 300) // 2
+                        y = (parent_height - 120) // 2
+                        x = max(x, 10)
+                        y = max(y, 10)
+                        self.place(x=x, y=y)
+        except:
+            # Ignore any errors during position verification
+            pass
         
     def update_status(self, message):
         """Update the status message"""
@@ -71,6 +89,14 @@ class ProgressOverlay(ctk.CTkFrame):
         
     def start_indeterminate(self, title="Processing", message="Please wait..."):
         """Start indeterminate progress animation"""
+        # Ensure parent has proper dimensions before showing
+        self.master.update_idletasks()
+        
+        # Small delay to ensure parent is fully rendered
+        self.after(10, lambda: self._show_and_animate(title, message))
+        
+    def _show_and_animate(self, title, message):
+        """Show overlay and start animation after delay"""
         self.show_overlay(title, message)
         self._animation_running = True
         self._animate_indeterminate()

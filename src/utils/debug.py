@@ -1,13 +1,45 @@
 #!/usr/bin/env python3
 """
 Debug system for OptiScaler-GUI
-Controls when debug messages are shown
+Controls when debug messages are shown and provides log storage
 """
 
 import sys
+import time
+import threading
+from collections import deque
 
 # Global debug state
 _debug_enabled = False
+_log_storage = deque(maxlen=1000)  # Store last 1000 log entries
+_log_lock = threading.Lock()
+
+class LogHandler:
+    """Handles log storage and retrieval"""
+    
+    def __init__(self):
+        self.last_retrieved = 0
+    
+    def add_log(self, message):
+        """Add a log entry with timestamp"""
+        timestamp = time.strftime("%H:%M:%S")
+        log_entry = f"[{timestamp}] {message}"
+        
+        with _log_lock:
+            _log_storage.append((time.time(), log_entry))
+    
+    def get_logs(self):
+        """Get all stored logs"""
+        with _log_lock:
+            return [entry[1] for entry in _log_storage]
+    
+    def get_new_logs(self, since=0):
+        """Get logs since a specific timestamp"""
+        with _log_lock:
+            return [entry[1] for entry in _log_storage if entry[0] > since]
+
+# Global log handler instance
+_log_handler = LogHandler()
 
 def set_debug_enabled(enabled):
     """Enable or disable debug output globally"""
@@ -19,15 +51,22 @@ def is_debug_enabled():
     global _debug_enabled
     return _debug_enabled
 
+def get_debug_log_handler():
+    """Get the debug log handler"""
+    return _log_handler
+
 def debug_print(*args, **kwargs):
     """Print debug message only if debug is enabled"""
     global _debug_enabled
     if _debug_enabled:
+        message = " ".join(str(arg) for arg in args)
+        _log_handler.add_log(f"DEBUG: {message}")
         print("DEBUG:", *args, **kwargs)
 
 def debug_log(message):
     """Log debug message with DEBUG prefix"""
     global _debug_enabled
+    _log_handler.add_log(f"DEBUG: {message}")
     if _debug_enabled:
         print(f"DEBUG: {message}")
 

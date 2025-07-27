@@ -1,3 +1,4 @@
+# Cache and temporary files
 cache/
 
 # Python cache files
@@ -68,3 +69,30 @@ logs/
 # Temporary files
 *.tmp
 *.temp
+
+# Development and debug files
+debug_*.py
+test_*.py
+fix_*.py
+fix_*.bat
+*_backup.py
+*_temp.py
+*_test.py
+commit_message.txt
+
+# Development documentation
+DEBUG_*.md
+DEVELOPMENT_*.md
+FUNCTION_REFERENCE.md
+PROJECT_STATUS.md
+SOLUTIONS_SUMMARY.md
+debug_optimization_report.md
+
+# Build artifacts
+*.exe
+*.msi
+build.bat
+
+# Backup files
+*.bak
+*.backup

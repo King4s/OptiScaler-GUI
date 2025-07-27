@@ -1,5 +1,6 @@
 import customtkinter as ctk
-import os
+from pathlib import Path
+import shutil
 from utils.translation_manager import t, get_translation_manager, get_languages, set_language
 from utils.debug import debug_log
 from utils.config import get_config_value, set_config_value
@@ -8,10 +9,11 @@ import webbrowser
 class GlobalSettingsFrame(ctk.CTkScrollableFrame):
     """Global application settings interface"""
     
-    def __init__(self, master, on_language_change=None, **kwargs):
+    def __init__(self, master, on_language_change=None, main_window=None, **kwargs):
         super().__init__(master, **kwargs)
         self.grid_columnconfigure(0, weight=1)
         self.on_language_change = on_language_change
+        self.main_window = main_window
         
         self._create_settings_interface()
     
@@ -85,6 +87,8 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
         debug_label.grid(row=1, column=0, padx=15, pady=5, sticky="w")
         
         self.debug_var = ctk.BooleanVar()
+        from utils.debug import is_debug_enabled
+        self.debug_var.set(is_debug_enabled())
         debug_switch = ctk.CTkSwitch(app_frame, 
                                    text=t("ui.enable_debug"),
                                    variable=self.debug_var,
@@ -187,37 +191,37 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
     
     def _on_language_change(self, language_name):
         """Handle language change"""
-        print(f"DEBUG: Language change requested to: {language_name}")
+        debug_log(f"DEBUG: Language change requested to: {language_name}")
         languages = get_languages()
         for code, name in languages.items():
             if name == language_name:
-                print(f"DEBUG: Setting language to code: {code}")
+                debug_log(f"DEBUG: Setting language to code: {code}")
                 set_language(code)
-                print(f"DEBUG: Language set, current language is now: {get_translation_manager().current_language}")
+                debug_log(f"DEBUG: Language set, current language is now: {get_translation_manager().current_language}")
                 # Try different callback approaches
                 if self.on_language_change:
-                    print(f"DEBUG: Callback function: {self.on_language_change}")
-                    print(f"DEBUG: Callback type: {type(self.on_language_change)}")
-                    print(f"DEBUG: Callback method name: {getattr(self.on_language_change, '__name__', 'Unknown')}")
-                    print("DEBUG: Calling refresh callback directly")
+                    debug_log(f"DEBUG: Callback function: {self.on_language_change}")
+                    debug_log(f"DEBUG: Callback type: {type(self.on_language_change)}")
+                    debug_log(f"DEBUG: Callback method name: {getattr(self.on_language_change, '__name__', 'Unknown')}")
+                    debug_log("DEBUG: Calling refresh callback directly")
                     try:
                         # Test if the callback is callable
                         if callable(self.on_language_change):
-                            print("DEBUG: Callback is callable, invoking...")
+                            debug_log("DEBUG: Callback is callable, invoking...")
                             # Try both with and without explicit call to see if there's a difference
-                            print("DEBUG: About to call callback method...")
+                            debug_log("DEBUG: About to call callback method...")
                             result = self.on_language_change()
-                            print(f"DEBUG: Callback result: {result}")
-                            print("DEBUG: Callback execution completed")
-                            print("DEBUG: Refresh callback completed successfully")
+                            debug_log(f"DEBUG: Callback result: {result}")
+                            debug_log("DEBUG: Callback execution completed")
+                            debug_log("DEBUG: Refresh callback completed successfully")
                         else:
-                            print("DEBUG: Callback is not callable!")
+                            debug_log("DEBUG: Callback is not callable!")
                     except Exception as e:
-                        print(f"DEBUG: Error in refresh callback: {e}")
+                        debug_log(f"DEBUG: Error in refresh callback: {e}")
                         import traceback
                         traceback.print_exc()
                 else:
-                    print("DEBUG: No callback function available")
+                    debug_log("DEBUG: No callback function available")
                 break
     
     def _on_debug_toggle(self):
@@ -225,6 +229,10 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
         from utils.debug import set_debug_enabled
         set_debug_enabled(self.debug_var.get())
         debug_log(f"Debug mode {'enabled' if self.debug_var.get() else 'disabled'} from settings")
+        
+        # Update main window UI (show/hide log tab)
+        if self.main_window and hasattr(self.main_window, 'refresh_ui'):
+            self.main_window.refresh_ui()
     
     def _on_theme_change(self, theme):
         """Handle theme change"""
@@ -235,16 +243,14 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
     
     def _get_cache_info(self):
         """Get cache directory information"""
-        cache_dir = "cache"
-        if os.path.exists(cache_dir):
+        cache_dir = Path("cache")
+        if cache_dir.exists():
             total_size = 0
             file_count = 0
-            for root, dirs, files in os.walk(cache_dir):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    if os.path.exists(file_path):
-                        total_size += os.path.getsize(file_path)
-                        file_count += 1
+            for file_path in cache_dir.rglob("*"):
+                if file_path.is_file():
+                    total_size += file_path.stat().st_size
+                    file_count += 1
             
             size_mb = total_size / (1024 * 1024)
             return f"{file_count} files, {size_mb:.1f} MB"
@@ -263,13 +269,12 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
         
         if result.get() == t("ui.clear"):
             try:
-                cache_dir = "cache"
-                if os.path.exists(cache_dir):
+                cache_dir = Path("cache")
+                if cache_dir.exists():
                     # Keep the directory structure, just remove files
-                    for root, dirs, files in os.walk(cache_dir):
-                        for file in files:
-                            if file != ".gitkeep":  # Keep .gitkeep files
-                                os.remove(os.path.join(root, file))
+                    for file_path in cache_dir.rglob("*"):
+                        if file_path.is_file() and file_path.name != ".gitkeep":
+                            file_path.unlink()
                 
                 CTkMessagebox(title=t("ui.success"), message=t("ui.cache_cleared"))
                 # Refresh cache info
@@ -280,8 +285,8 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
     def _open_cache_folder(self):
         """Open cache folder in file explorer"""
         import subprocess
-        cache_dir = os.path.abspath("cache")
-        if os.path.exists(cache_dir):
+        cache_dir = Path("cache").resolve()
+        if cache_dir.exists():
             subprocess.Popen(f'explorer "{cache_dir}"')
         else:
             from CTkMessagebox import CTkMessagebox

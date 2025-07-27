@@ -1,10 +1,11 @@
 import customtkinter as ctk
 from PIL import Image
-import os
+from pathlib import Path
 from optiscaler.manager import OptiScalerManager
 from CTkMessagebox import CTkMessagebox
 from utils.translation_manager import t
 from utils.progress import progress_manager
+from utils.debug import debug_log
 
 class GameListFrame(ctk.CTkScrollableFrame):
     def __init__(self, master, games, game_scanner, on_edit_settings, **kwargs):
@@ -26,7 +27,7 @@ class GameListFrame(ctk.CTkScrollableFrame):
 
             # Game Image
             image_path = game.image_path
-            if not image_path or not os.path.exists(image_path):
+            if not image_path or (image_path and not Path(image_path).exists()):
                 image_path = self.game_scanner.fetch_game_image(game.name, game.appid)
                 if image_path:
                     game.image_path = image_path
@@ -34,7 +35,7 @@ class GameListFrame(ctk.CTkScrollableFrame):
             # Define the target height for all images
             target_height = 80
 
-            if game.image_path and os.path.exists(game.image_path):
+            if game.image_path and Path(game.image_path).exists():
                 try:
                     img = Image.open(game.image_path)
                     
@@ -98,7 +99,7 @@ class GameListFrame(ctk.CTkScrollableFrame):
 
             # Check if OptiScaler is installed
             is_installed = self.optiscaler_manager.is_optiscaler_installed(game.path)
-            print(f"DEBUG: OptiScaler installed check for {game.name} at {game.path}: {is_installed}")
+            debug_log(f"DEBUG: OptiScaler installed check for {game.name} at {game.path}: {is_installed}")
 
             # Install/Uninstall Button (dynamic based on installation status)
             if is_installed:
@@ -126,14 +127,14 @@ class GameListFrame(ctk.CTkScrollableFrame):
 
     def _install_optiscaler_for_game(self, game):
         """Install OptiScaler for the selected game with progress feedback"""
-        print(f"Installing OptiScaler for {game.name} at {game.path}")
+        debug_log(f"Installing OptiScaler for {game.name} at {game.path}")
         
         # Show indeterminate progress overlay
         progress_manager.start_indeterminate("main", "OptiScaler Installation", f"Installing OptiScaler for {game.name}...")
         
         def status_callback(message):
             """Update progress status"""
-            print(f"Progress: {message}")
+            debug_log(f"Progress: {message}")
             # Update the overlay status message
             progress_manager.update_status("main", message)
             
@@ -142,13 +143,13 @@ class GameListFrame(ctk.CTkScrollableFrame):
             progress_manager.hide_progress("main")
             
             if success:
-                print(f"Installation successful for {game.name}")
+                debug_log(f"Installation successful for {game.name}")
                 CTkMessagebox(title="Success", message=f"OptiScaler installed successfully for {game.name}!")
                 # Refresh the game list to update button states
-                print("Refreshing game list display...")
+                debug_log("Refreshing game list display...")
                 self._refresh_display()
             else:
-                print(f"Installation failed for {game.name}")
+                debug_log(f"Installation failed for {game.name}")
                 CTkMessagebox(title="Error", message=f"Failed to install OptiScaler for {game.name}.")
         
         # Use threaded installation with callbacks
@@ -160,7 +161,7 @@ class GameListFrame(ctk.CTkScrollableFrame):
 
     def _uninstall_optiscaler_for_game(self, game):
         """Uninstall OptiScaler from the selected game"""
-        print(f"Uninstalling OptiScaler for {game.name} at {game.path}")
+        debug_log(f"Uninstalling OptiScaler for {game.name} at {game.path}")
         
         # Show confirmation dialog
         result = CTkMessagebox(title="Confirm Uninstall", 
@@ -178,7 +179,7 @@ class GameListFrame(ctk.CTkScrollableFrame):
                     # Update UI in main thread
                     self.after(0, lambda: self._handle_uninstall_result(game, success, message))
                 except Exception as e:
-                    print(f"ERROR: Uninstall failed: {e}")
+                    debug_log(f"ERROR: Uninstall failed: {e}")
                     self.after(0, lambda: self._handle_uninstall_result(game, False, str(e)))
             
             # Start uninstall in background
@@ -191,13 +192,13 @@ class GameListFrame(ctk.CTkScrollableFrame):
         progress_manager.hide_progress("main")
         
         if success:
-            print(f"Uninstallation successful for {game.name}")
+            debug_log(f"Uninstallation successful for {game.name}")
             CTkMessagebox(title="Success", message=f"OptiScaler uninstalled successfully!\n\n{message}")
             # Refresh the game list to update button states
-            print("Refreshing game list display after uninstall...")
+            debug_log("Refreshing game list display after uninstall...")
             self._refresh_display()
         else:
-            print(f"Uninstallation failed for {game.name}: {message}")
+            debug_log(f"Uninstallation failed for {game.name}: {message}")
             CTkMessagebox(title="Error", message=f"Failed to uninstall OptiScaler: {message}")
 
     def _refresh_display(self):
@@ -210,7 +211,7 @@ class GameListFrame(ctk.CTkScrollableFrame):
 
     def _open_game_folder(self, path):
         import subprocess
-        if os.path.exists(path):
+        if Path(path).exists():
             subprocess.Popen(f'explorer \"{path}\"')
         else:
             CTkMessagebox(title="Error", message="Game folder not found.")

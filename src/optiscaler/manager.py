@@ -6,7 +6,56 @@ import configparser
 import re
 import threading
 import subprocess
+import requests
+import zipfile
+from datetime import datetime
+from pathlib import Path
 from utils.debug import debug_log
+
+# Configuration constants - moved to top for easier maintenance
+class OptiScalerConfig:
+    """Configuration constants for OptiScaler operations"""
+    GITHUB_API_URL = "https://api.github.com/repos/optiscaler/OptiScaler/releases/latest"
+    SEVEN_ZIP_PATHS = [
+        r'C:\Program Files\7-Zip\7z.exe',
+        r'C:\Program Files (x86)\7-Zip\7z.exe',
+        '7z'  # Try system PATH
+    ]
+    ARCHIVE_EXTENSIONS = ['.7z', '.zip']
+    DOWNLOAD_CHUNK_SIZE = 8192
+    SUBPROCESS_TIMEOUT = 30
+    
+    # File lists
+    ADDITIONAL_FILES = [
+        "OptiScaler.ini",
+        "amd_fidelityfx_dx12.dll",
+        "amd_fidelityfx_vk.dll", 
+        "libxess_dx11.dll",
+        "libxess.dll",
+        "nvngx_dlss.dll",
+    ]
+    
+    PROXY_FILENAMES = [
+        'dxgi.dll',           # Default DirectX Graphics Infrastructure
+        'winmm.dll',          # Windows Multimedia API
+        'version.dll',        # Version Information API
+        'dbghelp.dll',        # Debug Help Library
+        'd3d12.dll',          # Direct3D 12 API
+        'wininet.dll',        # Windows Internet API
+        'winhttp.dll',        # Windows HTTP Services
+        'OptiScaler.asi',     # ASI plugin format
+        'nvngx.dll',          # NVIDIA NGX (for advanced scenarios)
+    ]
+    
+    # Install indicator files
+    INSTALL_INDICATORS = [
+        "OptiScaler.log",
+        "amd_fidelityfx_dx12.dll",
+        "amd_fidelityfx_vk.dll",
+        "libxess.dll",
+        "libxess_dx11.dll",
+        "Remove OptiScaler.bat"
+    ]
 
 class OptiScalerManager:
     """
@@ -18,230 +67,436 @@ class OptiScalerManager:
     This manager automatically downloads the latest releases from the official repository
     and provides GUI-friendly installation methods.
     """
-    def __init__(self):
-        self.github_release_url = "https://api.github.com/repos/optiscaler/OptiScaler/releases/latest"
-        self.download_dir = "C:\\OptiScaler-GUI\\cache\\optiscaler_downloads"
-        os.makedirs(self.download_dir, exist_ok=True)
+    def __init__(self, download_dir=None):
+        self.github_release_url = OptiScalerConfig.GITHUB_API_URL
+        
+        # Use configurable download directory
+        if download_dir:
+            self.download_dir = Path(download_dir)
+        else:
+            # Default to cache in project directory
+            project_root = Path(__file__).parent.parent.parent
+            self.download_dir = project_root / "cache" / "optiscaler_downloads"
+        
+        self.download_dir.mkdir(parents=True, exist_ok=True)
+        self._seven_zip_path = self._find_seven_zip()
+        
+        debug_log(f"OptiScalerManager initialized with download_dir: {self.download_dir}")
+    
+    def _find_seven_zip(self):
+        """Find available 7-Zip executable"""
+        for path in OptiScalerConfig.SEVEN_ZIP_PATHS:
+            if shutil.which(path) or (Path(path).exists() if os.path.isabs(path) else False):
+                debug_log(f"Found 7-Zip at: {path}")
+                return path
+        
+        debug_log("7-Zip not found in standard locations")
+        return None
 
     def _download_latest_release(self, progress_callback=None):
+        """
+        Download the latest OptiScaler release with improved error handling and validation
+        
+        Args:
+            progress_callback: Optional callback for progress updates
+            
+        Returns:
+            str: Path to downloaded archive, or None if failed
+        """
         try:
             if progress_callback:
                 progress_callback("Fetching release information...")
-                
-            response = requests.get(self.github_release_url)
+            
+            debug_log("Fetching latest release information from GitHub API")
+            
+            # Fetch release information with timeout
+            response = requests.get(
+                self.github_release_url, 
+                timeout=OptiScalerConfig.SUBPROCESS_TIMEOUT
+            )
             response.raise_for_status()
             release_info = response.json()
             assets = release_info.get("assets", [])
+            
+            debug_log(f"Found {len(assets)} assets in release")
 
+            # Find suitable archive asset
             archive_asset = None
             for asset in assets:
-                if asset["name"].endswith(".7z"):
+                if any(asset["name"].endswith(ext) for ext in OptiScalerConfig.ARCHIVE_EXTENSIONS):
                     archive_asset = asset
+                    debug_log(f"Selected asset: {asset['name']}")
                     break
 
             if not archive_asset:
-                debug_log("No .7z asset found in release assets.")
+                debug_log(f"No suitable archive found. Available assets: {[a['name'] for a in assets]}")
                 return None
 
             download_url = archive_asset["browser_download_url"]
-            archive_filename = os.path.join(self.download_dir, archive_asset["name"])
+            archive_filename = self.download_dir / archive_asset["name"]
 
-            # Check if file exists and is valid (try to list contents)
-            if os.path.exists(archive_filename):
-                try:
-                    if progress_callback:
-                        progress_callback("Validating existing archive...")
-                    result = subprocess.run(
-                        [r'C:\Program Files\7-Zip\7z.exe', 't', archive_filename],
-                        check=True,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE
-                    )
-                    debug_log(f"Archive {archive_filename} exists and is valid, skipping download.")
-                    return archive_filename
-                except Exception as e:
-                    debug_log(f"Existing archive is invalid or corrupt, will re-download: {e}")
-                    os.remove(archive_filename)
+            # Validate existing file
+            if archive_filename.exists():
+                if self._validate_archive(archive_filename, progress_callback):
+                    debug_log(f"Valid archive exists, skipping download: {archive_filename}")
+                    return str(archive_filename)
+                else:
+                    debug_log("Existing archive is invalid, removing and re-downloading")
+                    archive_filename.unlink(missing_ok=True)
 
-            # Download if not present or invalid
+            # Download with progress tracking
+            return self._download_file(download_url, archive_filename, archive_asset, progress_callback)
+            
+        except requests.RequestException as e:
+            debug_log(f"Network error in _download_latest_release: {e}")
+            return None
+        except Exception as e:
+            debug_log(f"Unexpected error in _download_latest_release: {e}")
+            return None
+    
+    def _validate_archive(self, archive_path, progress_callback=None):
+        """Validate archive integrity using 7-Zip test"""
+        if not self._seven_zip_path:
+            debug_log("Cannot validate archive: 7-Zip not found")
+            return True  # Assume valid if we can't test
+        
+        try:
             if progress_callback:
-                progress_callback(f"Downloading {archive_asset['name']}...")
-                
-            with requests.get(download_url, stream=True) as r:
-                r.raise_for_status()
-                total_size = int(r.headers.get('content-length', 0))
+                progress_callback("Validating existing archive...")
+            
+            result = subprocess.run(
+                [self._seven_zip_path, 't', str(archive_path)],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=OptiScalerConfig.SUBPROCESS_TIMEOUT
+            )
+            return True
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+            debug_log(f"Archive validation failed: {e}")
+            return False
+        except Exception as e:
+            debug_log(f"Unexpected error during validation: {e}")
+            return False
+    
+    def _download_file(self, url, filepath, asset_info, progress_callback=None):
+        """Download file with progress tracking and error handling"""
+        try:
+            if progress_callback:
+                progress_callback(f"Downloading {asset_info['name']}...")
+            
+            debug_log(f"Starting download: {url} -> {filepath}")
+            
+            with requests.get(url, stream=True, timeout=OptiScalerConfig.SUBPROCESS_TIMEOUT) as response:
+                response.raise_for_status()
+                total_size = int(response.headers.get('content-length', 0))
                 downloaded = 0
                 
-                with open(archive_filename, 'wb') as f:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        f.write(chunk)
-                        downloaded += len(chunk)
-                        
-                        # Update progress if we have total size
-                        if total_size > 0 and progress_callback:
-                            progress_percent = (downloaded / total_size) * 100
-                            progress_callback(f"Downloading {archive_asset['name']} ({progress_percent:.1f}%)...")
+                with open(filepath, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=OptiScalerConfig.DOWNLOAD_CHUNK_SIZE):
+                        if chunk:  # Filter out keep-alive chunks
+                            f.write(chunk)
+                            downloaded += len(chunk)
                             
-            return archive_filename
+                            # Update progress
+                            if total_size > 0 and progress_callback and downloaded % (OptiScalerConfig.DOWNLOAD_CHUNK_SIZE * 10) == 0:
+                                progress_percent = (downloaded / total_size) * 100
+                                progress_callback(f"Downloading {asset_info['name']} ({progress_percent:.1f}%)...")
+            
+            # Verify download completed
+            if total_size > 0 and filepath.stat().st_size != total_size:
+                debug_log(f"Download size mismatch: expected {total_size}, got {filepath.stat().st_size}")
+                filepath.unlink(missing_ok=True)
+                return None
+            
+            debug_log(f"Download completed successfully: {filepath}")
+            return str(filepath)
+            
+        except requests.RequestException as e:
+            debug_log(f"Download failed: {e}")
+            filepath.unlink(missing_ok=True)
+            return None
         except Exception as e:
-            debug_log(f"Exception in _download_latest_release: {e}")
+            debug_log(f"Unexpected download error: {e}")
+            filepath.unlink(missing_ok=True)
             return None
 
     def _extract_release(self, archive_path, game_path=None, progress_callback=None):
+        """
+        Extract OptiScaler release archive with improved error handling
+        
+        Args:
+            archive_path: Path to archive file
+            game_path: Optional game path for context
+            progress_callback: Optional progress callback
+            
+        Returns:
+            str: Path to extracted files, or None if failed
+        """
         if progress_callback:
             progress_callback("Preparing extraction...")
-            
-        extract_path = os.path.join(self.download_dir, "extracted_optiscaler")
-        if os.path.exists(extract_path):
-            shutil.rmtree(extract_path)
-        os.makedirs(extract_path)
-
-        if archive_path.endswith('.7z'):
-            # Always use the full path to 7z.exe
+        
+        archive_path = Path(archive_path)
+        extract_path = self.download_dir / "extracted_optiscaler"
+        
+        debug_log(f"Extracting {archive_path} to {extract_path}")
+        
+        # Clean up existing extraction
+        if extract_path.exists():
             try:
-                if progress_callback:
-                    progress_callback("Extracting archive...")
-                    
-                result = subprocess.run(
-                    [r'C:\Program Files\7-Zip\7z.exe', 'x', archive_path, f'-o{extract_path}', '-y'],
-                    check=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE
-                )
-                
-                if progress_callback:
-                    progress_callback("Extraction completed")
-                    
+                shutil.rmtree(extract_path)
+                debug_log("Cleaned up existing extraction directory")
             except Exception as e:
-                print(f"ERROR: Failed to extract .7z archive with 7z.exe: {e}")
-                return None
-        else:
-            print("ERROR: Only .7z extraction is supported in this version.")
-            return None
-        return extract_path
+                debug_log(f"Warning: Could not clean extraction directory: {e}")
+        
+        extract_path.mkdir(parents=True, exist_ok=True)
 
-    def install_optiscaler(self, game_path, target_filename='dxgi.dll', overwrite=False):
+        # Determine extraction method
+        if archive_path.suffix.lower() == '.7z':
+            return self._extract_7z(archive_path, extract_path, progress_callback)
+        elif archive_path.suffix.lower() == '.zip':
+            return self._extract_zip(archive_path, extract_path, progress_callback)
+        else:
+            debug_log(f"Unsupported archive format: {archive_path.suffix}")
+            return None
+    
+    def _extract_7z(self, archive_path, extract_path, progress_callback=None):
+        """Extract 7z archive using 7-Zip"""
+        if not self._seven_zip_path:
+            debug_log("Cannot extract 7z: 7-Zip not found")
+            return None
+        
+        try:
+            if progress_callback:
+                progress_callback("Extracting 7z archive...")
+            
+            result = subprocess.run(
+                [self._seven_zip_path, 'x', str(archive_path), f'-o{extract_path}', '-y'],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=OptiScalerConfig.SUBPROCESS_TIMEOUT
+            )
+            
+            if progress_callback:
+                progress_callback("7z extraction completed")
+            
+            debug_log("7z extraction successful")
+            return str(extract_path)
+            
+        except subprocess.TimeoutExpired:
+            debug_log("7z extraction timed out")
+            return None
+        except subprocess.CalledProcessError as e:
+            debug_log(f"7z extraction failed: {e.stderr.decode() if e.stderr else 'Unknown error'}")
+            return None
+        except Exception as e:
+            debug_log(f"Unexpected error during 7z extraction: {e}")
+            return None
+    
+    def _extract_zip(self, archive_path, extract_path, progress_callback=None):
+        """Extract ZIP archive using Python's zipfile module"""
+        try:
+            if progress_callback:
+                progress_callback("Extracting ZIP archive...")
+            
+            with zipfile.ZipFile(archive_path, 'r') as zip_ref:
+                zip_ref.extractall(extract_path)
+            
+            if progress_callback:
+                progress_callback("ZIP extraction completed")
+            
+            debug_log("ZIP extraction successful")
+            return str(extract_path)
+            
+        except zipfile.BadZipFile:
+            debug_log("Invalid or corrupted ZIP file")
+            return None
+        except Exception as e:
+            debug_log(f"ZIP extraction failed: {e}")
+            return None
+
+    def install_optiscaler(self, game_path, target_filename='dxgi.dll', overwrite=False, progress_callback=None):
         """
-        Enhanced OptiScaler installation based on official source code setup logic.
+        Enhanced OptiScaler installation with improved error handling and performance.
+        
+        Args:
+            game_path: Path to game directory
+            target_filename: Target filename for OptiScaler proxy DLL
+            overwrite: Whether to overwrite existing files
+            progress_callback: Optional callback for progress updates
+            
+        Returns:
+            tuple: (success: bool, message: str)
         """
+        game_path = Path(game_path)
         debug_log(f"Starting OptiScaler installation: {game_path}")
         debug_log(f"Target filename: {target_filename}")
         
-        # Download latest release
-        zip_path = self._download_latest_release()
-        debug_log(f"Downloaded archive: {zip_path}")
-        if not zip_path:
-            debug_log("Download failed")
-            return False
+        try:
+            if progress_callback:
+                progress_callback("Starting installation...")
+                
+            # Download latest release
+            zip_path = self._download_latest_release(progress_callback)
+            if not zip_path:
+                debug_log("Download failed")
+                return False, "Download failed"
+            debug_log(f"Downloaded archive: {zip_path}")
 
-        # Extract files
-        extracted_path = self._extract_release(zip_path, game_path=game_path)
-        debug_log(f"Extracted to: {extracted_path}")
-        if not extracted_path:
-            debug_log("Extraction failed")
-            return False
+            # Extract files
+            extracted_path = self._extract_release(zip_path, game_path=str(game_path), progress_callback=progress_callback)
+            if not extracted_path:
+                debug_log("Extraction failed")
+                return False, "Extraction failed"
+            debug_log(f"Extracted to: {extracted_path}")
 
-        # Remove setup marker file (like official setup does)
-        marker_file = os.path.join(extracted_path, "!! EXTRACT ALL FILES TO GAME FOLDER !!")
-        if os.path.exists(marker_file):
-            os.remove(marker_file)
-            debug_log("Removed setup marker file")
+            if progress_callback:
+                progress_callback("Installing files...")
 
-        # Detect installation directory (Unreal Engine vs regular game)
-        unreal_dir = os.path.join(game_path, "Engine", "Binaries", "Win64")
-        if os.path.isdir(unreal_dir):
-            dest_dir = unreal_dir
-            debug_log(f"Detected Unreal Engine, installing to: {dest_dir}")
-        else:
-            dest_dir = game_path
-            debug_log(f"Installing to game root: {dest_dir}")
+            # Remove setup marker file (like official setup does)
+            marker_file = Path(extracted_path) / "!! EXTRACT ALL FILES TO GAME FOLDER !!"
+            if marker_file.exists():
+                marker_file.unlink()
+                debug_log("Removed setup marker file")
 
-        os.makedirs(dest_dir, exist_ok=True)
+            # Determine installation directory
+            dest_dir = self._determine_install_directory(game_path)
+            dest_dir.mkdir(parents=True, exist_ok=True)
 
-        # Check if target file already exists
-        target_path = os.path.join(dest_dir, target_filename)
-        if os.path.exists(target_path):
-            if not overwrite:
+            # Check target file conflicts
+            target_path = dest_dir / target_filename
+            if target_path.exists() and not overwrite:
                 debug_log(f"Target file {target_filename} already exists and overwrite=False")
-                return False
-            else:
-                os.remove(target_path)
+                return False, f"Target file {target_filename} already exists"
+            elif target_path.exists():
+                target_path.unlink()
                 debug_log(f"Removed existing {target_filename}")
 
-        # Find OptiScaler.dll in extracted files
-        optiscaler_dll_path = None
-        for root, _, files in os.walk(extracted_path):
-            for file in files:
-                if file.lower() == 'optiscaler.dll':
-                    optiscaler_dll_path = os.path.join(root, file)
-                    break
-            if optiscaler_dll_path:
-                break
+            # Find and copy main OptiScaler DLL
+            optiscaler_dll_path = self._find_optiscaler_dll(extracted_path)
+            if not optiscaler_dll_path:
+                debug_log("OptiScaler.dll not found in extracted files")
+                return False, "OptiScaler.dll not found in extracted files"
 
-        if not optiscaler_dll_path:
-            debug_log("OptiScaler.dll not found in extracted files")
-            return False
-
-        success = True
-        copied_files = []
-
-        try:
-            # Copy OptiScaler.dll as the target filename (main proxy DLL)
+            # Install main DLL
             shutil.copy2(optiscaler_dll_path, target_path)
-            copied_files.append(target_filename)
+            copied_files = [target_filename]
             debug_log(f"Copied OptiScaler.dll as {target_filename}")
 
-            # Copy additional OptiScaler files
-            for root, _, files in os.walk(extracted_path):
-                for file in files:
-                    if file in self.get_additional_optiscaler_files():
-                        src_path = os.path.join(root, file)
-                        dest_file_path = os.path.join(dest_dir, file)
-                        try:
-                            shutil.copy2(src_path, dest_file_path)
-                            copied_files.append(file)
-                            debug_log(f"Copied additional file: {file}")
-                        except Exception as e:
-                            debug_log(f"Failed to copy {file}: {e}")
-                            success = False
+            # Copy additional files
+            additional_files = self._copy_additional_files(extracted_path, dest_dir, progress_callback)
+            copied_files.extend(additional_files)
 
-            # Create uninstaller script (like official setup)
-            self.create_uninstaller_script(dest_dir, target_filename, copied_files)
+            if progress_callback:
+                progress_callback("Creating configuration...")
+
+            # Create uninstaller script
+            self.create_uninstaller_script(str(dest_dir), target_filename, copied_files)
             
-            # Create default configuration if OptiScaler.ini wasn't copied
-            config_path = os.path.join(dest_dir, 'OptiScaler.ini')
-            if not os.path.exists(config_path):
+            # Create default configuration if needed
+            config_path = dest_dir / 'OptiScaler.ini'
+            if not config_path.exists():
                 gpu_type = self.detect_gpu_type()
-                self.create_default_config(dest_dir, gpu_type)
+                self.create_default_config(str(dest_dir), gpu_type)
                 debug_log("Created default OptiScaler configuration")
 
-        except Exception as e:
-            debug_log(f"Installation failed: {e}")
-            success = False
+            debug_log("Installation completed successfully")
+            if progress_callback:
+                progress_callback("Installation completed!")
+            return True, "Installation completed successfully"
 
-        debug_log(f"Installation completed successfully: {success}")
-        return success
+        except Exception as e:
+            debug_log(f"Installation failed with exception: {e}")
+            return False, f"Installation failed: {e}"
+    
+    def _determine_install_directory(self, game_path):
+        """Determine correct installation directory (Unreal Engine vs regular game)"""
+        game_path = Path(game_path)
+        
+        # Check for Unreal Engine structure
+        unreal_dir = game_path / "Engine" / "Binaries" / "Win64"
+        if unreal_dir.is_dir():
+            debug_log(f"Detected Unreal Engine, installing to: {unreal_dir}")
+            return unreal_dir
+        else:
+            debug_log(f"Installing to game root: {game_path}")
+            return game_path
 
     def get_additional_optiscaler_files(self):
         """
         Get list of additional OptiScaler files to copy (excluding main DLL).
         Based on official OptiScaler file structure.
         """
-        return [
-            "OptiScaler.ini",
-            "amd_fidelityfx_dx12.dll",
-            "amd_fidelityfx_vk.dll", 
-            "libxess_dx11.dll",
-            "libxess.dll",
-            "nvngx_dlss.dll",  # DLSS library if present
-        ]
+        return OptiScalerConfig.ADDITIONAL_FILES.copy()
+
+    def list_available_target_filenames(self, extracted_path=None):
+        """
+        List possible target filenames for OptiScaler based on official source code.
+        Returns a list of supported DLL/ASI filenames from OptiScaler dllmain.cpp
+        """
+        return OptiScalerConfig.PROXY_FILENAMES.copy()
+
+    def _find_optiscaler_dll(self, extracted_path):
+        """Find OptiScaler.dll in extracted files with optimized search"""
+        extracted_path = Path(extracted_path)
+        
+        # Direct check first (most common case)
+        direct_path = extracted_path / 'OptiScaler.dll'
+        if direct_path.exists():
+            debug_log(f"Found OptiScaler.dll directly: {direct_path}")
+            return str(direct_path)
+        
+        # Search in subdirectories (limited depth for performance)
+        for dll_path in extracted_path.rglob('OptiScaler.dll'):
+            debug_log(f"Found OptiScaler.dll in subdirectory: {dll_path}")
+            return str(dll_path)
+        
+        debug_log("OptiScaler.dll not found in extracted files")
+        return None
+
+    def _copy_additional_files(self, extracted_path, dest_dir, progress_callback=None):
+        """Copy additional OptiScaler files with improved error handling"""
+        extracted_path = Path(extracted_path)
+        dest_dir = Path(dest_dir)
+        copied_files = []
+        
+        additional_files = self.get_additional_optiscaler_files()
+        
+        for file in additional_files:
+            # Try direct path first
+            src_path = extracted_path / file
+            if not src_path.exists():
+                # Search in subdirectories
+                found_files = list(extracted_path.rglob(file))
+                if found_files:
+                    src_path = found_files[0]
+                else:
+                    debug_log(f"Additional file not found: {file}")
+                    continue
+            
+            dest_file_path = dest_dir / file
+            try:
+                shutil.copy2(src_path, dest_file_path)
+                copied_files.append(file)
+                debug_log(f"Copied additional file: {file}")
+                
+                if progress_callback and len(copied_files) % 2 == 0:  # Update progress occasionally
+                    progress_callback(f"Installing files... ({len(copied_files)}/{len(additional_files)})")
+                    
+            except Exception as e:
+                debug_log(f"Failed to copy {file}: {e}")
+        
+        return copied_files
 
     def create_uninstaller_script(self, install_dir, main_filename, copied_files):
         """
         Create an uninstaller script similar to official OptiScaler setup.
-        Based on setup_windows.bat uninstaller creation logic.
+        Enhanced with better error handling and Path usage.
         """
-        uninstaller_path = os.path.join(install_dir, 'Remove OptiScaler.bat')
+        install_dir = Path(install_dir)
+        uninstaller_path = install_dir / 'Remove OptiScaler.bat'
+        
         try:
             with open(uninstaller_path, 'w', encoding='utf-8') as f:
                 f.write('@echo off\n')
@@ -290,9 +545,10 @@ class OptiScalerManager:
     def create_default_config(self, install_dir, gpu_type='auto'):
         """
         Create a default OptiScaler.ini config based on official configuration structure.
-        Uses GPU detection to set appropriate defaults.
+        Enhanced with Path usage and better error handling.
         """
-        config_path = os.path.join(install_dir, 'OptiScaler.ini')
+        install_dir = Path(install_dir)
+        config_path = install_dir / 'OptiScaler.ini'
         
         # Default configuration based on OptiScaler source code Config.cpp
         default_config = f"""[OptiScaler]
@@ -399,82 +655,352 @@ ToggleOverlay=VK_INSERT
         return "string", None
 
     def read_optiscaler_ini(self, ini_path):
+        """
+        Read OptiScaler INI file with enhanced error handling and type inference
+        
+        Args:
+            ini_path: Path to INI file
+            
+        Returns:
+            dict: Parsed settings with metadata
+        """
+        ini_path = Path(ini_path)
+        
+        if not ini_path.exists():
+            debug_log(f"INI file not found: {ini_path}")
+            return {}
+            
         settings = {}
         current_section = None
         current_comments = []
 
-        with open(ini_path, 'r') as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
+        try:
+            with open(ini_path, 'r', encoding='utf-8') as f:
+                for line_num, line in enumerate(f, 1):
+                    line = line.strip()
+                    if not line:
+                        continue
 
-                if line.startswith('['):
-                    current_section = line[1:-1]
-                    settings[current_section] = {}
-                    current_comments = []
-                elif line.startswith(';'):
-                    current_comments.append(line[1:].strip())
-                elif '=' in line:
-                    key, value = line.split('=', 1)
-                    key = key.strip()
-                    # Remove inline comments from value
-                    value_without_inline_comment = value.split(';', 1)[0].strip()
-                    
-                    inferred_type, options = self._infer_type(value_without_inline_comment, "\n".join(current_comments))
+                    if line.startswith('['):
+                        # Section header
+                        if line.endswith(']'):
+                            current_section = line[1:-1].strip()
+                            settings[current_section] = {}
+                            current_comments = []
+                        else:
+                            debug_log(f"Malformed section header at line {line_num}: {line}")
+                            
+                    elif line.startswith(';'):
+                        # Comment line
+                        current_comments.append(line[1:].strip())
+                        
+                    elif '=' in line:
+                        # Key-value pair
+                        if not current_section:
+                            debug_log(f"Key-value pair outside section at line {line_num}: {line}")
+                            continue
+                            
+                        key, value = line.split('=', 1)
+                        key = key.strip()
+                        
+                        # Remove inline comments from value
+                        value_without_inline_comment = value.split(';', 1)[0].strip()
+                        
+                        inferred_type, options = self._infer_type(
+                            value_without_inline_comment, 
+                            "\n".join(current_comments)
+                        )
 
-                    if current_section:
                         settings[current_section][key] = {
                             "value": value_without_inline_comment,
                             "comment": "\n".join(current_comments),
                             "type": inferred_type,
                             "options": options
                         }
-                    current_comments = []
+                        current_comments = []
+                        
+        except UnicodeDecodeError as e:
+            debug_log(f"Unicode decode error reading INI file: {e}")
+            return {}
+        except Exception as e:
+            debug_log(f"Error reading INI file {ini_path}: {e}")
+            return {}
+            
+        debug_log(f"Successfully read INI file with {len(settings)} sections")
         return settings
 
     def write_optiscaler_ini(self, ini_path, settings):
-        with open(ini_path, 'w') as f:
-            for section, keys in settings.items():
-                f.write(f"[{section}]\n")
-                for key, data in keys.items():
-                    if data["comment"]:
-                        for comment_line in data["comment"].split('\n'):
-                            f.write(f"; {comment_line}\n")
-                    f.write(f"{key}={data['value']}\n")
-                f.write("\n") # Add a newline after each section for readability
+        """
+        Write OptiScaler INI file with enhanced error handling and formatting
+        
+        Args:
+            ini_path: Path to INI file
+            settings: Settings dictionary to write
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        ini_path = Path(ini_path)
+        
+        try:
+            # Create parent directory if needed
+            ini_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Create backup if file exists
+            if ini_path.exists():
+                backup_path = ini_path.with_suffix('.ini.backup')
+                shutil.copy2(ini_path, backup_path)
+                debug_log(f"Created backup: {backup_path}")
+            
+            with open(ini_path, 'w', encoding='utf-8') as f:
+                for section_name, keys in settings.items():
+                    f.write(f"[{section_name}]\n")
+                    
+                    for key, data in keys.items():
+                        # Write comments if present
+                        if data.get("comment"):
+                            for comment_line in data["comment"].split('\n'):
+                                if comment_line.strip():  # Skip empty comment lines
+                                    f.write(f"; {comment_line}\n")
+                        
+                        # Write key-value pair
+                        f.write(f"{key}={data['value']}\n")
+                    
+                    f.write("\n")  # Add spacing between sections
+            
+            debug_log(f"Successfully wrote INI file: {ini_path}")
+            return True
+            
+        except Exception as e:
+            debug_log(f"Error writing INI file {ini_path}: {e}")
+            return False
 
-    def install_optiscaler_threaded(self, game_path, status_callback=None, done_callback=None):
-        def worker():
-            if status_callback:
-                status_callback("Starting OptiScaler installation...")
+    def load_settings(self, game_path):
+        """
+        Load OptiScaler settings from game directory with fallback to defaults
+        
+        Args:
+            game_path: Path to game directory
+            
+        Returns:
+            dict: Settings dictionary
+        """
+        game_path = Path(game_path)
+        install_dir = self._determine_install_directory(game_path)
+        ini_path = install_dir / "OptiScaler.ini"
+        
+        debug_log(f"Loading settings from: {ini_path}")
+        
+        if ini_path.exists():
+            settings = self.read_optiscaler_ini(ini_path)
+            if settings:
+                return settings
+        
+        # Return default settings if file doesn't exist or is corrupted
+        debug_log("Using default settings")
+        return self._get_default_settings()
+
+    def save_settings(self, game_path, settings):
+        """
+        Save OptiScaler settings to game directory
+        
+        Args:
+            game_path: Path to game directory
+            settings: Settings dictionary to save
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        game_path = Path(game_path)
+        install_dir = self._determine_install_directory(game_path)
+        ini_path = install_dir / "OptiScaler.ini"
+        
+        debug_log(f"Saving settings to: {ini_path}")
+        return self.write_optiscaler_ini(ini_path, settings)
+
+    def _get_default_settings(self):
+        """
+        Get default OptiScaler settings
+        
+        Returns:
+            dict: Default settings structure
+        """
+        return {
+            "Engine": {
+                "Mode": {
+                    "value": "1",
+                    "comment": "OptiScaler mode: 0=Off, 1=Performance, 2=Quality",
+                    "type": "options",
+                    "options": {"0": "Off", "1": "Performance", "2": "Quality"}
+                },
+                "Scale": {
+                    "value": "1.5",
+                    "comment": "Scaling factor",
+                    "type": "float",
+                    "options": None
+                }
+            }
+        }
+
+    def install_optiscaler_threaded(self, game_path, target_filename="nvngx.dll", progress_callback=None):
+        """
+        Install OptiScaler in a separate thread with comprehensive progress tracking
+        
+        Args:
+            game_path: Path to game directory
+            target_filename: Target proxy DLL filename
+            progress_callback: Function to call with progress updates
+            
+        Returns:
+            threading.Thread: Thread object for monitoring
+        """
+        
+        def install_worker():
+            """Worker function for installing OptiScaler"""
+            try:
+                debug_log(f"Starting threaded OptiScaler installation to: {game_path}")
                 
-            zip_path = self._download_latest_release(progress_callback=status_callback)
-            if not zip_path:
-                if status_callback:
-                    status_callback("Download failed.")
-                if done_callback:
-                    done_callback(False)
-                return
+                # Enhanced progress callback wrapper
+                def enhanced_progress(stage, data=None):
+                    if progress_callback:
+                        progress_data = {
+                            "stage": stage,
+                            "game_path": str(game_path),
+                            "target_filename": target_filename,
+                            "timestamp": datetime.now().isoformat()
+                        }
+                        if data:
+                            progress_data.update(data)
+                        progress_callback(stage, progress_data)
                 
-            extracted_path = self._extract_release(zip_path, progress_callback=status_callback)
-            if not extracted_path:
-                if status_callback:
-                    status_callback("Extraction failed.")
-                if done_callback:
-                    done_callback(False)
-                return
+                enhanced_progress("install_start")
                 
-            if status_callback:
-                status_callback("Installing files...")
+                # Perform installation
+                success, message = self.install_optiscaler(
+                    game_path, 
+                    target_filename, 
+                    progress_callback=enhanced_progress
+                )
                 
-            result = self.install_optiscaler(game_path, overwrite=True)
-            if done_callback:
-                done_callback(result)
-            if status_callback:
-                status_callback("Installation completed!" if result else "Installation failed.")
-        t = threading.Thread(target=worker)
-        t.start()
+                if success:
+                    debug_log("Threaded installation completed successfully")
+                    enhanced_progress("install_complete", {"status": "success", "message": message})
+                else:
+                    debug_log(f"Threaded installation failed: {message}")
+                    enhanced_progress("install_error", {"status": "error", "message": message})
+                    
+            except Exception as e:
+                error_msg = f"Installation thread error: {e}"
+                debug_log(error_msg)
+                if progress_callback:
+                    progress_callback("install_error", {
+                        "status": "error", 
+                        "message": error_msg,
+                        "game_path": str(game_path)
+                    })
+        
+        # Create and start thread
+        thread = threading.Thread(target=install_worker, daemon=True)
+        thread.start()
+        return thread
+
+    def download_optiscaler_threaded(self, download_dir=None, progress_callback=None):
+        """
+        Download OptiScaler in a separate thread with improved error handling and progress tracking
+        
+        Args:
+            download_dir: Override download directory
+            progress_callback: Function to call with progress updates
+            
+        Returns:
+            threading.Thread: Thread object for monitoring
+        """
+        
+        def download_worker():
+            """Worker function for downloading OptiScaler"""
+            try:
+                debug_log("Starting threaded OptiScaler download")
+                
+                # Download with progress tracking
+                archive_path = self._download_latest_release(progress_callback=progress_callback)
+                
+                if archive_path:
+                    debug_log("Threaded download completed successfully")
+                    if progress_callback:
+                        progress_callback("download_complete", {"status": "success", "archive_path": archive_path})
+                else:
+                    debug_log("Threaded download failed")
+                    if progress_callback:
+                        progress_callback("download_error", {"status": "error", "message": "Download failed"})
+                        
+            except Exception as e:
+                error_msg = f"Download thread error: {e}"
+                debug_log(error_msg)
+                if progress_callback:
+                    progress_callback("download_error", {"status": "error", "message": error_msg})
+        
+        # Create and start thread
+        thread = threading.Thread(target=download_worker, daemon=True)
+        thread.start()
+        return thread
+
+    def uninstall_optiscaler_threaded(self, game_path, progress_callback=None):
+        """
+        Uninstall OptiScaler in a separate thread with progress tracking
+        
+        Args:
+            game_path: Path to game directory
+            progress_callback: Function to call with progress updates
+            
+        Returns:
+            threading.Thread: Thread object for monitoring
+        """
+        
+        def uninstall_worker():
+            """Worker function for uninstalling OptiScaler"""
+            try:
+                debug_log(f"Starting threaded OptiScaler uninstall from: {game_path}")
+                
+                if progress_callback:
+                    progress_callback("uninstall_start", {
+                        "game_path": str(game_path),
+                        "timestamp": datetime.now().isoformat()
+                    })
+                
+                # Perform uninstallation
+                success, message = self.uninstall_optiscaler(game_path)
+                
+                if success:
+                    debug_log("Threaded uninstall completed successfully")
+                    if progress_callback:
+                        progress_callback("uninstall_complete", {
+                            "status": "success", 
+                            "message": message,
+                            "game_path": str(game_path)
+                        })
+                else:
+                    debug_log(f"Threaded uninstall failed: {message}")
+                    if progress_callback:
+                        progress_callback("uninstall_error", {
+                            "status": "error", 
+                            "message": message,
+                            "game_path": str(game_path)
+                        })
+                        
+            except Exception as e:
+                error_msg = f"Uninstall thread error: {e}"
+                debug_log(error_msg)
+                if progress_callback:
+                    progress_callback("uninstall_error", {
+                        "status": "error", 
+                        "message": error_msg,
+                        "game_path": str(game_path)
+                    })
+        
+        # Create and start thread
+        thread = threading.Thread(target=uninstall_worker, daemon=True)
+        thread.start()
+        return thread
 
     def list_available_target_filenames(self, extracted_path=None):
         """
@@ -497,36 +1023,76 @@ ToggleOverlay=VK_INSERT
 
     def detect_gpu_type(self):
         """
-        Enhanced GPU detection based on OptiScaler's source code methods.
-        Detects GPU type using system files and WMI queries.
+        Enhanced GPU detection with improved error handling and multiple detection methods.
         Returns: 'nvidia', 'amd', 'intel', or 'unknown'
         """
-        # Check for NVIDIA using nvapi64.dll in system32
-        nvapi_path = os.path.join(os.environ.get('WINDIR', 'C:\\Windows'), 'System32', 'nvapi64.dll')
-        if os.path.exists(nvapi_path):
-            debug_log("NVIDIA GPU detected via nvapi64.dll")
-            return 'nvidia'
+        # Method 1: Check for NVIDIA using nvapi64.dll
+        nvidia_paths = [
+            Path(os.environ.get('WINDIR', 'C:\\Windows')) / 'System32' / 'nvapi64.dll',
+            Path(os.environ.get('WINDIR', 'C:\\Windows')) / 'SysWOW64' / 'nvapi64.dll'
+        ]
         
-        # Use WMI to query video controllers (similar to OptiScaler's wmic approach)
+        for nvapi_path in nvidia_paths:
+            if nvapi_path.exists():
+                debug_log(f"NVIDIA GPU detected via {nvapi_path}")
+                return 'nvidia'
+        
+        # Method 2: Use WMI to query video controllers
         try:
-            import subprocess
             result = subprocess.run(
                 ['wmic', 'path', 'win32_VideoController', 'get', 'name'], 
-                capture_output=True, text=True, timeout=10
+                capture_output=True, 
+                text=True, 
+                timeout=10,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
-            gpu_names = result.stdout.lower()
             
-            if 'nvidia' in gpu_names:
-                debug_log("NVIDIA GPU detected via WMI")
-                return 'nvidia'
-            elif 'amd' in gpu_names or 'radeon' in gpu_names:
-                debug_log("AMD GPU detected via WMI")
-                return 'amd'
-            elif 'intel' in gpu_names:
-                debug_log("Intel GPU detected via WMI") 
-                return 'intel'
+            if result.returncode == 0:
+                gpu_names = result.stdout.lower()
+                
+                # Check in order of preference
+                if 'nvidia' in gpu_names:
+                    debug_log("NVIDIA GPU detected via WMI")
+                    return 'nvidia'
+                elif 'amd' in gpu_names or 'radeon' in gpu_names:
+                    debug_log("AMD GPU detected via WMI")
+                    return 'amd'
+                elif 'intel' in gpu_names:
+                    debug_log("Intel GPU detected via WMI") 
+                    return 'intel'
+            else:
+                debug_log(f"WMI query failed with return code: {result.returncode}")
+                
+        except subprocess.TimeoutExpired:
+            debug_log("GPU detection via WMI timed out")
+        except FileNotFoundError:
+            debug_log("WMIC command not found")
         except Exception as e:
             debug_log(f"GPU detection via WMI failed: {e}")
+        
+        # Method 3: Check DirectX/OpenGL drivers
+        try:
+            driver_paths = [
+                'nvoglv64.dll',  # NVIDIA OpenGL
+                'atigktxx.dll',  # AMD
+                'ig9icd64.dll',  # Intel
+            ]
+            
+            system32 = Path(os.environ.get('WINDIR', 'C:\\Windows')) / 'System32'
+            
+            for driver in driver_paths:
+                if (system32 / driver).exists():
+                    if 'nvog' in driver:
+                        debug_log(f"NVIDIA GPU detected via driver: {driver}")
+                        return 'nvidia'
+                    elif 'atig' in driver:
+                        debug_log(f"AMD GPU detected via driver: {driver}")
+                        return 'amd'
+                    elif 'ig9' in driver:
+                        debug_log(f"Intel GPU detected via driver: {driver}")
+                        return 'intel'
+        except Exception as e:
+            debug_log(f"Driver detection failed: {e}")
         
         debug_log("GPU type could not be determined")
         return 'unknown'
@@ -587,113 +1153,180 @@ ToggleOverlay=VK_INSERT
 
     def run_dynamic_setup(self, extracted_path, game_path, selected_filename, gpu_type, use_dlss, dlss_source_path=None, overwrite=False):
         """
-        Automates the OptiScaler setup steps dynamically, based on user/system choices.
-        - extracted_path: path to extracted OptiScaler files
-        - game_path: game folder
-        - selected_filename: DLL/ASI filename to use (e.g. dxgi.dll)
-        - gpu_type: 'nvidia', 'amd', 'intel', or 'unknown'
-        - use_dlss: True/False (whether to copy nvngx_dlss.dll)
-        - dlss_source_path: path to nvngx_dlss.dll (if needed)
-        - overwrite: whether to overwrite existing target file
-        Returns: (success, message)
+        Automates the OptiScaler setup steps dynamically with enhanced error handling
+        
+        Args:
+            extracted_path: path to extracted OptiScaler files
+            game_path: game folder
+            selected_filename: DLL/ASI filename to use (e.g. dxgi.dll)
+            gpu_type: 'nvidia', 'amd', 'intel', or 'unknown'
+            use_dlss: True/False (whether to copy nvngx_dlss.dll)
+            dlss_source_path: path to nvngx_dlss.dll (if needed)
+            overwrite: whether to overwrite existing target file
+            
+        Returns:
+            tuple: (success: bool, message: str)
         """
         try:
+            extracted_path = Path(extracted_path)
+            game_path = Path(game_path)
+            
+            debug_log(f"Running dynamic setup for {game_path} with filename {selected_filename}")
+            
             # 1. Remove marker file if present
-            marker = os.path.join(extracted_path, '!! EXTRACT ALL FILES TO GAME FOLDER !!')
-            if os.path.exists(marker):
-                os.remove(marker)
+            marker = extracted_path / '!! EXTRACT ALL FILES TO GAME FOLDER !!'
+            if marker.exists():
+                marker.unlink()
+                debug_log("Removed extraction marker file")
 
             # 2. Check for OptiScaler.dll
-            optiscaler_dll = os.path.join(extracted_path, 'OptiScaler.dll')
-            if not os.path.exists(optiscaler_dll):
+            optiscaler_dll = extracted_path / 'OptiScaler.dll'
+            if not optiscaler_dll.exists():
                 return False, 'OptiScaler.dll not found in extracted files.'
 
             # 3. Prepare destination
-            dest_file = os.path.join(game_path, selected_filename)
-            if os.path.exists(dest_file):
+            dest_file = game_path / selected_filename
+            if dest_file.exists():
                 if overwrite:
-                    os.remove(dest_file)
+                    dest_file.unlink()
+                    debug_log(f"Removed existing {selected_filename}")
                 else:
                     return False, f"{selected_filename} already exists in game folder."
 
-            # 4. Rename/copy OptiScaler.dll to selected filename
+            # 4. Copy OptiScaler.dll to selected filename
             shutil.copy2(optiscaler_dll, dest_file)
+            debug_log(f"Copied OptiScaler.dll to {selected_filename}")
 
             # 5. DLSS handling (for AMD/Intel and if requested)
-            nvngx_target = os.path.join(game_path, 'nvngx.dll')
+            nvngx_target = game_path / 'nvngx.dll'
             if use_dlss and gpu_type in ('amd', 'intel'):
-                if not dlss_source_path or not os.path.exists(dlss_source_path):
+                if not dlss_source_path or not Path(dlss_source_path).exists():
                     return False, 'nvngx_dlss.dll not found for DLSS spoofing.'
-                temp_copy = os.path.join(game_path, 'nvngx_dlss_copy.dll')
+                
+                temp_copy = game_path / 'nvngx_dlss_copy.dll'
                 shutil.copy2(dlss_source_path, temp_copy)
-                if os.path.exists(nvngx_target):
-                    os.remove(nvngx_target)
-                os.rename(temp_copy, nvngx_target)
+                
+                if nvngx_target.exists():
+                    nvngx_target.unlink()
+                    
+                temp_copy.rename(nvngx_target)
+                debug_log("DLSS spoofing configured")
 
-            # 6. Create uninstaller
-            uninstaller_path = os.path.join(game_path, 'Remove OptiScaler.bat')
+            # 6. Create enhanced uninstaller
+            self._create_uninstaller_batch(game_path, selected_filename, use_dlss, gpu_type)
+
+            return True, 'OptiScaler setup completed successfully.'
+            
+        except Exception as e:
+            debug_log(f"Error during dynamic setup: {e}")
+            return False, f'Error during setup: {e}'
+
+    def _create_uninstaller_batch(self, game_path, selected_filename, use_dlss, gpu_type):
+        """
+        Create an enhanced uninstaller batch file
+        
+        Args:
+            game_path: Game directory path
+            selected_filename: Proxy DLL filename used
+            use_dlss: Whether DLSS spoofing was used
+            gpu_type: GPU type for DLSS handling
+        """
+        uninstaller_path = game_path / 'Remove OptiScaler.bat'
+        
+        try:
             with open(uninstaller_path, 'w', encoding='utf-8') as f:
                 f.write('@echo off\n')
                 f.write('cls\n')
                 f.write('echo Removing OptiScaler...\n')
-                if use_dlss and gpu_type in ('amd', 'intel'):
-                    f.write('del nvngx.dll\n')
-                f.write('del OptiScaler.log\n')
-                f.write('del OptiScaler.ini\n')
-                f.write(f'del {selected_filename}\n')
-                f.write('del /Q D3D12_Optiscaler\\*\n')
-                f.write('rd D3D12_Optiscaler\n')
-                f.write('del /Q DlssOverrides\\*\n')
-                f.write('rd DlssOverrides\n')
-                f.write('del /Q Licenses\\*\n')
-                f.write('rd Licenses\n')
                 f.write('echo.\n')
-                f.write('echo OptiScaler removed!\n')
+                
+                # Remove DLSS spoof if used
+                if use_dlss and gpu_type in ('amd', 'intel'):
+                    f.write('if exist nvngx.dll (\n')
+                    f.write('    del nvngx.dll\n')
+                    f.write('    echo Removed DLSS spoofing file\n')
+                    f.write(')\n')
+                
+                # Remove OptiScaler files
+                optiscaler_files = [
+                    'OptiScaler.log',
+                    'OptiScaler.ini',
+                    selected_filename
+                ]
+                
+                for filename in optiscaler_files:
+                    f.write(f'if exist "{filename}" (\n')
+                    f.write(f'    del "{filename}"\n')
+                    f.write(f'    echo Removed {filename}\n')
+                    f.write(')\n')
+                
+                # Remove directories
+                directories = [
+                    'D3D12_Optiscaler',
+                    'DlssOverrides',
+                    'Licenses'
+                ]
+                
+                for dirname in directories:
+                    f.write(f'if exist "{dirname}" (\n')
+                    f.write(f'    rd /s /q "{dirname}"\n')
+                    f.write(f'    echo Removed {dirname} directory\n')
+                    f.write(')\n')
+                
+                f.write('echo.\n')
+                f.write('echo OptiScaler removed successfully!\n')
                 f.write('pause\n')
-                f.write('del %0\n')
-
-            return True, 'OptiScaler setup completed successfully.'
+                f.write('del %0\n')  # Self-delete
+                
+            debug_log(f"Created uninstaller batch file: {uninstaller_path}")
+            
         except Exception as e:
-            return False, f'Error during setup: {e}'
+            debug_log(f"Failed to create uninstaller: {e}")
 
     def uninstall_optiscaler(self, game_path):
         """
-        Uninstall OptiScaler from a game directory
+        Uninstall OptiScaler from a game directory with improved error handling
+        
+        Args:
+            game_path: Path to game directory
+            
+        Returns:
+            tuple: (success: bool, message: str)
         """
+        game_path = Path(game_path)
         debug_log(f"Starting OptiScaler uninstall from: {game_path}")
         
         try:
-            # Auto-detect Unreal Engine (Engine/Binaries/Win64 exists)
-            unreal_dir = os.path.join(game_path, "Engine", "Binaries", "Win64")
-            if os.path.isdir(unreal_dir):
-                install_dir = unreal_dir
-                debug_log(f"Detected Unreal Engine, removing from: {install_dir}")
-            else:
-                install_dir = game_path
-                debug_log(f"Using game root directory: {install_dir}")
+            # Determine installation directory
+            install_dir = self._determine_install_directory(game_path)
+            debug_log(f"Uninstalling from: {install_dir}")
 
             removed_files = []
             removed_dirs = []
             
-            # List of OptiScaler files to remove
+            # List of OptiScaler files to remove (including proxy DLLs)
             optiscaler_files = [
                 "OptiScaler.dll",
                 "OptiScaler.ini", 
                 "OptiScaler.log",
                 "nvngx.dll",  # DLSS override file
-                "amd_fidelityfx_dx12.dll",
-                "amd_fidelityfx_vk.dll", 
-                "libxess_dx11.dll",
-                "libxess.dll",
-                "Remove OptiScaler.bat"
+                "Remove OptiScaler.bat",
+                "Setup OptiScaler.bat",
             ]
+            
+            # Add additional files and proxy filenames
+            optiscaler_files.extend(OptiScalerConfig.ADDITIONAL_FILES)
+            optiscaler_files.extend(OptiScalerConfig.PROXY_FILENAMES)
+            
+            # Remove duplicate entries
+            optiscaler_files = list(set(optiscaler_files))
             
             # Remove individual files
             for filename in optiscaler_files:
-                file_path = os.path.join(install_dir, filename)
-                if os.path.exists(file_path):
+                file_path = install_dir / filename
+                if file_path.exists():
                     try:
-                        os.remove(file_path)
+                        file_path.unlink()
                         removed_files.append(filename)
                         debug_log(f"Removed file: {filename}")
                     except Exception as e:
@@ -708,8 +1341,8 @@ ToggleOverlay=VK_INSERT
             
             # Remove directories
             for dirname in optiscaler_dirs:
-                dir_path = os.path.join(install_dir, dirname)
-                if os.path.exists(dir_path):
+                dir_path = install_dir / dirname
+                if dir_path.exists():
                     try:
                         shutil.rmtree(dir_path)
                         removed_dirs.append(dirname)
@@ -721,7 +1354,10 @@ ToggleOverlay=VK_INSERT
             if removed_files or removed_dirs:
                 summary = f"Successfully removed OptiScaler from {game_path}\n"
                 if removed_files:
-                    summary += f"Files removed: {', '.join(removed_files)}\n"
+                    summary += f"Files removed: {', '.join(removed_files[:5])}" # Limit display
+                    if len(removed_files) > 5:
+                        summary += f" and {len(removed_files) - 5} more files"
+                    summary += "\n"
                 if removed_dirs:
                     summary += f"Directories removed: {', '.join(removed_dirs)}"
                 debug_log("Uninstall completed successfully")
@@ -736,39 +1372,35 @@ ToggleOverlay=VK_INSERT
     def is_optiscaler_installed(self, game_path):
         """
         Check if OptiScaler is installed in the given game directory.
-        Enhanced to check for any OptiScaler proxy DLL, not just OptiScaler.dll
-        """
-        # Auto-detect Unreal Engine (Engine/Binaries/Win64 exists)
-        unreal_dir = os.path.join(game_path, "Engine", "Binaries", "Win64")
-        if os.path.isdir(unreal_dir):
-            check_dir = unreal_dir
-        else:
-            check_dir = game_path
+        Enhanced with better detection logic and performance optimization.
+        
+        Args:
+            game_path: Path to game directory
             
-        # Check for OptiScaler.ini first (most reliable indicator)
-        ini_file = os.path.join(check_dir, "OptiScaler.ini")
-        if os.path.exists(ini_file):
+        Returns:
+            bool: True if OptiScaler is detected, False otherwise
+        """
+        game_path = Path(game_path)
+        
+        # Determine check directory
+        check_dir = self._determine_install_directory(game_path)
+        
+        debug_log(f"Checking for OptiScaler installation in: {check_dir}")
+        
+        # Primary check: OptiScaler.ini (most reliable indicator)
+        ini_file = check_dir / "OptiScaler.ini"
+        if ini_file.exists():
             debug_log(f"OptiScaler detected via OptiScaler.ini: {ini_file}")
             return True
-            
-        # Check for any of the possible proxy DLL names that could be OptiScaler
-        possible_proxy_files = self.list_available_target_filenames()
         
-        for proxy_filename in possible_proxy_files:
-            proxy_path = os.path.join(check_dir, proxy_filename)
-            if os.path.exists(proxy_path):
-                # Additional check: see if there are other OptiScaler files nearby
-                optiscaler_indicators = [
-                    "OptiScaler.log",
-                    "amd_fidelityfx_dx12.dll",
-                    "amd_fidelityfx_vk.dll",
-                    "libxess.dll",
-                    "libxess_dx11.dll",
-                    "Remove OptiScaler.bat"
-                ]
-                
-                for indicator in optiscaler_indicators:
-                    if os.path.exists(os.path.join(check_dir, indicator)):
+        # Secondary check: Look for proxy DLLs with OptiScaler indicators
+        for proxy_filename in OptiScalerConfig.PROXY_FILENAMES:
+            proxy_path = check_dir / proxy_filename
+            if proxy_path.exists():
+                # Check for OptiScaler indicator files
+                for indicator in OptiScalerConfig.INSTALL_INDICATORS:
+                    indicator_path = check_dir / indicator
+                    if indicator_path.exists():
                         debug_log(f"OptiScaler detected via {proxy_filename} + {indicator}")
                         return True
         
