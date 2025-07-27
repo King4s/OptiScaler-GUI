@@ -48,6 +48,20 @@ class I18n:
             "status_scanning": "Scanning for games...",
             "status_installing": "Installing OptiScaler...",
             "status_downloading": "Downloading OptiScaler...",
+            "status_extracting": "Extracting files...",
+            "status_complete": "Installation complete!",
+            "status_failed": "Installation failed",
+            "status_uninstalling": "Uninstalling OptiScaler...",
+            
+            # OptiScaler Installation Status
+            "optiscaler_not_installed": "OptiScaler Not Installed",
+            "optiscaler_not_installed_msg": "OptiScaler is not installed in this game yet.\n\nClick the 'Install OptiScaler' button first to\ndownload and install OptiScaler for this game.\n\nThen you can edit the settings here.",
+            "back_to_games": "← Back to Games",
+            
+            # Error Messages
+            "error_no_games": "No games found. Please ensure Steam is installed.",
+            "error_install_failed": "Installation failed. Please try again.",
+            "error_uninstall_failed": "Uninstallation failed. Please try again.",
             "status_ready": "Ready",
             
             # Progress
@@ -234,8 +248,25 @@ class I18n:
             "processing": "Behandler...",
             "please_wait": "Vent venligst...",
             
+            # Status Messages
+            "status_scanning": "Scanner efter spil...",
+            "status_installing": "Installerer OptiScaler...",
+            "status_downloading": "Downloader OptiScaler...",
+            "status_extracting": "Udpakker filer...",
+            "status_complete": "Installation fuldført!",
+            "status_failed": "Installation fejlede",
+            "status_uninstalling": "Afinstallerer OptiScaler...",
+            
+            # OptiScaler Installation Status  
+            "optiscaler_not_installed": "OptiScaler ikke installeret",
+            "optiscaler_not_installed_msg": "OptiScaler er ikke installeret i dette spil endnu.\n\nTryk på 'Installer OptiScaler' knappen først for at\ndownloade og installere OptiScaler til dette spil.\n\nDerefter kan du redigere indstillingerne her.",
+            "back_to_games": "← Tilbage til Spil",
+            
             # Error Messages
             "error": "Fejl",
+            "error_no_games": "Ingen spil fundet. Sørg for at Steam er installeret.",
+            "error_install_failed": "Installation fejlede. Prøv venligst igen.",
+            "error_uninstall_failed": "Afinstallation fejlede. Prøv venligst igen.",
             "failed_to_save": "Kunne ikke gemme indstillinger:",
             "failed_to_load": "Kunne ikke indlæse indstillinger:",
             "installation_failed": "Installation fejlede:",
@@ -384,8 +415,25 @@ class I18n:
             "processing": "Przetwarzanie...",
             "please_wait": "Proszę czekać...",
             
+            # Status Messages
+            "status_scanning": "Skanowanie gier...",
+            "status_installing": "Instalowanie OptiScaler...",
+            "status_downloading": "Pobieranie OptiScaler...",
+            "status_extracting": "Rozpakowywanie plików...",
+            "status_complete": "Instalacja zakończona!",
+            "status_failed": "Instalacja nie powiodła się",
+            "status_uninstalling": "Odinstalowywanie OptiScaler...",
+            
+            # OptiScaler Installation Status
+            "optiscaler_not_installed": "OptiScaler Nie Zainstalowany",
+            "optiscaler_not_installed_msg": "OptiScaler nie jest jeszcze zainstalowany w tej grze.\n\nNaciśnij przycisk 'Zainstaluj OptiScaler' aby\npobrać i zainstalować OptiScaler dla tej gry.\n\nNastępnie możesz edytować ustawienia tutaj.",
+            "back_to_games": "← Powrót do Gier",
+            
             # Error Messages
             "error": "Błąd",
+            "error_no_games": "Nie znaleziono gier. Upewnij się, że Steam jest zainstalowany.",
+            "error_install_failed": "Instalacja nie powiodła się. Spróbuj ponownie.",
+            "error_uninstall_failed": "Odinstalowanie nie powiodło się. Spróbuj ponownie.",
             "failed_to_save": "Nie udało się zapisać ustawień:",
             "failed_to_load": "Nie udało się załadować ustawień:",
             "installation_failed": "Instalacja nie powiodła się:",

@@ -56,6 +56,8 @@
     "failed_to_save": "Failed to save settings"
   },
   "sections": {
+    "OptiScaler": "OptiScaler Main Settings",
+    "GPU": "Graphics Hardware Detection",
     "Upscalers": "Upscaling Technologies",
     "FrameGen": "Frame Generation",
     "OptiFG": "FSR 3.1 Frame Generation",
@@ -80,7 +82,9 @@
     "QualityOverrides": "Quality Mode Overrides",
     "DRS": "Dynamic Resolution Scaling",
     "HDR": "HDR Configuration",
-    "Hotfix": "Compatibility Hotfixes"
+    "Hotfix": "Compatibility Hotfixes",
+    "Overlay": "Performance Overlay",
+    "Hotkeys": "Keyboard Shortcuts"
   },
   "status": {
     "scanning": "Scanning for games...",

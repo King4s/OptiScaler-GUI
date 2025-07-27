@@ -1,52 +1,78 @@
 #!/usr/bin/env python3
 """
-Progress Bar component for OptiScaler-GUI
-Shows download and installation progress
+Progress Overlay component for OptiScaler-GUI
+Shows centered progress overlay during operations
 """
 
 import customtkinter as ctk
 import threading
 import time
 
-class ProgressFrame(ctk.CTkFrame):
+class ProgressOverlay(ctk.CTkFrame):
     def __init__(self, master, **kwargs):
-        super().__init__(master, **kwargs)
+        super().__init__(master, 
+                         width=300,
+                         height=120,
+                         fg_color=("gray90", "gray10"),
+                         border_width=2,
+                         border_color=("gray70", "gray30"),
+                         corner_radius=10,
+                         **kwargs)
         
         # Configure grid
         self.grid_columnconfigure(0, weight=1)
         
-        # Progress bar
-        self.progress_bar = ctk.CTkProgressBar(self)
-        self.progress_bar.grid(row=0, column=0, padx=10, pady=5, sticky="ew")
+        # Title label
+        self.title_label = ctk.CTkLabel(self, text="Processing", 
+                                       font=("Arial", 16, "bold"))
+        self.title_label.grid(row=0, column=0, padx=20, pady=(15, 5))
+        
+        # Progress bar - smaller and centered
+        self.progress_bar = ctk.CTkProgressBar(self, width=250, height=10)
+        self.progress_bar.grid(row=1, column=0, padx=20, pady=5)
         self.progress_bar.set(0)
         
         # Status label
-        self.status_label = ctk.CTkLabel(self, text="Ready")
-        self.status_label.grid(row=1, column=0, padx=10, pady=5)
+        self.status_label = ctk.CTkLabel(self, text="Please wait...", 
+                                        font=("Arial", 12))
+        self.status_label.grid(row=2, column=0, padx=20, pady=(5, 15))
         
         # Hide by default
-        self.grid_remove()
+        self.place_forget()
+        self._animation_running = False
         
-    def show_progress(self, message="Processing..."):
-        """Show the progress bar with a message"""
+    def show_overlay(self, title="Processing", message="Please wait..."):
+        """Show the centered progress overlay"""
+        self.title_label.configure(text=title)
         self.status_label.configure(text=message)
         self.progress_bar.set(0)
-        self.grid(row=0, column=0, sticky="ew")
         
-    def update_progress(self, value, message=None):
-        """Update progress bar value (0.0 to 1.0)"""
-        self.progress_bar.set(value)
-        if message:
-            self.status_label.configure(text=message)
+        # Center the overlay on the parent
+        self.update_idletasks()
+        parent_width = self.master.winfo_width()
+        parent_height = self.master.winfo_height()
+        overlay_width = 300
+        overlay_height = 120
+        
+        x = (parent_width - overlay_width) // 2
+        y = (parent_height - overlay_height) // 2
+        
+        self.place(x=x, y=y)
+        
+    def update_status(self, message):
+        """Update the status message"""
+        self.status_label.configure(text=message)
         self.update()
         
-    def hide_progress(self):
-        """Hide the progress bar"""
-        self.grid_remove()
+    def hide_overlay(self):
+        """Hide the progress overlay"""
+        self._animation_running = False
+        self.place_forget()
         
-    def start_indeterminate(self, message="Processing..."):
+    def start_indeterminate(self, title="Processing", message="Please wait..."):
         """Start indeterminate progress animation"""
-        self.show_progress(message)
+        self.show_overlay(title, message)
+        self._animation_running = True
         self._animate_indeterminate()
         
     def _animate_indeterminate(self):
@@ -54,8 +80,8 @@ class ProgressFrame(ctk.CTkFrame):
         def animate():
             value = 0
             direction = 1
-            while self.winfo_viewable():
-                value += direction * 0.02
+            while self._animation_running and self.winfo_viewable():
+                value += direction * 0.03
                 if value >= 1.0:
                     value = 1.0
                     direction = -1
@@ -64,8 +90,9 @@ class ProgressFrame(ctk.CTkFrame):
                     direction = 1
                 
                 try:
-                    self.progress_bar.set(value)
-                    self.update()
+                    if self._animation_running:
+                        self.progress_bar.set(value)
+                        self.update()
                     time.sleep(0.05)
                 except:
                     break
@@ -75,34 +102,34 @@ class ProgressFrame(ctk.CTkFrame):
         thread.start()
 
 class ProgressManager:
-    """Manages progress bars across the application"""
+    """Manages progress overlays across the application"""
     
     def __init__(self):
-        self.progress_frames = {}
+        self.progress_overlays = {}
         
-    def register_progress_frame(self, name, progress_frame):
-        """Register a progress frame with a name"""
-        self.progress_frames[name] = progress_frame
+    def register_progress_overlay(self, name, progress_overlay):
+        """Register a progress overlay with a name"""
+        self.progress_overlays[name] = progress_overlay
         
-    def show_progress(self, name, message="Processing..."):
-        """Show progress for a named frame"""
-        if name in self.progress_frames:
-            self.progress_frames[name].show_progress(message)
+    def show_progress(self, name, title="Processing", message="Please wait..."):
+        """Show progress for a named overlay"""
+        if name in self.progress_overlays:
+            self.progress_overlays[name].show_overlay(title, message)
             
-    def update_progress(self, name, value, message=None):
-        """Update progress for a named frame"""
-        if name in self.progress_frames:
-            self.progress_frames[name].update_progress(value, message)
+    def update_status(self, name, message):
+        """Update status message for a named overlay"""
+        if name in self.progress_overlays:
+            self.progress_overlays[name].update_status(message)
             
     def hide_progress(self, name):
-        """Hide progress for a named frame"""
-        if name in self.progress_frames:
-            self.progress_frames[name].hide_progress()
+        """Hide progress for a named overlay"""
+        if name in self.progress_overlays:
+            self.progress_overlays[name].hide_overlay()
             
-    def start_indeterminate(self, name, message="Processing..."):
-        """Start indeterminate progress for a named frame"""
-        if name in self.progress_frames:
-            self.progress_frames[name].start_indeterminate(message)
+    def start_indeterminate(self, name, title="Processing", message="Please wait..."):
+        """Start indeterminate progress for a named overlay"""
+        if name in self.progress_overlays:
+            self.progress_overlays[name].start_indeterminate(title, message)
 
 # Global progress manager
 progress_manager = ProgressManager()

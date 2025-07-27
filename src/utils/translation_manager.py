@@ -30,6 +30,11 @@ class TranslationManager:
             else:
                 print(f"Translation file not found: {filepath}")
                 self.translations[lang_code] = {}
+
+    def reload_translations(self):
+        """Reload all translation files from disk"""
+        self.translations.clear()
+        self.load_all_translations()
     
     def set_language(self, language_code: str):
         """Set the current language"""
@@ -89,7 +94,7 @@ class TranslationManager:
         title = self.get_text(section_key)
         
         # If we get back the key path (translation not found), return original section name
-        if title.startswith("[") and title.endswith("]"):
+        if title == f"[{section_key}]" or title == section_key:
             return section
         
         return title
@@ -148,6 +153,10 @@ def t(key_path: str, default: Optional[str] = None) -> str:
 def set_language(language_code: str):
     """Set the current language"""
     get_translation_manager().set_language(language_code)
+
+def reload_translations():
+    """Reload all translation files from disk"""
+    get_translation_manager().reload_translations()
 
 def get_languages() -> Dict[str, str]:
     """Get available languages with their display names"""

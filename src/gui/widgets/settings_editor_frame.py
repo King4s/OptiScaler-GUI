@@ -3,13 +3,17 @@ import os
 from optiscaler.manager import OptiScalerManager
 import customtkinter as ctk
 from pathlib import Path
-from utils.translation_manager import t, get_translation_manager
+from utils.translation_manager import t, get_translation_manager, reload_translations
 from utils.debug import debug_log
 
 class SettingsEditorFrame(ctk.CTkScrollableFrame):
     def __init__(self, master, game_path, on_back=None, **kwargs):
         debug_log(f"Creating SettingsEditorFrame for path: {game_path}")
         super().__init__(master, **kwargs)
+        
+        # Reload translations to ensure we have the latest section titles
+        reload_translations()
+        
         self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=1)
         self.game_path = game_path
@@ -83,7 +87,7 @@ class SettingsEditorFrame(ctk.CTkScrollableFrame):
             # Get translated section title
             tm = get_translation_manager()
             section_title = tm.get_section_title(section)
-            section_label = ctk.CTkLabel(section_frame, text=f"[{section_title}]", 
+            section_label = ctk.CTkLabel(section_frame, text=section_title, 
                                        font=("Arial", 18, "bold"))
             section_label.grid(row=0, column=0, padx=15, pady=10, sticky="w")
             row += 1
@@ -104,7 +108,7 @@ class SettingsEditorFrame(ctk.CTkScrollableFrame):
                 if description:
                     desc_text = description
                 else:
-                    desc_text = t("ui.no_description_available")
+                    desc_text = t("no_description_available")
                 
                 desc_label = ctk.CTkLabel(setting_frame, text=desc_text, 
                                         wraplength=400, justify="left", 

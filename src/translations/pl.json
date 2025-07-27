@@ -56,6 +56,8 @@
       "failed_to_save": "Nie udało się zapisać ustawień"
   },
   "sections": {
+    "OptiScaler": "OptiScaler Główne Ustawienia",
+    "GPU": "Wykrywanie Sprzętu Graficznego",
     "Upscalers": "Technologie Skalowania",
     "FrameGen": "Generowanie Klatek",
     "OptiFG": "FSR 3.1 Generowanie Klatek",
@@ -80,7 +82,9 @@
     "QualityOverrides": "Nadpisanie Trybu Jakości",
     "DRS": "Dynamiczne Skalowanie Rozdzielczości",
     "HDR": "Konfiguracja HDR",
-    "Hotfix": "Poprawki Kompatybilności"
+    "Hotfix": "Poprawki Kompatybilności",
+    "Overlay": "Nakładka Wydajności",
+    "Hotkeys": "Skróty Klawiszowe"
   },
   "status": {
     "scanning": "Skanowanie gier...",

@@ -56,6 +56,8 @@
       "failed_to_save": "Kunne ikke gemme indstillinger"
     },
   "sections": {
+    "OptiScaler": "OptiScaler Hoved Indstillinger",
+    "GPU": "Grafikkort Hardware Detektion",
     "Upscalers": "Opskaleringstekologier",
     "FrameGen": "Ramme Generering",
     "OptiFG": "FSR 3.1 Ramme Generering",
@@ -80,7 +82,9 @@
     "QualityOverrides": "Kvalitets Mode Tilsidesæt",
     "DRS": "Dynamisk Opløsnings Skalering",
     "HDR": "HDR Konfiguration",
-    "Hotfix": "Kompatibilitets Hotfixes"
+    "Hotfix": "Kompatibilitets Hotfixes",
+    "Overlay": "Ydeevne Overlay",
+    "Hotkeys": "Tastaturgenveje"
   },
   "status": {
     "scanning": "Scanner efter spil...",

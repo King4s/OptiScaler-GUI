@@ -1,4 +1,4 @@
 @echo off
 cd /d "%~dp0\src"
-python -m main
+"%~dp0\.venv\Scripts\python.exe" main.py
 pause
