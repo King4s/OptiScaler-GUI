@@ -9,7 +9,11 @@
 | Feature             | Status     |
 |---------------------|------------|
 | 📦 Portable Version    | ✅ v0.3.0   |
-| 🎮 Game Detection      | ✅ Steam    |
+| 🎮 Steam Auto-Detection | ✅ Full    |
+| 🎮 Manual Game Selection | ✅ All Platforms |
+| 🎯 Xbox Game Pass      | ✅ Manual   |
+| 🎯 Epic Games Store    | ✅ Manual   |
+| 🎯 GOG Galaxy         | ✅ Manual   |
 | 🚀 FSR / DLSS / XeSS   | ✅ All 3    |
 | 🐍 Python Runtime      | ✅ Bundled  |
 | 🌍 Multi-language UI   | ✅ DA / EN / PL |
