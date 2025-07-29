@@ -11,6 +11,7 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 from utils.debug import debug_log
+from utils.archive_extractor import archive_extractor
 
 # Configuration constants - moved to top for easier maintenance
 class OptiScalerConfig:
@@ -155,26 +156,21 @@ class OptiScalerManager:
             return None
     
     def _validate_archive(self, archive_path, progress_callback=None):
-        """Validate archive integrity using 7-Zip test"""
-        if not self._seven_zip_path:
-            debug_log("Cannot validate archive: 7-Zip not found")
-            return True  # Assume valid if we can't test
-        
+        """Validate archive integrity using robust validation methods"""
         try:
             if progress_callback:
                 progress_callback("Validating existing archive...")
             
-            result = subprocess.run(
-                [self._seven_zip_path, 't', str(archive_path)],
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                timeout=OptiScalerConfig.SUBPROCESS_TIMEOUT
-            )
-            return True
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
-            debug_log(f"Archive validation failed: {e}")
-            return False
+            # Use the robust archive extractor for validation
+            is_valid, message = archive_extractor.validate_archive(archive_path)
+            
+            if is_valid:
+                debug_log(f"Archive validation successful: {message}")
+            else:
+                debug_log(f"Archive validation failed: {message}")
+            
+            return is_valid
+            
         except Exception as e:
             debug_log(f"Unexpected error during validation: {e}")
             return False
@@ -223,7 +219,7 @@ class OptiScalerManager:
 
     def _extract_release(self, archive_path, game_path=None, progress_callback=None):
         """
-        Extract OptiScaler release archive with improved error handling
+        Extract OptiScaler release archive with robust fallback methods
         
         Args:
             archive_path: Path to archive file
@@ -241,23 +237,20 @@ class OptiScalerManager:
         
         debug_log(f"Extracting {archive_path} to {extract_path}")
         
-        # Clean up existing extraction
-        if extract_path.exists():
-            try:
-                shutil.rmtree(extract_path)
-                debug_log("Cleaned up existing extraction directory")
-            except Exception as e:
-                debug_log(f"Warning: Could not clean extraction directory: {e}")
+        # Use the robust archive extractor with fallback methods
+        success, message, extracted_path = archive_extractor.extract_archive(
+            archive_path, 
+            extract_path, 
+            progress_callback
+        )
         
-        extract_path.mkdir(parents=True, exist_ok=True)
-
-        # Determine extraction method
-        if archive_path.suffix.lower() == '.7z':
-            return self._extract_7z(archive_path, extract_path, progress_callback)
-        elif archive_path.suffix.lower() == '.zip':
-            return self._extract_zip(archive_path, extract_path, progress_callback)
+        if success:
+            debug_log(f"Extraction successful: {message}")
+            return extracted_path
         else:
-            debug_log(f"Unsupported archive format: {archive_path.suffix}")
+            debug_log(f"Extraction failed: {message}")
+            if progress_callback:
+                progress_callback(f"Extraction failed: {message}")
             return None
     
     def _extract_7z(self, archive_path, extract_path, progress_callback=None):

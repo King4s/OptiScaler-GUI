@@ -21,6 +21,7 @@ from typing import Tuple, Optional, Dict, List, Callable
 from utils.debug import debug_log
 from utils.compatibility_checker import compatibility_checker
 from utils.translation_manager import t
+from utils.archive_extractor import archive_extractor
 
 class OptiScalerRobustWrapper:
     """Robust wrapper for OptiScaler operations with fallback mechanisms"""
@@ -157,7 +158,7 @@ class OptiScalerRobustWrapper:
             return False
     
     def _fallback_install(self, game_path: str, **kwargs) -> Tuple[bool, str]:
-        """Fallback installation method"""
+        """Fallback installation method with robust archive extraction"""
         try:
             debug_log(f"Attempting fallback installation to {game_path}")
             
@@ -165,13 +166,38 @@ class OptiScalerRobustWrapper:
             cache_dir = Path("cache/optiscaler_downloads")
             extracted_dir = cache_dir / "extracted_optiscaler"
             
+            # First, try to find an existing extracted directory
             if not extracted_dir.exists():
-                return False, "No OptiScaler cache available for fallback installation"
+                # Try to find and extract from cached archive
+                archive_found = False
+                for archive_pattern in ["*.7z", "*.zip"]:
+                    archives = list(cache_dir.glob(archive_pattern))
+                    if archives:
+                        # Use the newest archive
+                        latest_archive = max(archives, key=lambda p: p.stat().st_mtime)
+                        debug_log(f"Found cached archive: {latest_archive}")
+                        
+                        # Extract using robust extractor
+                        success, message, extract_path = archive_extractor.extract_archive(
+                            latest_archive, 
+                            extracted_dir,
+                            progress_callback=lambda msg: debug_log(f"Extraction: {msg}")
+                        )
+                        
+                        if success:
+                            debug_log(f"Successfully extracted archive: {message}")
+                            archive_found = True
+                            break
+                        else:
+                            debug_log(f"Failed to extract {latest_archive}: {message}")
+                
+                if not archive_found:
+                    return False, "No OptiScaler cache available and no extractable archives found"
             
             # Find main OptiScaler.dll
             optiscaler_dll = extracted_dir / "OptiScaler.dll"
             if not optiscaler_dll.exists():
-                return False, "OptiScaler.dll not found in cache"
+                return False, "OptiScaler.dll not found in extracted files"
             
             # Install basic files
             game_path = Path(game_path)
@@ -216,7 +242,17 @@ class OptiScalerRobustWrapper:
                     except Exception as e:
                         debug_log(f"Failed to copy {file_name}: {e}")
             
-            success_msg = f"Fallback installation successful. Proxy installed, {len(copied_files)} additional files copied."
+            # Get extraction capabilities for user information
+            capabilities = archive_extractor.get_extraction_capabilities()
+            extraction_method = "Unknown"
+            if capabilities["system_7z_available"]:
+                extraction_method = "System 7z.exe"
+            elif capabilities["py7zr_available"]:
+                extraction_method = "Python py7zr library"
+            else:
+                extraction_method = "Python zipfile"
+            
+            success_msg = f"Fallback installation successful using {extraction_method}. Proxy installed, {len(copied_files)} additional files copied."
             return True, success_msg
             
         except Exception as e:

@@ -38,7 +38,68 @@ def main():
         # Import after path setup
         import customtkinter as ctk
         from utils import debug  # Import debug system first to patch print
+        from utils.system_requirements import requirements_checker
         from gui.main_window import MainWindow
+        
+        # Check system requirements before starting GUI
+        report = requirements_checker.generate_user_report()
+        
+        # If critical requirements are missing, show error and exit
+        if report["overall_status"] == "not_ready":
+            try:
+                from CTkMessagebox import CTkMessagebox
+                
+                # Build error message
+                missing_items = []
+                for name, req in report["requirements"].items():
+                    if req["required"] and not req["status"]:
+                        missing_items.append(req["message"])
+                
+                error_msg = "Critical requirements missing:\n\n" + "\n".join(missing_items)
+                
+                if report["recommendations"]:
+                    error_msg += "\n\nRequired actions:"
+                    for rec in report["recommendations"]:
+                        if rec["priority"] == "critical":
+                            error_msg += f"\n• {rec['action']}"
+                
+                # Show error dialog
+                CTkMessagebox(
+                    title="System Requirements Not Met",
+                    message=error_msg,
+                    icon="cancel"
+                )
+                
+            except ImportError:
+                # Fallback to console if GUI not available
+                print("❌ Critical system requirements not met!")
+                for name, req in report["requirements"].items():
+                    if req["required"] and not req["status"]:
+                        print(f"  Missing: {req['message']}")
+                
+                print("\nPlease install missing requirements and try again.")
+            
+            sys.exit(1)
+        
+        # Show warning for functional but not optimal setup
+        if report["overall_status"] == "functional":
+            try:
+                from CTkMessagebox import CTkMessagebox
+                
+                warnings = []
+                for rec in report["recommendations"]:
+                    if rec["priority"] == "optional":
+                        warnings.append(f"• {rec['description']}: {rec['action']}")
+                
+                if warnings:
+                    warning_msg = "OptiScaler GUI will work but performance could be improved:\n\n" + "\n".join(warnings)
+                    CTkMessagebox(
+                        title="Performance Notice",
+                        message=warning_msg,
+                        icon="warning"
+                    )
+            except ImportError:
+                pass  # Skip warning if GUI not available
         
         # Set appearance mode and theme
         ctk.set_appearance_mode("system")
