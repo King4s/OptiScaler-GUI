@@ -8,6 +8,8 @@ from utils.debug import debug_log
 
 class SettingsEditorFrame(ctk.CTkScrollableFrame):
     def __init__(self, master, game_path, on_back=None, **kwargs):
+        import time
+        start_time = time.time()
         debug_log(f"Creating SettingsEditorFrame for path: {game_path}")
         super().__init__(master, **kwargs)
         
@@ -27,7 +29,8 @@ class SettingsEditorFrame(ctk.CTkScrollableFrame):
         self._load_settings()
         debug_log(f"Settings loaded, creating widgets...")
         self._create_widgets()
-        debug_log(f"SettingsEditorFrame created successfully")
+        end_time = time.time()
+        debug_log(f"SettingsEditorFrame created successfully in {end_time - start_time:.3f} seconds")
 
     def _load_settings(self):
         if os.path.exists(self.ini_path):

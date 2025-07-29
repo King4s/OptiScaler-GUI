@@ -7,6 +7,73 @@ Shows centered progress overlay during operations
 import customtkinter as ctk
 import threading
 import time
+import tkinter as tk
+from tkinter import Canvas
+
+class Custom3DProgressBar(ctk.CTkFrame):
+    """Custom 3D progress bar that works everywhere"""
+    def __init__(self, master, width=250, height=12, **kwargs):
+        super().__init__(master, width=width, height=height, 
+                         fg_color="transparent", **kwargs)
+        
+        self.width = width
+        self.height = height
+        self.progress_value = 0.0
+        
+        # Create canvas for custom drawing with proper background
+        self.canvas = Canvas(self, width=width, height=height, 
+                           highlightthickness=0, bg="#2b2b2b")
+        self.canvas.pack(fill="both", expand=True)
+        
+        self._draw_progress()
+        
+    def set(self, value):
+        """Set progress value (0.0 to 1.0)"""
+        self.progress_value = max(0.0, min(1.0, value))
+        self._draw_progress()
+        
+    def _draw_progress(self):
+        """Draw the 3D progress bar"""
+        self.canvas.delete("all")
+        
+        # Draw background track with 3D effect
+        # Outer shadow
+        self.canvas.create_rectangle(1, 1, self.width-1, self.height-1, 
+                                   fill="#1a1a1a", outline="", width=0)
+        
+        # Main background
+        self.canvas.create_rectangle(2, 2, self.width-2, self.height-2, 
+                                   fill="#404040", outline="", width=0)
+        
+        # Inner highlight
+        self.canvas.create_rectangle(3, 3, self.width-3, 4, 
+                                   fill="#555555", outline="", width=0)
+        
+        # Progress fill with 3D effect
+        if self.progress_value > 0:
+            progress_width = max(4, (self.width - 4) * self.progress_value)
+            
+            # Main progress fill
+            self.canvas.create_rectangle(2, 2, progress_width + 2, self.height-2,
+                                       fill="#0078d4", outline="", width=0)
+            
+            # 3D highlight on top
+            self.canvas.create_rectangle(2, 2, progress_width + 2, 4,
+                                       fill="#409cff", outline="", width=0)
+            
+            # 3D shadow on bottom
+            self.canvas.create_rectangle(2, self.height-3, progress_width + 2, self.height-2,
+                                       fill="#005a9e", outline="", width=0)
+            
+            # Bright highlight stripe
+            if progress_width > 8:
+                highlight_width = min(progress_width * 0.4, 20)
+                self.canvas.create_rectangle(2, 3, highlight_width + 2, self.height//2,
+                                           fill="#60b6ff", outline="", width=0)
+        
+    def update_idletasks(self):
+        """Compatibility method"""
+        self.canvas.update_idletasks()
 
 class ProgressOverlay(ctk.CTkFrame):
     def __init__(self, master, **kwargs):
@@ -27,9 +94,9 @@ class ProgressOverlay(ctk.CTkFrame):
                                        font=("Arial", 16, "bold"))
         self.title_label.grid(row=0, column=0, padx=20, pady=(15, 5))
         
-        # Progress bar - smaller and centered
-        self.progress_bar = ctk.CTkProgressBar(self, width=250, height=10)
-        self.progress_bar.grid(row=1, column=0, padx=20, pady=5)
+        # Progress bar with true 3D effect that works everywhere
+        self.progress_bar = Custom3DProgressBar(self, width=250, height=12)
+        self.progress_bar.grid(row=1, column=0, padx=20, pady=8)
         self.progress_bar.set(0)
         
         # Status label
@@ -40,6 +107,9 @@ class ProgressOverlay(ctk.CTkFrame):
         # Hide by default
         self.place_forget()
         self._animation_running = False
+        self._animation_value = 0.0
+        self._animation_direction = 1
+        self._animation_id = None
         
     def show_overlay(self, title="Processing", message="Please wait..."):
         """Show the centered progress overlay"""
@@ -50,82 +120,90 @@ class ProgressOverlay(ctk.CTkFrame):
         # Use relative positioning for better centering
         self.place(relx=0.5, rely=0.5, anchor="center")
         
-        # If relative positioning doesn't work, fallback to absolute
-        self.after(10, self._verify_positioning)
-        
-    def _verify_positioning(self):
-        """Verify and correct positioning if needed"""
-        try:
-            # Check if the overlay is visible and properly positioned
-            if self.winfo_viewable():
-                x = self.winfo_x()
-                y = self.winfo_y()
-                
-                # If positioned at (0,0) or negative, recalculate
-                if x <= 0 or y <= 0:
-                    self.master.update_idletasks()
-                    parent_width = self.master.winfo_width()
-                    parent_height = self.master.winfo_height()
-                    
-                    if parent_width > 1 and parent_height > 1:
-                        x = (parent_width - 300) // 2
-                        y = (parent_height - 120) // 2
-                        x = max(x, 10)
-                        y = max(y, 10)
-                        self.place(x=x, y=y)
-        except:
-            # Ignore any errors during position verification
-            pass
+        # Bring to front to ensure visibility
+        self.lift()
         
     def update_status(self, message):
         """Update the status message"""
         self.status_label.configure(text=message)
-        self.update()
         
+    def start_indeterminate(self, title="Processing", message="Please wait..."):
+        """Start indeterminate progress animation with 3D effect"""
+        # Stop any existing animation first
+        self._animation_running = False
+        if self._animation_id is not None:
+            try:
+                self.after_cancel(self._animation_id)
+            except:
+                pass
+            self._animation_id = None
+        
+        # Show overlay first
+        self.show_overlay(title, message)
+        
+        # Start smooth 3D animation
+        self._animation_running = True
+        self._animation_value = 0.0
+        self._animation_direction = 1
+        
+        # Force immediate first animation step
+        self._animate_step()
+        
+    def _animate_step(self):
+        """Smooth 3D animation step"""
+        if not self._animation_running:
+            self._animation_id = None
+            return
+            
+        try:
+            # Update animation value with smooth acceleration/deceleration
+            self._animation_value += self._animation_direction * 0.03
+            
+            if self._animation_value >= 1.0:
+                self._animation_value = 1.0
+                self._animation_direction = -1
+            elif self._animation_value <= 0.0:
+                self._animation_value = 0.0
+                self._animation_direction = 1
+            
+            # Apply smooth easing for 3D effect
+            eased_value = self._ease_in_out_cubic(self._animation_value)
+            
+            # Update progress bar with smooth 3D animation
+            self.progress_bar.set(eased_value)
+            
+            # Schedule next animation step
+            if self._animation_running:
+                self._animation_id = self.after(50, self._animate_step)  # 20 FPS
+            else:
+                self._animation_id = None
+                
+        except Exception as e:
+            self._animation_running = False
+            self._animation_id = None
+            return
+            
+    def _ease_in_out_cubic(self, t):
+        """Cubic easing function for smooth 3D effect"""
+        if t < 0.5:
+            return 4 * t * t * t
+        else:
+            return 1 - pow(-2 * t + 2, 3) / 2
+            
     def hide_overlay(self):
         """Hide the progress overlay"""
         self._animation_running = False
+        
+        # Cancel any pending animation callback
+        if self._animation_id is not None:
+            try:
+                self.after_cancel(self._animation_id)
+            except:
+                pass
+            self._animation_id = None
+            
+        self.progress_bar.set(0)  # Reset progress bar
         self.place_forget()
-        
-    def start_indeterminate(self, title="Processing", message="Please wait..."):
-        """Start indeterminate progress animation"""
-        # Ensure parent has proper dimensions before showing
-        self.master.update_idletasks()
-        
-        # Small delay to ensure parent is fully rendered
-        self.after(10, lambda: self._show_and_animate(title, message))
-        
-    def _show_and_animate(self, title, message):
-        """Show overlay and start animation after delay"""
-        self.show_overlay(title, message)
-        self._animation_running = True
-        self._animate_indeterminate()
-        
-    def _animate_indeterminate(self):
-        """Animate indeterminate progress"""
-        def animate():
-            value = 0
-            direction = 1
-            while self._animation_running and self.winfo_viewable():
-                value += direction * 0.03
-                if value >= 1.0:
-                    value = 1.0
-                    direction = -1
-                elif value <= 0.0:
-                    value = 0.0
-                    direction = 1
-                
-                try:
-                    if self._animation_running:
-                        self.progress_bar.set(value)
-                        self.update()
-                    time.sleep(0.05)
-                except:
-                    break
-        
-        # Run animation in thread to avoid blocking UI
-        thread = threading.Thread(target=animate, daemon=True)
-        thread.start()
 
 class ProgressManager:
     """Manages progress overlays across the application"""

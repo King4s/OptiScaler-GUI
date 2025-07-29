@@ -8,6 +8,7 @@ from gui.widgets.global_settings_frame import GlobalSettingsFrame
 from utils.translation_manager import t
 from utils.debug import set_debug_enabled, is_debug_enabled, debug_log
 from utils.progress import ProgressManager, progress_manager
+from utils.update_manager import update_manager
 
 # Application version
 VERSION = "1.0.0"
@@ -37,6 +38,9 @@ class MainWindow(ctk.CTk):
         
         # Show default view
         self.show_game_list()
+        
+        # Check for updates on startup (after UI is ready)
+        self.after(1000, self._check_for_updates_on_startup)
     
     def _create_header(self):
         """Create header with navigation"""
@@ -265,29 +269,42 @@ class MainWindow(ctk.CTk):
             for widget in self.content_frame.winfo_children():
                 widget.destroy()
             
-            # Show progress overlay while generating settings editor
+            # Show progress overlay while creating settings editor
+            from utils.progress import progress_manager
+            # Show progress animation AND start creating editor simultaneously
             progress_manager.start_indeterminate("main", "Settings Editor", "Loading OptiScaler settings...")
             
-            def load_settings_threaded():
-                """Load settings editor in background thread"""
+            # Create editor in background while animation runs
+            def create_editor_background():
                 try:
-                    # Create settings editor frame with correct path
+                    # Create settings editor frame with correct path (runs in parallel with animation)
                     editor_frame = SettingsEditorFrame(
                         self.content_frame,
-                        game_path=optiscaler_path,  # Use the actual OptiScaler installation path
+                        game_path=optiscaler_path,
                         on_back=self.show_game_list
                     )
                     
-                    # Update UI in main thread
-                    self.after(0, lambda: self._display_settings_editor(editor_frame))
+                    # Return the created frame
+                    return editor_frame
+                    
                 except Exception as e:
                     debug_log(f"ERROR: Failed to create settings editor: {e}")
-                    self.after(0, lambda: self._display_settings_error(e))
+                    return None
             
-            # Start loading in background
-            import threading
-            load_thread = threading.Thread(target=load_settings_threaded, daemon=True)
-            load_thread.start()
+            def finish_loading():
+                # Create the editor (this will take however long it takes)
+                editor_frame = create_editor_background()
+                
+                # Hide progress and show result
+                progress_manager.hide_progress("main")
+                
+                if editor_frame:
+                    self._display_settings_editor(editor_frame)
+                else:
+                    self._display_settings_error("Failed to create settings editor")
+            
+            # Start editor creation after a small delay to let animation start
+            self.after(100, finish_loading)
             
         except Exception as e:
             debug_log(f"ERROR: Failed to start settings editor loading: {e}")
@@ -297,7 +314,7 @@ class MainWindow(ctk.CTk):
     def _display_settings_editor(self, editor_frame):
         """Display the settings editor after loading completes"""
         try:
-            progress_manager.hide_progress("main")
+            # Progress already hidden by create_editor function
             
             self.current_frame = editor_frame
             self.current_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
@@ -327,3 +344,47 @@ class MainWindow(ctk.CTk):
         back_button = ctk.CTkButton(error_frame, text="← Back to Games", 
                                    command=self.show_game_list)
         back_button.pack(pady=10)
+    
+    def _check_for_updates_on_startup(self):
+        """Check for OptiScaler updates on startup"""
+        debug_log("Checking for OptiScaler updates on startup...")
+        
+        def check_updates_background():
+            """Check for updates in background thread"""
+            try:
+                update_info = update_manager.check_for_updates()
+                if update_info.get("available", False):
+                    # Schedule UI update in main thread
+                    self.after(0, lambda: self._show_update_notification(update_info))
+                else:
+                    debug_log("No updates available on startup")
+            except Exception as e:
+                debug_log(f"Update check failed on startup: {e}")
+        
+        # Run update check in background to avoid blocking UI
+        import threading
+        update_thread = threading.Thread(target=check_updates_background, daemon=True)
+        update_thread.start()
+    
+    def _show_update_notification(self, update_info):
+        """Show update notification to user"""
+        from customtkinter import CTkMessagebox
+        
+        latest_version = update_info.get("latest_version", "Unknown")
+        release_info = update_info.get("release_info", {})
+        release_name = release_info.get("name", latest_version)
+        
+        debug_log(f"Showing update notification for version {latest_version}")
+        
+        result = CTkMessagebox(
+            title=t("ui.optiscaler_update_available"), 
+            message=f"{t('ui.startup_update_message')}\n\n"
+                   f"{t('ui.current')}: {update_info.get('cached_version', 'Unknown')}\n"
+                   f"{t('ui.latest')}: {latest_version}\n"
+                   f"{t('ui.release')}: {release_name}\n\n"
+                   f"{t('ui.update_individual_games')}",
+            icon="info", 
+            option_1=t("ui.ok")
+        )
+        
+        debug_log("Update notification shown to user")

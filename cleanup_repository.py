@@ -158,7 +158,9 @@ if __name__ == "__main__":
     print("This script will remove temporary, debug, and test files")
     print("=" * 60)
     
-    # Auto-run cleanup without user input
-    print("✅ Auto-running cleanup...")
-    cleanup_repository()
-    check_remaining_files()
+    response = input("Do you want to proceed with cleanup? [y/N]: ")
+    if response.lower() in ['y', 'yes']:
+        cleanup_repository()
+        check_remaining_files()
+    else:
+        print("❌ Cleanup cancelled")
