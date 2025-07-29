@@ -13,11 +13,12 @@ from utils.performance import timed
 from utils.debug import debug_log
 
 class Game:
-    def __init__(self, name, path, appid=None, image_path=None):
+    def __init__(self, name, path, appid=None, image_path=None, optiscaler_installed=False):
         self.name = name
         self.path = str(path)  # Ensure string for compatibility
         self.appid = appid
         self.image_path = image_path
+        self.optiscaler_installed = optiscaler_installed  # Track OptiScaler installation status
 
 class GameScanner:
     def __init__(self):
@@ -96,6 +97,54 @@ class GameScanner:
                 found_paths.append(str(path))
                 debug_log(f"Found Xbox path: {path}")
         return found_paths
+
+    def _detect_optiscaler(self, game_path):
+        """Detect if OptiScaler is installed in a game directory"""
+        try:
+            game_path = Path(game_path)
+            
+            # OptiScaler indicator files
+            optiscaler_files = [
+                'nvngx_dlss.dll',     # Common OptiScaler DLL
+                'nvngx_dlssg.dll',    # DLSS-G version
+                'OptiScaler.dll',     # Direct OptiScaler
+                'nvngx.dll',          # NVIDIA proxy
+                'dxgi.dll',           # DirectX proxy
+                'winmm.dll',          # Windows multimedia proxy
+            ]
+            
+            # Check directories to scan for OptiScaler files
+            check_directories = [game_path]  # Start with main directory
+            
+            # Add Unreal Engine directory if it exists (critical for UE games!)
+            unreal_engine_dir = game_path / "Engine" / "Binaries" / "Win64"
+            if unreal_engine_dir.exists() and unreal_engine_dir.is_dir():
+                check_directories.append(unreal_engine_dir)
+                debug_log(f"Added Unreal Engine directory to OptiScaler detection: {unreal_engine_dir}")
+            
+            # Check for indicator files in all relevant directories
+            for check_dir in check_directories:
+                for file_name in optiscaler_files:
+                    if (check_dir / file_name).exists():
+                        debug_log(f"Found OptiScaler indicator file: {file_name} in {check_dir}")
+                        return True
+                
+                # Check in common OptiScaler subdirectories within each directory
+                optiscaler_subdirs = ["D3D12_Optiscaler", "OptiScaler", "mods", "plugins"]
+                for subdir in optiscaler_subdirs:
+                    subdir_path = check_dir / subdir
+                    if subdir_path.exists() and subdir_path.is_dir():
+                        # Check for OptiScaler files in subdirectory
+                        for file_name in optiscaler_files:
+                            if (subdir_path / file_name).exists():
+                                debug_log(f"Found OptiScaler in subdirectory: {check_dir}/{subdir}/{file_name}")
+                                return True
+            
+            return False
+            
+        except Exception as e:
+            debug_log(f"Error detecting OptiScaler in {game_path}: {e}")
+            return False
 
     def _is_game_folder(self, path):
         """Enhanced game folder detection with improved performance"""
@@ -220,7 +269,8 @@ class GameScanner:
             game_path = steamapps_path / "common" / installdir
             if game_path.exists() and self._is_game_folder(game_path):
                 image_path = self.fetch_game_image(name, appid)
-                return Game(name=name, path=str(game_path), appid=appid, image_path=image_path)
+                optiscaler_installed = self._detect_optiscaler(game_path)
+                return Game(name=name, path=str(game_path), appid=appid, image_path=image_path, optiscaler_installed=optiscaler_installed)
             
         except Exception as e:
             debug_log(f"Error parsing ACF file {acf_file}: {e}")
@@ -265,12 +315,14 @@ class GameScanner:
             if game_info:
                 name, appid = game_info
                 image_path = self.fetch_game_image(name, appid)
-                game = Game(name=name, path=str(game_folder), appid=appid, image_path=image_path)
+                optiscaler_installed = self._detect_optiscaler(game_folder)
+                game = Game(name=name, path=str(game_folder), appid=appid, image_path=image_path, optiscaler_installed=optiscaler_installed)
                 games.append(game)
             else:
                 # Fallback: use folder name
                 image_path = self.fetch_game_image(game_folder.name)
-                game = Game(name=game_folder.name, path=str(game_folder), image_path=image_path)
+                optiscaler_installed = self._detect_optiscaler(game_folder)
+                game = Game(name=game_folder.name, path=str(game_folder), image_path=image_path, optiscaler_installed=optiscaler_installed)
                 games.append(game)
         
         return games
@@ -316,7 +368,8 @@ class GameScanner:
                     if has_egstore or has_manifest:
                         game_name = game_folder.name.replace("_", " ").replace("-", " ").title()
                         image_path = self.fetch_game_image(game_name)
-                        epic_games.append(Game(name=game_name, path=str(game_folder), image_path=image_path))
+                        optiscaler_installed = self._detect_optiscaler(game_folder)
+                        epic_games.append(Game(name=game_name, path=str(game_folder), image_path=image_path, optiscaler_installed=optiscaler_installed))
                         
             except (OSError, PermissionError) as e:
                 debug_log(f"Error scanning Epic Games path {epic_path}: {e}")
@@ -346,14 +399,16 @@ class GameScanner:
                                 game_name = game_info.get("gameTitle", 
                                     game_folder.name.replace("_", " ").replace("-", " ").title())
                                 image_path = self.fetch_game_image(game_name)
-                                gog_games.append(Game(name=game_name, path=str(game_folder), image_path=image_path))
+                                optiscaler_installed = self._detect_optiscaler(game_folder)
+                                gog_games.append(Game(name=game_name, path=str(game_folder), image_path=image_path, optiscaler_installed=optiscaler_installed))
                                 continue
                         except (json.JSONDecodeError, UnicodeDecodeError, KeyError) as e:
                             debug_log(f"Error parsing GOG info file {info_files[0].name}: {e}")
                     
                     # Fallback: use folder name
                     game_name = game_folder.name.replace("_", " ").replace("-", " ").title()
-                    gog_games.append(Game(name=game_name, path=str(game_folder)))
+                    optiscaler_installed = self._detect_optiscaler(game_folder)
+                    gog_games.append(Game(name=game_name, path=str(game_folder), optiscaler_installed=optiscaler_installed))
                     
             except (OSError, PermissionError) as e:
                 debug_log(f"Error scanning GOG path {gog_path}: {e}")
@@ -376,7 +431,8 @@ class GameScanner:
                         
                     game_name = game_folder.name.replace("_", " ").replace("-", " ").title()
                     image_path = self.fetch_game_image(game_name)
-                    xbox_games.append(Game(name=game_name, path=str(game_folder), image_path=image_path))
+                    optiscaler_installed = self._detect_optiscaler(game_folder)
+                    xbox_games.append(Game(name=game_name, path=str(game_folder), image_path=image_path, optiscaler_installed=optiscaler_installed))
                     
             except (OSError, PermissionError) as e:
                 debug_log(f"Error scanning Xbox Games path {xbox_path}: {e}")

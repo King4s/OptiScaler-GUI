@@ -1,13 +1,128 @@
 #!/usr/bin/env python3
 """
-Build script for creating standalone OptiScaler-GUI executable
+OptiScaler GUI Build Script
+Builds standalone executable using PyInstaller
 """
 
-import subprocess
-import sys
 import os
+import sys
+import subprocess
 import shutil
 from pathlib import Path
+
+def check_pyinstaller():
+    """Check if PyInstaller is installed"""
+    try:
+        import PyInstaller
+        print("✅ PyInstaller found")
+        return True
+    except ImportError:
+        print("❌ PyInstaller not found. Installing...")
+        try:
+            subprocess.run([sys.executable, '-m', 'pip', 'install', 'pyinstaller'], check=True)
+            print("✅ PyInstaller installed successfully")
+            return True
+        except subprocess.CalledProcessError:
+            print("❌ Failed to install PyInstaller")
+            return False
+
+def clean_build():
+    """Clean previous build artifacts"""
+    print("🧹 Cleaning previous builds...")
+    
+    build_dirs = ['dist', 'build', '__pycache__']
+    for build_dir in build_dirs:
+        if Path(build_dir).exists():
+            shutil.rmtree(build_dir)
+    
+    # Clean Python cache files
+    for root, dirs, files in os.walk('.'):
+        for d in dirs[:]:
+            if d == '__pycache__':
+                shutil.rmtree(Path(root) / d)
+                dirs.remove(d)
+        for f in files:
+            if f.endswith('.pyc'):
+                os.remove(Path(root) / f)
+    
+    print("✅ Cleanup completed")
+
+def build_executable():
+    """Build the executable using PyInstaller"""
+    print("🔨 Building executable...")
+    print("This may take several minutes...")
+    
+    try:
+        # Build using the spec file
+        subprocess.run([
+            sys.executable, '-m', 'PyInstaller', 
+            'build_executable.spec', 
+            '--clean', 
+            '--noconfirm'
+        ], check=True)
+        
+        print("✅ Build completed successfully!")
+        return True
+        
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Build failed with error: {e}")
+        return False
+
+def show_results():
+    """Show build results and instructions"""
+    print("\n📁 Build Results:")
+    
+    single_file = Path('dist/OptiScaler-GUI.exe')
+    portable_dir = Path('dist/OptiScaler-GUI-Portable')
+    
+    if single_file.exists():
+        size_mb = single_file.stat().st_size / (1024 * 1024)
+        print(f"   ✅ Single file: {single_file} ({size_mb:.1f} MB)")
+    else:
+        print("   ❌ Single file executable not found")
+    
+    if portable_dir.exists():
+        print(f"   ✅ Portable:    {portable_dir}/")
+    else:
+        print("   ❌ Portable directory not found")
+    
+    print("\n🎯 Distribution Options:")
+    print("   • Single file: Share OptiScaler-GUI.exe (slower startup)")
+    print("   • Portable:    Share entire OptiScaler-GUI-Portable/ folder (faster startup)")
+    print("\n💡 Tips:")
+    print("   • Single file is easier to distribute but slower to start")
+    print("   • Portable version starts faster but requires entire folder")
+    print("   • Both versions include all dependencies - no Python installation required")
+
+def main():
+    """Main build process"""
+    print("🚀 OptiScaler GUI Build Script")
+    print("=" * 50)
+    
+    # Check if we're in the right directory
+    if not Path('src/main.py').exists():
+        print("❌ Error: Please run this script from the OptiScaler-GUI root directory")
+        print("   Expected file: src/main.py")
+        sys.exit(1)
+    
+    # Check dependencies
+    if not check_pyinstaller():
+        sys.exit(1)
+    
+    # Clean previous builds
+    clean_build()
+    
+    # Build executable
+    if not build_executable():
+        sys.exit(1)
+    
+    # Show results
+    show_results()
+    
+    print("\n🎉 Build process completed!")
+
+if __name__ == "__main__":
+    main()
 
 def install_pyinstaller():
     """Install PyInstaller if not already installed"""
@@ -28,6 +143,7 @@ block_cipher = None
 datas = [
     ('assets', 'assets'),
     ('cache', 'cache'),
+    ('src/translations', 'src/translations'),
 ]
 
 # Hidden imports for all dependencies
@@ -93,7 +209,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='assets/icons/xbox_logo.png' if os.path.exists('assets/icons/xbox_logo.png') else None,
+    icon=None,
 )
 
 coll = COLLECT(
@@ -149,6 +265,20 @@ def build_executable():
             if os.path.exists(file):
                 shutil.copy2(file, dist_dir / file)
                 print(f"✅ Copied {file}")
+        
+        # Copy 7-Zip executable for complete archive extraction support
+        seven_zip_paths = [
+            r'C:\Program Files\7-Zip\7z.exe',
+            r'C:\Program Files (x86)\7-Zip\7z.exe'
+        ]
+        
+        for seven_zip_path in seven_zip_paths:
+            if os.path.exists(seven_zip_path):
+                shutil.copy2(seven_zip_path, dist_dir / '7z.exe')
+                print("✅ Copied 7z.exe for complete archive support")
+                break
+        else:
+            print("⚠️ 7-Zip not found - archive extraction will use Python fallback only")
         
         print(f"\\n🎉 Standalone OptiScaler-GUI is ready!")
         print(f"📁 Location: {dist_dir.absolute()}")

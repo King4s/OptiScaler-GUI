@@ -7,8 +7,83 @@ from utils.translation_manager import t
 from utils.progress import progress_manager
 from utils.debug import debug_log
 from utils.update_manager import update_manager
-from utils.robust_wrapper import robust_wrapper
 from utils.compatibility_checker import compatibility_checker
+
+# PyInstaller-aware import system
+import sys
+import os
+
+# Detect if running in PyInstaller bundle
+RUNNING_IN_PYINSTALLER = getattr(sys, 'frozen', False)
+
+if RUNNING_IN_PYINSTALLER:
+    debug_log("Running in PyInstaller - using simplified game management")
+    # Simplified wrapper for PyInstaller
+    class SimpleGameWrapper:
+        def __init__(self):
+            # Add optiscaler_manager for compatibility
+            try:
+                from optiscaler.manager import OptiScalerManager
+                self.optiscaler_manager = OptiScalerManager()
+                debug_log("OptiScalerManager initialized in SimpleGameWrapper")
+            except Exception as e:
+                debug_log(f"Failed to initialize OptiScalerManager in SimpleGameWrapper: {e}")
+                self.optiscaler_manager = None
+        
+        def safe_operation(self, operation, path):
+            if operation == "is_optiscaler_installed":
+                # Simple file-based check
+                try:
+                    from pathlib import Path
+                    game_path = Path(path)
+                    # Look for common OptiScaler files
+                    optiscaler_files = ['nvngx_dlss.dll', 'nvngx_dlssg.dll', 'OptiScaler.dll']
+                    for file in optiscaler_files:
+                        if (game_path / file).exists():
+                            return True, "OptiScaler detected", True
+                    return True, "OptiScaler not detected", False
+                except Exception as e:
+                    return False, f"Check failed: {e}", False
+            return False, "Operation not supported in PyInstaller mode", False
+        
+        def _fallback_is_installed(self, path):
+            # Same simple check
+            try:
+                from pathlib import Path
+                game_path = Path(path)
+                optiscaler_files = ['nvngx_dlss.dll', 'nvngx_dlssg.dll', 'OptiScaler.dll']
+                for file in optiscaler_files:
+                    if (game_path / file).exists():
+                        return True
+                return False
+            except:
+                return False
+        
+        def validate_operation_environment(self, operation, path):
+            return True, []  # Always valid in simple mode
+        
+        def _fallback_install(self, path):
+            return False, "Installation not supported in PyInstaller mode - please use development version"
+        
+        def _fallback_uninstall(self, path):
+            return False, "Uninstallation not supported in PyInstaller mode - please use development version"
+    
+    robust_wrapper = SimpleGameWrapper()
+    debug_log("Using SimpleGameWrapper for PyInstaller compatibility")
+else:
+    # Normal development mode
+    try:
+        from utils.robust_wrapper import robust_wrapper
+        debug_log("Successfully imported robust_wrapper (development mode)")
+    except ImportError as e:
+        debug_log(f"Failed to import robust_wrapper: {e}")
+        # Create a minimal fallback
+        class FallbackRobustWrapper:
+            def safe_operation(self, operation, path):
+                return False, "robust_wrapper not available", False
+            def _fallback_is_installed(self, path):
+                return False
+        robust_wrapper = FallbackRobustWrapper()
 
 class GameListFrame(ctk.CTkScrollableFrame):
     def __init__(self, master, games, game_scanner, on_edit_settings, **kwargs):
@@ -132,13 +207,8 @@ class GameListFrame(ctk.CTkScrollableFrame):
             buttons_frame.grid(row=0, column=2, padx=5, pady=5, sticky="e")
             buttons_frame.grid_columnconfigure(0, weight=1)
 
-            # Check if OptiScaler is installed (using robust wrapper)
-            success, message, is_installed = robust_wrapper.safe_operation("is_optiscaler_installed", game.path)
-            if not success:
-                # Fallback to basic check
-                debug_log(f"Robust check failed for {game.name}, using fallback: {message}")
-                is_installed = robust_wrapper._fallback_is_installed(game.path)
-            
+            # Check if OptiScaler is installed (now from game scanner)
+            is_installed = getattr(game, 'optiscaler_installed', False)
             debug_log(f"DEBUG: OptiScaler installed check for {game.name} at {game.path}: {is_installed}")
 
             # Install/Uninstall Button (dynamic based on installation status)
@@ -513,6 +583,15 @@ class GameListFrame(ctk.CTkScrollableFrame):
         # Clear update cache to force fresh check
         self._update_check_cache = None
         self._cache_timestamp = None
+        
+        # Update OptiScaler status for all games to get current state
+        for game in self.games:
+            try:
+                game.optiscaler_installed = self.game_scanner._detect_optiscaler(game.path)
+                debug_log(f"Updated OptiScaler status for {game.name}: {game.optiscaler_installed}")
+            except Exception as e:
+                debug_log(f"Failed to update OptiScaler status for {game.name}: {e}")
+                game.optiscaler_installed = False
         
         # Clear current display
         for widget in self.winfo_children():

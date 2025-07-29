@@ -8,11 +8,24 @@ import sys
 import os
 from pathlib import Path
 
-# Add src to path
-current_dir = Path(__file__).parent
-src_dir = current_dir / "src"
-if str(src_dir) not in sys.path:
-    sys.path.insert(0, str(src_dir))
+# PyInstaller-compatible path handling
+def setup_paths():
+    """Setup paths for both development and PyInstaller environments"""
+    if getattr(sys, 'frozen', False):
+        # PyInstaller environment
+        bundle_dir = Path(sys._MEIPASS)
+        src_dir = bundle_dir / 'src'
+    else:
+        # Development environment
+        current_dir = Path(__file__).parent
+        src_dir = current_dir.parent
+    
+    if str(src_dir) not in sys.path:
+        sys.path.insert(0, str(src_dir))
+    
+    return src_dir
+
+setup_paths()
 
 import shutil
 from utils.translation_manager import t

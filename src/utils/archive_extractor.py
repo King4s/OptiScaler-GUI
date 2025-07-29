@@ -8,11 +8,24 @@ import sys
 import os
 from pathlib import Path
 
-# Add src to path
-current_dir = Path(__file__).parent
-src_dir = current_dir.parent
-if str(src_dir) not in sys.path:
-    sys.path.insert(0, str(src_dir))
+# PyInstaller-compatible path handling
+def setup_paths():
+    """Setup paths for both development and PyInstaller environments"""
+    if getattr(sys, 'frozen', False):
+        # PyInstaller environment
+        bundle_dir = Path(sys._MEIPASS)
+        src_dir = bundle_dir / 'src'
+    else:
+        # Development environment
+        current_dir = Path(__file__).parent
+        src_dir = current_dir.parent
+    
+    if str(src_dir) not in sys.path:
+        sys.path.insert(0, str(src_dir))
+    
+    return src_dir
+
+setup_paths()
 
 import shutil
 import subprocess
@@ -40,12 +53,34 @@ class ArchiveExtractor:
     """
     
     def __init__(self):
+        # Try bundled 7z.exe first (for portable version)
+        bundled_7z = self._get_bundled_7z_path()
+        
         self.seven_zip_paths = [
+            bundled_7z,  # Bundled 7z.exe (portable version)
             r'C:\Program Files\7-Zip\7z.exe',
             r'C:\Program Files (x86)\7-Zip\7z.exe',
             '7z'  # Try system PATH
         ]
+        # Filter out None values
+        self.seven_zip_paths = [path for path in self.seven_zip_paths if path is not None]
         self.system_7z_path = self._find_system_7z()
+        
+    def _get_bundled_7z_path(self):
+        """Get path to bundled 7z.exe in portable version"""
+        if getattr(sys, 'frozen', False):
+            # PyInstaller environment - check next to executable
+            exe_dir = Path(sys.executable).parent
+            bundled_7z = exe_dir / '7z.exe'
+            if bundled_7z.exists():
+                return str(bundled_7z)
+        else:
+            # Development environment - check in project root
+            project_root = Path(__file__).parents[2]  # Go up from src/utils/
+            bundled_7z = project_root / '7z.exe'
+            if bundled_7z.exists():
+                return str(bundled_7z)
+        return None
         
     def _find_system_7z(self):
         """Find available system 7-Zip executable"""

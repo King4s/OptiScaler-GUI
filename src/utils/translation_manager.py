@@ -1,12 +1,23 @@
 import json
 import os
+import sys
+from pathlib import Path
 from typing import Dict, Any, Optional
 
 class TranslationManager:
     def __init__(self):
         self.translations: Dict[str, Dict[str, Any]] = {}
         self.current_language = "en"
-        self.translations_dir = os.path.join(os.path.dirname(__file__), "..", "translations")
+        
+        # PyInstaller-compatible path handling
+        if getattr(sys, 'frozen', False):
+            # PyInstaller environment
+            bundle_dir = Path(sys._MEIPASS)
+            self.translations_dir = bundle_dir / 'src' / 'translations'
+        else:
+            # Development environment
+            self.translations_dir = Path(__file__).parent.parent / "translations"
+        
         self.load_all_translations()
     
     def load_all_translations(self):
@@ -18,11 +29,12 @@ class TranslationManager:
         }
         
         for lang_code, filename in translation_files.items():
-            filepath = os.path.join(self.translations_dir, filename)
-            if os.path.exists(filepath):
+            filepath = self.translations_dir / filename
+            if filepath.exists():
                 try:
                     with open(filepath, 'r', encoding='utf-8') as f:
                         self.translations[lang_code] = json.load(f)
+                    print(f"Loaded translation file: {filepath}")
                 except Exception as e:
                     print(f"Error loading translation file {filename}: {e}")
                     # Fallback to empty dict if file can't be loaded
