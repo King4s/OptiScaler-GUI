@@ -10,10 +10,10 @@
 |---------------------|------------|
 | 📦 Portable Version    | ✅ v0.3.0   |
 | 🎮 Steam Auto-Detection | ✅ Full    |
-| 🎮 Manual Game Selection | ✅ All Platforms |
-| 🎯 Xbox Game Pass      | ✅ Manual   |
-| 🎯 Epic Games Store    | ✅ Manual   |
-| 🎯 GOG Galaxy         | ✅ Manual   |
+| 🎮 Epic Games Auto-Detection | ✅ Full    |
+| � GOG Galaxy Auto-Detection | ✅ Full    |
+| � Xbox Game Pass Auto-Detection | ✅ Full    |
+| � Manual Path Selection | ✅ All Platforms |
 | 🚀 FSR / DLSS / XeSS   | ✅ All 3    |
 | 🐍 Python Runtime      | ✅ Bundled  |
 | 🌍 Multi-language UI   | ✅ DA / EN / PL |
