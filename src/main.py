@@ -7,6 +7,7 @@ A user-friendly GUI for managing OptiScaler installations
 import sys
 import os
 from pathlib import Path
+from __version__ import __version__
 
 def setup_environment():
     """Setup environment for both script and standalone execution"""

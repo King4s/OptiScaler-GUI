@@ -4,12 +4,32 @@
 [![Python](https://img.shields.io/badge/Python-3.8+-green.svg)](https://python.org)
 [![Platform](https://img.shields.io/badge/Platform-Windows-blue.svg)](https://microsoft.com/windows)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/King4s/OptiScaler-GUI)](https://github.com/King4s/OptiScaler-GUI/releases)
 
 **A user-friendly GUI wrapper for OptiScaler - making upscaling technologies accessible to everyone!**
 
 Transform your gaming experience with AMD FSR, Intel XeSS, and NVIDIA DLSS through an intuitive interface.
 
-**Version: 0.2.0** | **Status: Active Development**
+**Version: 0.3.0** | **Status: Early Development** | **🚀 NEW: Portable Version Available!**
+
+## 🆕 What's New in v0.3.0
+
+### 📦 **Portable Version - No Installation Required!**
+- **🎯 Download & Run**: Get the portable ZIP, extract, and run - no Python installation needed!
+- **📋 Complete Package**: All dependencies bundled including Python runtime and 7z.exe
+- **🔧 Self-Contained**: Works on any Windows system without additional software
+- **💿 Size**: ~143 MB portable package
+
+### 🚀 **Download Options**
+
+#### 🎯 **For End Users (Recommended)**
+**[📥 Download Portable Version v0.3.0](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.3.0)**
+- ✅ No Python installation required
+- ✅ No dependencies to install  
+- ✅ Just download, extract, and run!
+
+#### 🛠️ **For Developers**
+- Clone repository and run from source (see Development section below)
 
 ## ✨ What is OptiScaler GUI?
 
@@ -21,10 +41,12 @@ OptiScaler GUI is a **powerful, user-friendly interface** for the official [Opti
 - **📦 One-Click Installation**: Download and install OptiScaler with a single click
 - **🔧 Intelligent Configuration**: Smart setup for AMD FSR, Intel XeSS, and NVIDIA DLSS
 - **🛡️ Robust Architecture**: Multi-tier fallback systems for maximum compatibility
-- **🌐 Cross-Platform Support**: Works regardless of system 7z installation
+- **🌐 Complete Portable Support**: Bundled 7z.exe and all dependencies included
+- **🎮 Unreal Engine Support**: Enhanced detection for UE games (Engine/Binaries/Win64)
 - **💾 Backup & Restore**: Safe installation with automatic backup of original files
 - **📊 Real-Time Progress**: Visual feedback during downloads and installations
 - **🔄 Update Management**: Automatic checking for latest OptiScaler releases
+- **🌍 Multi-Language**: Support for Danish, English, and Polish
 
 ### 🎮 What is OptiScaler?
 
@@ -37,12 +59,23 @@ OptiScaler GUI is a **powerful, user-friendly interface** for the official [Opti
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### 🎯 **Option 1: Portable Version (Recommended for Users)**
+
+1. **[📥 Download the Portable Version](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.3.0)**
+2. **Extract** the ZIP file to your desired location
+3. **Run** `OptiScaler-GUI.exe` inside the extracted folder
+4. **Done!** No installation or Python setup required
+
+⚠️ **Note**: This is an early development version (0.3.0) - test thoroughly before using on important games!
+
+### 🛠️ **Option 2: Development Setup**
+
+#### Prerequisites
 - **Windows 10/11** 
 - **Python 3.8+** ([Download Python](https://python.org))
 - **Steam** (for automatic game detection)
 
-### Installation
+#### Installation
 
 1. **Clone the repository**:
    ```bash
@@ -55,7 +88,7 @@ OptiScaler GUI is a **powerful, user-friendly interface** for the official [Opti
    pip install -r requirements.txt
    ```
 
-3. **Check system requirements**:
+3. **Check system requirements** (optional):
    ```bash
    python check_requirements.py
    ```
@@ -64,20 +97,29 @@ OptiScaler GUI is a **powerful, user-friendly interface** for the official [Opti
    ```bash
    python src/main.py
    ```
-   Or use the convenient batch file:
-   ```bash
-   start_gui.bat
-   ```
+
+### 🏃‍♂️ **Quick Launch Scripts**
+
+For convenience, you can also use:
+- **`start_gui.bat`** - Direct launch of the GUI
+- **`run_progress_tests.bat`** - Run system tests
 
 ### 🎯 Usage
 
-1. **Launch OptiScaler GUI**
+#### For Portable Version Users:
+1. **Launch** `OptiScaler-GUI.exe` from the extracted folder
 2. **Scan for games** - Automatically detects your Steam library
 3. **Select a game** from the detected list
 4. **Choose OptiScaler version** (latest recommended)
 5. **Click Install** - GUI handles everything automatically!
 6. **Configure settings** for optimal performance
 7. **Launch your game** and enjoy enhanced performance!
+
+#### Additional Features:
+- **📁 Manual Path Selection**: Browse for games not automatically detected
+- **🌍 Multi-Language Support**: Danish, English, Polish (auto-detection)
+- **🔄 Auto-Updates**: OptiScaler version checking and updates
+- **📋 Progress Tracking**: Real-time installation progress with detailed logs
 
 ## 🏗️ Architecture Highlights
 
@@ -114,10 +156,29 @@ OptiScaler-GUI/
 
 ### Running Tests
 ```bash
+# Test core functionality
 python test_archive_extractor.py    # Test archive extraction
 python test_progress_simple.py      # Test progress systems
 python check_requirements.py        # Validate environment
+
+# Run comprehensive tests
+./run_progress_tests.bat            # Full test suite
 ```
+
+### Building Portable Version
+```bash
+# Build executable with PyInstaller
+python build.py                     # Creates portable .exe in dist/
+```
+
+## 📦 Release Information
+
+**Current Version**: 0.3.0 (Development Release)
+- **Portable Version Available**: Self-contained executable with all dependencies
+- **Size**: ~143 MB (includes Python runtime and all libraries)
+- **Compatibility**: Windows 10/11, no Python installation required
+
+For full release notes and downloads, visit: [GitHub Releases](https://github.com/King4s/OptiScaler-GUI/releases)
 
 ## 🤝 Contributing
 
