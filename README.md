@@ -1,14 +1,32 @@
 # OptiScaler GUI 🎮🚀
 
+[![Release](https://img.shields.io/github/v/release/King4s/OptiScaler-GUI)](https://github.com/King4s/OptiScaler-GUI/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-Windows-blue)](#)
 [![OptiScaler](https://img.shields.io/badge/OptiScaler-Official%20Project-blue?logo=github)](https://github.com/optiscaler/OptiScaler)
 [![Python](https://img.shields.io/badge/Python-3.8+-green.svg)](https://python.org)
-[![Platform](https://img.shields.io/badge/Platform-Windows-blue.svg)](https://microsoft.com/windows)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/King4s/OptiScaler-GUI)](https://github.com/King4s/OptiScaler-GUI/releases)
+
+| Feature             | Status     |
+|---------------------|------------|
+| 📦 Portable Version    | ✅ v0.3.0   |
+| 🎮 Game Detection      | ✅ Steam    |
+| 🚀 FSR / DLSS / XeSS   | ✅ All 3    |
+| 🐍 Python Runtime      | ✅ Bundled  |
+| 🌍 Multi-language UI   | ✅ DA / EN / PL |
 
 **A desktop installation manager for OptiScaler - NOT a replacement for the built-in overlay!**
 
 ## 🤔 **What is this project?**
+
+### 📸 **GUI Preview**
+> *Coming soon: Animated GIF showing the interface in action*
+> 
+> **Quick Visual Guide:**
+> 1. 🔍 **Scan Games** → Automatically detects Steam library
+> 2. 🎯 **Select Game** → Choose from detected games list  
+> 3. 📦 **Pick Version** → Latest OptiScaler recommended
+> 4. ⚡ **One Click Install** → GUI handles everything!
+> 5. 🎮 **Launch & Play** → Enhanced graphics ready!
 
 ### **OptiScaler vs OptiScaler-GUI - The Difference**
 
@@ -48,9 +66,18 @@
 
 #### 🎯 **For End Users (Recommended)**
 **[📥 Download Portable Version v0.3.0](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.3.0)**
+
+| Package Type | Size | Checksum | Notes |
+|-------------|------|----------|-------|
+| 📦 Portable ZIP | ~143 MB | *See release page* | No installation required |
+| 🛠️ Future: .EXE Installer | *TBD* | *Coming soon* | Auto-install + shortcuts |
+
+**Features:**
 - ✅ No Python installation required
 - ✅ No dependencies to install  
 - ✅ Just download, extract, and run!
+- ✅ Bundled 7z.exe for archive extraction
+- ✅ Includes Python runtime (3.8+)
 
 #### 🛠️ **For Developers**
 - Clone repository and run from source (see Development section below)
@@ -334,28 +361,6 @@ For full release notes and downloads, visit: [GitHub Releases](https://github.co
 - 💡 **Feature Requests**: What would make installation easier?
 - 🌍 **Language Support**: Additional translation requests
 
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- **OptiScaler Team** - For the incredible upscaling technology that makes this all possible
-- **Python Community** - For the amazing libraries that make this GUI possible
-- **Gaming Community** - For feedback, testing, and patience with early versions
-
-### **Important Disclaimer**
-
-This project is **not affiliated with or endorsed by the official OptiScaler developers**. It's a community tool designed to make OptiScaler installation easier for non-technical users.
-
 - **OptiScaler** is developed by the talented team at [optiscaler/OptiScaler](https://github.com/optiscaler/OptiScaler)
 - **This GUI** is an independent installation manager created by [King4s](https://github.com/King4s)
 - All credit for the actual upscaling technology goes to the OptiScaler team
@@ -382,6 +387,45 @@ This project is **not affiliated with or endorsed by the official OptiScaler dev
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+## 🤝 **Community & Support**
+
+### 📢 **Get Help & Report Issues**
+- 🐛 [**Bug Reports**](https://github.com/King4s/OptiScaler-GUI/issues/new?template=bug_report.md) - Found a problem? Let us know!
+- 💡 [**Feature Requests**](https://github.com/King4s/OptiScaler-GUI/issues/new?template=feature_request.md) - Have an idea? Share it!
+- 💬 [**Discussions**](https://github.com/King4s/OptiScaler-GUI/discussions) - General questions and community chat
+- 📖 [**Documentation**](https://github.com/King4s/OptiScaler-GUI/wiki) - Guides and troubleshooting
+
+### 🎯 **Supported Games & Compatibility**
+- ✅ **Steam Games** - Automatic detection
+- ✅ **Unreal Engine** - Enhanced support for UE games  
+- ✅ **DirectX 11/12** - Full compatibility
+- ⚠️ **Non-Steam Games** - Manual path selection required
+- ❓ **Game not working?** - [Report compatibility issue](https://github.com/King4s/OptiScaler-GUI/issues/new?template=game_compatibility.md)
+
+### 🔒 **Security & Trust**
+- 📝 **Open Source** - All code is public and auditable
+- 🛡️ **No Data Collection** - GUI works completely offline
+- ✅ **Official Sources** - Downloads OptiScaler from official GitHub only
+- 🔍 **Checksums** - Verify download integrity (coming soon)
+
+---
+
+## 📄 **License**
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 **Acknowledgments**
+
+- [**OptiScaler Team**](https://github.com/optiscaler/OptiScaler) - For the incredible upscaling technology
+- **Python Community** - For the amazing libraries that make this possible  
+- **Gaming Community** - For feedback and testing
+
+---
+
+**Made with ❤️ for the gaming community**
+
+*Bringing cutting-edge upscaling technology to everyone, one click at a time.*
 
 ---
 
