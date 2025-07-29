@@ -8,7 +8,7 @@
 
 | Feature             | Status     |
 |---------------------|------------|
-| 📦 Portable Version    | ✅ v0.3.0   |
+| 📦 Portable Version    | ✅ v0.3.5   |
 | 🎮 Steam Auto-Detection | ✅ Full    |
 | 🎮 Epic Games Auto-Detection | ✅ Full    |
 | � GOG Galaxy Auto-Detection | ✅ Full    |
@@ -65,24 +65,24 @@
 
 **Think of it as**: A desktop installer/manager, like how Steam manages game installations.
 
-**Version: 0.3.0** | **Status: Early Development** | **🚀 NEW: Portable Version Available!**
+**Version: 0.3.5** | **Status: Early Development** | **🚀 NEW: Ultra-Compact Portable Version!**
 
-## 🆕 What's New in v0.3.0
+## 🆕 What's New in v0.3.5
 
-### 📦 **Portable Version - No Installation Required!**
+### 📦 **Ultra-Compact Portable Version - 66% Smaller!**
 - **🎯 Download & Run**: Get the portable ZIP, extract, and run - no Python installation needed!
 - **📋 Complete Package**: All dependencies bundled including Python runtime and 7z.exe
 - **🔧 Self-Contained**: Works on any Windows system without additional software
-- **💿 Size**: ~143 MB portable package
+- **💿 Size**: ~48 MB portable package (down from 143 MB - 66% smaller!)
 
 ### 🚀 **Download Options**
 
 #### 🎯 **For End Users (Recommended)**
-**[📥 Download Portable Version v0.3.0](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.3.0)**
+**[📥 Download Portable Version v0.3.5](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.3.5)**
 
 | Package Type | Size | Checksum | Notes |
 |-------------|------|----------|-------|
-| 📦 Portable ZIP | ~143 MB | *See release page* | No installation required |
+| 📦 Portable ZIP | ~48 MB | *See release page* | No installation required - 66% smaller! |
 | 🛠️ Future: .EXE Installer | *TBD* | *Coming soon* | Auto-install + shortcuts |
 
 **Features:**
@@ -176,12 +176,12 @@
 
 ### 🎯 **Option 1: Portable Version (Recommended for Users)**
 
-1. **[📥 Download the Portable Version](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.3.0)**
+1. **[📥 Download the Portable Version](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.3.5)**
 2. **Extract** the ZIP file to your desired location
 3. **Run** `OptiScaler-GUI.exe` inside the extracted folder
 4. **Done!** No installation or Python setup required
 
-⚠️ **Note**: This is an early development version (0.3.0) - test thoroughly before using on important games!
+⚠️ **Note**: This is an early development version (0.3.5) - test thoroughly before using on important games!
 
 ### 🛠️ **Option 2: Development Setup**
 
@@ -288,16 +288,17 @@ python build.py                     # Creates portable .exe in dist/
 
 ## 📦 Release Information
 
-**Current Version**: 0.3.0 (Development Release)
+**Current Version**: 0.3.5 (Development Release)
 - **Portable Version Available**: Self-contained executable with all dependencies
-- **Size**: ~143 MB (includes Python runtime and all libraries)
+- **Size**: ~48 MB (includes Python runtime and all libraries - 66% size reduction!)
 - **Compatibility**: Windows 10/11, no Python installation required
 
 ### 🔄 **OptiScaler Version Compatibility**
 
 | GUI Version | Compatible OptiScaler Versions | Status |
 |-------------|--------------------------------|--------|
-| **v0.3.0** | v0.7.0 - v0.7.7-pre9 | ✅ Current |
+| **v0.3.5** | v0.7.0 - v0.7.7-pre9 | ✅ Current |
+| v0.3.0 | v0.7.0 - v0.7.7-pre9 | 🟡 Legacy |
 | v0.2.0 | v0.6.0 - v0.7.0 | 🟡 Legacy |
 | v0.1.0 | v0.5.0 - v0.6.5 | ❌ Deprecated |
 
@@ -348,9 +349,9 @@ For full release notes and downloads, visit: [GitHub Releases](https://github.co
 
 ## 🛣️ **Project Status & Roadmap**
 
-### **Current Status (v0.3.0)**
+### **Current Status (v0.3.5)**
 - ✅ **Stable Installation**: Reliable OptiScaler installation for most games
-- ✅ **Portable Distribution**: Self-contained executable for easy sharing
+- ✅ **Ultra-Compact Distribution**: 48 MB self-contained executable (66% size reduction)
 - ✅ **Steam Integration**: Automatic game detection from Steam library
 - ✅ **Multi-Language**: Danish, English, and Polish translations
 - ✅ **Error Recovery**: Robust fallback systems for edge cases

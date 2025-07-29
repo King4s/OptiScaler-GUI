@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.3.5 - 2025-07-30
+
+### 🎯 **Ultra-Compact Release - 66% Size Reduction**
+
+#### Size Optimization
+- **Dramatic Size Reduction**: From 143 MB down to 48 MB (66% smaller!)
+- **Dependency Optimization**: Removed heavy libraries (NumPy, SciPy, OpenBLAS)
+- **Minimal Environment**: Created ultra-lean build environment with only essential packages
+- **Cache Exclusion**: Prevented bundling of unnecessary cache files in portable build
+
+#### Technical Improvements
+- **Aggressive Excludes**: Removed 36+ MB OpenBLAS library and related dependencies
+- **Essential-Only Build**: CustomTkinter, Requests, Pillow, CTkMessagebox, VDF, psutil
+- **Smart PyInstaller Config**: Enhanced build_executable.spec with optimized excludes
+- **Minimal Python Runtime**: Streamlined Python 3.12 environment
+
+#### User Experience
+- **Faster Downloads**: 66% smaller portable package
+- **Reduced Storage**: Less disk space required
+- **Same Functionality**: All features preserved while dramatically reducing size
+- **Improved Distribution**: Easier to share and deploy
+
+### Technical Details
+- Built with minimal conda environment (optiscaler-minimal)
+- Removed mathematical libraries not needed for GUI operations
+- Optimized PyInstaller configuration for size-critical deployment
+- Maintained full compatibility with all OptiScaler versions (v0.7.0 - v0.7.7-pre9)
+
+---
+
 ## 0.2.0 - 2025-07-25
 
 ### Added

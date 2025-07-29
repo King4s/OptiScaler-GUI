@@ -1,0 +1,4 @@
+customtkinter
+requests
+Pillow
+CTkMessagebox

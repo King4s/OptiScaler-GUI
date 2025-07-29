@@ -2,7 +2,7 @@
 Version information for OptiScaler-GUI
 """
 
-__version__ = "0.3.0"
+__version__ = "0.3.5"
 __version_info__ = (0, 3, 0)
 
 # Version history:
