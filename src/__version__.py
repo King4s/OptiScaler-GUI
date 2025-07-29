@@ -2,14 +2,16 @@
 Version information for OptiScaler-GUI
 """
 
-__version__ = "2.0.0"
-__version_info__ = (2, 0, 0)
+__version__ = "0.3.0"
+__version_info__ = (0, 3, 0)
 
 # Version history:
-# 2.0.0 - Complete PyInstaller support with portable version and enhanced features
+# 0.3.0 - PyInstaller support and portable version
 #       - Fixed translation system for executable builds
-#       - Added comprehensive PyInstaller build system with build.py
-#       - Created portable version with bundled 7z.exe for complete archive support
+#       - Added PyInstaller build system with build.py
+#       - Created portable version with bundled 7z.exe
 #       - Enhanced OptiScaler detection (Unreal Engine support)
-#       - Improved archive extraction with multiple fallback methods
-#       - Added comprehensive documentation and troubleshooting guides
+#       - Improved archive extraction with fallback methods
+#       - Added documentation and troubleshooting guides
+# 0.2.0 - (Previous development version)
+# 0.1.0 - Initial development version

@@ -1,12 +1,14 @@
-# OptiScaler-GUI v2.0.0 - Portable Version
+# OptiScaler-GUI v0.3.0 - Portable Version
 
-![OptiScaler-GUI](https://img.shields.io/badge/Version-2.0.0-blue) ![License](https://img.shields.io/badge/License-MIT-green) ![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey)
+![OptiScaler-GUI](https://img.shields.io/badge/Version-0.3.0-blue) ![License](https://img.shields.io/badge/License-MIT-green) ![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey)
 
-🚀 **Complete Portable Version with Bundled Dependencies**
+🚀 **Experimental Portable Version with Bundled Dependencies**
 
-OptiScaler-GUI is now fully portable! This version includes all necessary dependencies and tools, making it completely self-contained and ready to run on any Windows system without requiring Python or additional installations.
+OptiScaler-GUI v0.3.0 er en tidlig udviklings-version med portable funktionalitet! Denne version inkluderer alle nødvendige dependencies og værktøjer, hvilket gør den komplet selvstændig og klar til at køre på ethvert Windows system uden at kræve Python eller yderligere installationer.
 
-## 📦 What's New in v2.0.0
+⚠️ **Bemærk: Dette er en tidlig udviklingsversion (0.3.0) - brug på eget ansvar og rapporter gerne bugs!**
+
+## 📦 Hvad er nyt i v0.3.0
 
 ### ✅ Complete Portable Solution
 - **Zero Dependencies**: No Python installation required
@@ -33,9 +35,11 @@ OptiScaler-GUI is now fully portable! This version includes all necessary depend
 ## 📋 How to Use the Portable Version
 
 ### 🔽 Download and Setup
-1. **Download**: Get `OptiScaler-GUI-v2.0.0-Portable.zip` from the releases page
+1. **Download**: Get `OptiScaler-GUI-v0.3.0-Portable.zip` from the releases page
 2. **Extract**: Unzip the entire folder to your desired location
 3. **Run**: Double-click `OptiScaler-GUI.exe` inside the extracted folder
+
+⚠️ **Vigtigt: Dette er en tidlig udviklings-version - test grundigt før brug på vigtige spil!**
 
 ### 📁 Folder Structure
 ```
@@ -130,6 +134,6 @@ Contributions are welcome! Please feel free to submit pull requests or open issu
 
 ---
 
-**🎉 Enjoy using OptiScaler-GUI Portable v2.0.0!**
+**🧪 Enjoy testing OptiScaler-GUI Portable v0.3.0!**
 
-*This portable version brings the full OptiScaler management experience to any Windows system without requiring any installations or dependencies.*
+*Dette er en tidlig udviklings-version af OptiScaler management funktionaliteten. Rapporter gerne bugs og feedback på GitHub repository.*
