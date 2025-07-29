@@ -18,7 +18,7 @@
 | 🐍 Python Runtime      | ✅ Bundled  |
 | 🌍 Multi-language UI   | ✅ DA / EN / PL |
 
-**A desktop installation manager for OptiScaler - NOT a replacement for the built-in overlay!**
+**An easy-to-use installer and manager for OptiScaler - helps you install the graphics enhancement mod with just a few clicks!**
 
 ## 🤔 **What is this project?**
 
@@ -32,14 +32,23 @@
 > 4. ⚡ **One Click Install** → GUI handles everything!
 > 5. 🎮 **Launch & Play** → Enhanced graphics ready!
 
-### **OptiScaler vs OptiScaler-GUI - The Difference**
+### **How OptiScaler and OptiScaler-GUI Work Together**
 
-| **Official OptiScaler** | **This GUI Project** |
-|--------------------------|----------------------|
-| 🎮 **In-game overlay** (Insert key) for runtime settings | 🖥️ **Desktop application** for installation management |
-| ⚙️ Adjust FSR/DLSS settings while playing | 📦 Download and install OptiScaler to games |
-| 🎯 Configure upscaling in real-time | 🔍 Automatically detect Steam games |
-| 🎪 Part of the core OptiScaler mod | 🛠️ External tool to make installation easier |
+**These are NOT competing tools - they work together!**
+
+🎮 **OptiScaler** (the main project):
+- Graphics enhancement mod that improves game performance
+- Provides in-game overlay (Insert key) for runtime settings
+- Adjust FSR/DLSS/XeSS settings while playing
+- Configure upscaling in real-time
+
+🛠️ **OptiScaler-GUI** (this installer):
+- Makes installing OptiScaler easier for everyone
+- Automatically downloads latest OptiScaler releases
+- Detects your games and installs OptiScaler for you
+- Manages OptiScaler across multiple games
+
+**Simple workflow:** Use this GUI to install OptiScaler → Then use OptiScaler's in-game overlay to adjust settings
 
 ### **What this GUI does**
 - **Installs OptiScaler** into your games (replaces manual file copying)
