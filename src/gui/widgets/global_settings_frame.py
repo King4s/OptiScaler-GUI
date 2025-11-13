@@ -126,6 +126,26 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
                                         variable=self.prefer_7z_var,
                                         command=self._on_prefer_7z_toggle)
         prefer_7z_switch.grid(row=4, column=1, padx=15, pady=(5, 15), sticky="w")
+
+        # Max worker count (threadpool size)
+        workers_label = ctk.CTkLabel(app_frame, text=t("ui.max_workers"))
+        workers_label.grid(row=5, column=0, padx=15, pady=5, sticky="w")
+        from utils.config import config as app_config
+        self.workers_var = ctk.IntVar(value=getattr(app_config, 'max_workers', 4))
+        workers_entry = ctk.CTkEntry(app_frame, textvariable=self.workers_var, width=80)
+        workers_entry.grid(row=5, column=1, padx=15, pady=(5, 15), sticky="w")
+        # Update config on focus out or enter key
+        def _on_workers_change(event=None):
+            try:
+                value = int(self.workers_var.get())
+                from utils.config import config as app_config
+                app_config.max_workers = value
+                set_config_value('max_workers', int(value))
+                debug_log(f"Set max_workers to {value}")
+            except Exception as e:
+                debug_log(f"Invalid max_workers value: {e}")
+        workers_entry.bind('<FocusOut>', _on_workers_change)
+        workers_entry.bind('<Return>', _on_workers_change)
     
     def _create_cache_section(self):
         """Create cache management section"""

@@ -34,6 +34,7 @@
     "appearance_theme": "Appearance Theme",
   "prefer_system_7z": "Prefer system 7z for extraction",
   "prefer_system_7z_switch": "Prefer system 7z",
+  "max_workers": "Max worker threads",
     "cache_settings": "Cache Settings",
     "clear_cache": "Clear Cache",
     "open_cache_folder": "Open Cache Folder",

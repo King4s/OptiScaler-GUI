@@ -33,6 +33,7 @@ import zipfile
 from utils.debug import debug_log
 from utils.translation_manager import t
 from utils.config import get_config_value, set_config_value
+from utils.performance import timed
 
 # Try to import py7zr with fallback
 try:
@@ -178,6 +179,7 @@ class ArchiveExtractor:
             pass
         return self.prefer_system_7z
     
+    @timed("system_7z_extract")
     def _extract_7z_system(self, archive_path, extract_path, progress_callback=None):
         """Extract 7z using system 7z.exe"""
         # Make a safe local string copy to satisfy static type checkers
@@ -220,6 +222,7 @@ class ArchiveExtractor:
             debug_log(error_msg)
             return False, error_msg, None
     
+    @timed("python_py7zr_extract")
     def _extract_7z_python(self, archive_path, extract_path, progress_callback=None):
         """Extract 7z using py7zr Python library"""
         try:
@@ -248,6 +251,7 @@ class ArchiveExtractor:
             debug_log(error_msg)
             return False, error_msg, None
     
+    @timed("zip_extract")
     def _extract_zip(self, archive_path, extract_path, progress_callback=None):
         """Extract ZIP archive using Python's zipfile module"""
         try:

@@ -11,6 +11,10 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 from utils.debug import debug_log
+from utils.config import config
+from utils.performance import timed
+import concurrent.futures
+import os
 from utils.archive_extractor import archive_extractor
 
 # Configuration constants - moved to top for easier maintenance
@@ -184,6 +188,7 @@ class OptiScalerManager:
             debug_log(f"Unexpected error during validation: {e}")
             return False
     
+    @timed("download_file")
     def _download_file(self, url, filepath, asset_info, progress_callback=None):
         """Download file with progress tracking and error handling"""
         try:
@@ -226,6 +231,7 @@ class OptiScalerManager:
             filepath.unlink(missing_ok=True)
             return None
 
+    @timed("extract_release")
     def _extract_release(self, archive_path, game_path=None, progress_callback=None):
         """
         Extract OptiScaler release archive with robust fallback methods
@@ -432,12 +438,7 @@ class OptiScalerManager:
         """
         return OptiScalerConfig.ADDITIONAL_FILES.copy()
 
-    def list_available_target_filenames(self, extracted_path=None):
-        """
-        List possible target filenames for OptiScaler based on official source code.
-        Returns a list of supported DLL/ASI filenames from OptiScaler dllmain.cpp
-        """
-        return OptiScalerConfig.PROXY_FILENAMES.copy()
+    # list_available_target_filenames is defined later in this file with a richer list
 
     def _find_optiscaler_dll(self, extracted_path):
         """Find OptiScaler.dll in extracted files with optimized search"""
@@ -457,6 +458,7 @@ class OptiScalerManager:
         debug_log("OptiScaler.dll not found in extracted files")
         return None
 
+    @timed("copy_additional_files")
     def _copy_additional_files(self, extracted_path, dest_dir, progress_callback=None):
         """Copy additional OptiScaler files with improved error handling"""
         extracted_path = Path(extracted_path)
@@ -465,29 +467,35 @@ class OptiScalerManager:
         
         additional_files = self.get_additional_optiscaler_files()
         
+        # Build a list of files to copy with source/destination path
+        copy_tasks = []
         for file in additional_files:
-            # Try direct path first
             src_path = extracted_path / file
             if not src_path.exists():
-                # Search in subdirectories
                 found_files = list(extracted_path.rglob(file))
                 if found_files:
                     src_path = found_files[0]
                 else:
                     debug_log(f"Additional file not found: {file}")
                     continue
-            
+
             dest_file_path = dest_dir / file
-            try:
-                shutil.copy2(src_path, dest_file_path)
-                copied_files.append(file)
-                debug_log(f"Copied additional file: {file}")
-                
-                if progress_callback and len(copied_files) % 2 == 0:  # Update progress occasionally
-                    progress_callback(f"Installing files... ({len(copied_files)}/{len(additional_files)})")
-                    
-            except Exception as e:
-                debug_log(f"Failed to copy {file}: {e}")
+            copy_tasks.append((file, src_path, dest_file_path))
+
+        # Determine worker count (I/O bound tasks benefit from higher parallelism)
+        max_workers = getattr(config, 'max_workers', min(8, (os.cpu_count() or 1) * 4))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_file = {executor.submit(shutil.copy2, src, dst): (file, src, dst) for file, src, dst in copy_tasks}
+            for future in concurrent.futures.as_completed(future_to_file):
+                file, src, dst = future_to_file[future]
+                try:
+                    future.result()
+                    copied_files.append(file)
+                    debug_log(f"Copied additional file: {file}")
+                    if progress_callback and len(copied_files) % 2 == 0:
+                        progress_callback(f"Installing files... ({len(copied_files)}/{len(additional_files)})")
+                except Exception as e:
+                    debug_log(f"Failed to copy {file}: {e}")
         
         return copied_files
 

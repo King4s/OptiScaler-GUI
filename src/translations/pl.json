@@ -34,6 +34,7 @@
   "appearance_theme": "Motyw Wyglądu",
   "prefer_system_7z": "Preferuj systemowy 7z do rozpakowywania",
   "prefer_system_7z_switch": "Preferuj systemowy 7z",
+  "max_workers": "Maks wątków roboczych",
     "cache_settings": "Ustawienia Cache",
     "clear_cache": "Wyczyść Cache",
     "open_cache_folder": "Otwórz Folder Cache",

@@ -29,6 +29,8 @@ class GameScanner:
         self.game_cache_dir = Path(config.game_cache_dir)
         self.no_image_path = config.no_image_path
         self.steam_app_list = self._get_steam_app_list() # Load Steam app list on init
+        # session for requests to enable keep-alive and connection pooling
+        self._requests_session = requests.Session()
 
         # Common non-game folder names to exclude
         self.exclude_folders = [
@@ -301,29 +303,41 @@ class GameScanner:
         
         return games
 
+    @timed("scan_steam_common_folder")
     def _scan_steam_common_folder(self, common_path, library_path):
         """Scan a Steam common folder for games"""
         games = []
         steamapps_path = library_path / "steamapps"
-        
-        for game_folder in common_path.iterdir():
-            if not game_folder.is_dir() or not self._is_game_folder(game_folder):
-                continue
-                
-            # Try to find matching ACF file
-            game_info = self._find_steam_game_info(game_folder.name, steamapps_path)
-            if game_info:
-                name, appid = game_info
-                image_path = self.fetch_game_image(name, appid)
-                optiscaler_installed = self._detect_optiscaler(game_folder)
-                game = Game(name=name, path=str(game_folder), appid=appid, image_path=image_path, optiscaler_installed=optiscaler_installed)
-                games.append(game)
-            else:
-                # Fallback: use folder name
-                image_path = self.fetch_game_image(game_folder.name)
-                optiscaler_installed = self._detect_optiscaler(game_folder)
-                game = Game(name=game_folder.name, path=str(game_folder), image_path=image_path, optiscaler_installed=optiscaler_installed)
-                games.append(game)
+        # Process game folders concurrently to utilize multiple cores for I/O-bound operations
+        # Determine reasonable worker count
+        import concurrent.futures, os
+        max_workers = getattr(config, 'max_workers', min(8, (os.cpu_count() or 1) * 4))
+
+        def process_game_folder(game_folder):
+            try:
+                if not game_folder.is_dir() or not self._is_game_folder(game_folder):
+                    return None
+
+                game_info = self._find_steam_game_info(game_folder.name, steamapps_path)
+                if game_info:
+                    name, appid = game_info
+                    image_path = self.fetch_game_image(name, appid)
+                    optiscaler_installed = self._detect_optiscaler(game_folder)
+                    return Game(name=name, path=str(game_folder), appid=appid, image_path=image_path, optiscaler_installed=optiscaler_installed)
+                else:
+                    image_path = self.fetch_game_image(game_folder.name)
+                    optiscaler_installed = self._detect_optiscaler(game_folder)
+                    return Game(name=game_folder.name, path=str(game_folder), image_path=image_path, optiscaler_installed=optiscaler_installed)
+            except Exception as e:
+                debug_log(f"Error processing game folder {game_folder}: {e}")
+                return None
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(process_game_folder, gf) for gf in common_path.iterdir()]
+            for future in concurrent.futures.as_completed(futures):
+                game = future.result()
+                if game:
+                    games.append(game)
         
         return games
 
@@ -348,6 +362,7 @@ class GameScanner:
         
         return None
 
+    @timed("scan_epic_games")
     def _scan_epic_games(self):
         """Scan Epic Games installations with Path objects"""
         epic_games = []
@@ -356,20 +371,32 @@ class GameScanner:
                 epic_path = Path(epic_path_str)
                 if not epic_path.exists():
                     continue
-                    
-                for game_folder in epic_path.iterdir():
-                    if not game_folder.is_dir() or not self._is_game_folder(str(game_folder)):
-                        continue
-                        
-                    # Check for .egstore folder or manifest files
-                    has_egstore = (game_folder / ".egstore").exists()
-                    has_manifest = any(f.suffix == ".mancfg" for f in game_folder.glob("*.mancfg"))
-                    
-                    if has_egstore or has_manifest:
-                        game_name = game_folder.name.replace("_", " ").replace("-", " ").title()
-                        image_path = self.fetch_game_image(game_name)
-                        optiscaler_installed = self._detect_optiscaler(game_folder)
-                        epic_games.append(Game(name=game_name, path=str(game_folder), image_path=image_path, optiscaler_installed=optiscaler_installed))
+
+                import concurrent.futures, os
+                max_workers = getattr(config, 'max_workers', min(8, (os.cpu_count() or 1) * 4))
+
+                def process_epic_folder(game_folder):
+                    try:
+                        if not game_folder.is_dir() or not self._is_game_folder(str(game_folder)):
+                            return None
+                        has_egstore = (game_folder / ".egstore").exists()
+                        has_manifest = any(f.suffix == ".mancfg" for f in game_folder.glob("*.mancfg"))
+                        if has_egstore or has_manifest:
+                            game_name = game_folder.name.replace("_", " ").replace("-", " ").title()
+                            image_path = self.fetch_game_image(game_name)
+                            optiscaler_installed = self._detect_optiscaler(game_folder)
+                            return Game(name=game_name, path=str(game_folder), image_path=image_path, optiscaler_installed=optiscaler_installed)
+                        return None
+                    except Exception as e:
+                        debug_log(f"Error processing Epic folder {game_folder}: {e}")
+                        return None
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    futures = [executor.submit(process_epic_folder, gf) for gf in epic_path.iterdir()]
+                for future in concurrent.futures.as_completed(futures):
+                    game = future.result()
+                    if game:
+                        epic_games.append(game)
                         
             except (OSError, PermissionError) as e:
                 debug_log(f"Error scanning Epic Games path {epic_path}: {e}")
@@ -377,6 +404,7 @@ class GameScanner:
                 
         return epic_games
 
+    @timed("scan_gog_games")
     def _scan_gog_games(self):
         """Scan GOG installations with Path objects"""
         gog_games = []
@@ -386,29 +414,42 @@ class GameScanner:
                 if not gog_path.exists():
                     continue
                     
-                for game_folder in gog_path.iterdir():
-                    if not game_folder.is_dir() or not self._is_game_folder(str(game_folder)):
-                        continue
-                        
-                    # Look for goggame-*.info files
-                    info_files = list(game_folder.glob("goggame-*.info"))
-                    if info_files:
-                        try:
-                            with open(info_files[0], 'r', encoding='utf-8') as f:
-                                game_info = json.load(f)
-                                game_name = game_info.get("gameTitle", 
-                                    game_folder.name.replace("_", " ").replace("-", " ").title())
-                                image_path = self.fetch_game_image(game_name)
-                                optiscaler_installed = self._detect_optiscaler(game_folder)
-                                gog_games.append(Game(name=game_name, path=str(game_folder), image_path=image_path, optiscaler_installed=optiscaler_installed))
-                                continue
-                        except (json.JSONDecodeError, UnicodeDecodeError, KeyError) as e:
-                            debug_log(f"Error parsing GOG info file {info_files[0].name}: {e}")
-                    
-                    # Fallback: use folder name
-                    game_name = game_folder.name.replace("_", " ").replace("-", " ").title()
-                    optiscaler_installed = self._detect_optiscaler(game_folder)
-                    gog_games.append(Game(name=game_name, path=str(game_folder), optiscaler_installed=optiscaler_installed))
+                # Parallelize GOG folder scanning
+                import concurrent.futures, os
+                max_workers = getattr(config, 'max_workers', min(8, (os.cpu_count() or 1) * 4))
+
+                def process_gog_folder(game_folder):
+                    try:
+                        if not game_folder.is_dir() or not self._is_game_folder(str(game_folder)):
+                            return None
+
+                        # Look for goggame-*.info files
+                        info_files = list(game_folder.glob("goggame-*.info"))
+                        if info_files:
+                            try:
+                                with open(info_files[0], 'r', encoding='utf-8') as f:
+                                    game_info = json.load(f)
+                                    game_name = game_info.get("gameTitle", game_folder.name.replace("_", " ").replace("-", " ").title())
+                                    image_path = self.fetch_game_image(game_name)
+                                    optiscaler_installed = self._detect_optiscaler(game_folder)
+                                    return Game(name=game_name, path=str(game_folder), image_path=image_path, optiscaler_installed=optiscaler_installed)
+                            except (json.JSONDecodeError, UnicodeDecodeError, KeyError) as e:
+                                debug_log(f"Error parsing GOG info file {info_files[0].name}: {e}")
+
+                        # Fallback: use folder name
+                        game_name = game_folder.name.replace("_", " ").replace("-", " ").title()
+                        optiscaler_installed = self._detect_optiscaler(game_folder)
+                        return Game(name=game_name, path=str(game_folder), optiscaler_installed=optiscaler_installed)
+                    except Exception as e:
+                        debug_log(f"Error processing GOG folder {game_folder}: {e}")
+                        return None
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    futures = [executor.submit(process_gog_folder, gf) for gf in gog_path.iterdir()]
+                    for future in concurrent.futures.as_completed(futures):
+                        game = future.result()
+                        if game:
+                            gog_games.append(game)
                     
             except (OSError, PermissionError) as e:
                 debug_log(f"Error scanning GOG path {gog_path}: {e}")
@@ -416,6 +457,7 @@ class GameScanner:
                 
         return gog_games
 
+    @timed("scan_xbox_games")
     def _scan_xbox_games(self):
         """Scan Xbox Games installations with Path objects"""
         xbox_games = []
@@ -425,14 +467,27 @@ class GameScanner:
                 if not xbox_path.exists():
                     continue
                     
-                for game_folder in xbox_path.iterdir():
-                    if not game_folder.is_dir() or not self._is_game_folder(str(game_folder)):
-                        continue
-                        
-                    game_name = game_folder.name.replace("_", " ").replace("-", " ").title()
-                    image_path = self.fetch_game_image(game_name)
-                    optiscaler_installed = self._detect_optiscaler(game_folder)
-                    xbox_games.append(Game(name=game_name, path=str(game_folder), image_path=image_path, optiscaler_installed=optiscaler_installed))
+                import concurrent.futures, os
+                max_workers = getattr(config, 'max_workers', min(8, (os.cpu_count() or 1) * 4))
+
+                def process_xbox_folder(game_folder):
+                    try:
+                        if not game_folder.is_dir() or not self._is_game_folder(str(game_folder)):
+                            return None
+                        game_name = game_folder.name.replace("_", " ").replace("-", " ").title()
+                        image_path = self.fetch_game_image(game_name)
+                        optiscaler_installed = self._detect_optiscaler(game_folder)
+                        return Game(name=game_name, path=str(game_folder), image_path=image_path, optiscaler_installed=optiscaler_installed)
+                    except Exception as e:
+                        debug_log(f"Error processing Xbox folder {game_folder}: {e}")
+                        return None
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    futures = [executor.submit(process_xbox_folder, gf) for gf in xbox_path.iterdir()]
+                    for future in concurrent.futures.as_completed(futures):
+                        game = future.result()
+                        if game:
+                            xbox_games.append(game)
                     
             except (OSError, PermissionError) as e:
                 debug_log(f"Error scanning Xbox Games path {xbox_path}: {e}")
@@ -462,7 +517,7 @@ class GameScanner:
         try:
             # Try Steam CDN for Steam games
             steam_image_url = f"https://cdn.akamai.steamstatic.com/steam/apps/{appid}/header.jpg"
-            response = requests.get(steam_image_url, stream=True, timeout=config.image_download_timeout)
+            response = self._requests_session.get(steam_image_url, stream=True, timeout=config.image_download_timeout)
             response.raise_for_status()
             
             # Load and optimize image

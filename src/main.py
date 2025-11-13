@@ -106,6 +106,10 @@ def main():
         ctk.set_appearance_mode("system")
         ctk.set_default_color_theme("blue")
         
+        from utils.performance import performance_monitor
+        # Start background performance monitoring
+        performance_monitor.start_monitoring()
+
         # Create and run the application
         app = MainWindow()
         app.mainloop()

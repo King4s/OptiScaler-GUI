@@ -34,6 +34,7 @@
   "appearance_theme": "Udseende Tema",
   "prefer_system_7z": "Foretræk system 7z til udpakkning",
   "prefer_system_7z_switch": "Foretræk system 7z",
+  "max_workers": "Maks arbejdstråde",
     "cache_settings": "Cache Indstillinger",
     "clear_cache": "Ryd Cache",
     "open_cache_folder": "Åbn Cache Mappe",

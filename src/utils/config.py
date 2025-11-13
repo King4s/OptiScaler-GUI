@@ -45,6 +45,15 @@ class Config:
         # Load existing settings or create defaults
         self._settings = self._load_settings_file()
 
+        # Threadpool defaults
+        try:
+            cpu_count = os.cpu_count() or 1
+        except Exception:
+            cpu_count = 1
+        default_workers = min(8, cpu_count * 4)
+        # allow persisted override from config.json
+        self.max_workers = int(self._settings.get('max_workers', default_workers))
+
     def _load_settings_file(self):
         """Load settings from JSON file; return dict or empty dict on error"""
         try:
