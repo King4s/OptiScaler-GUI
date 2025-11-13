@@ -3,6 +3,8 @@ from PIL import Image
 from pathlib import Path
 from optiscaler.manager import OptiScalerManager
 from CTkMessagebox import CTkMessagebox
+import concurrent.futures
+from utils.config import config as app_config
 from utils.translation_manager import t
 from utils.progress import progress_manager
 from utils.debug import debug_log
@@ -93,12 +95,17 @@ class GameListFrame(ctk.CTkScrollableFrame):
         self.game_scanner = game_scanner
         self.optiscaler_manager = OptiScalerManager()
         self.on_edit_settings = on_edit_settings
+        # ThreadPoolExecutor for background image fetching and other short tasks
+        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=getattr(app_config, 'max_workers', 4))
+        self._image_label_map = {}  # Map game.path -> label widget for later updates
         
         # Cache update check result to avoid multiple API calls
         self._update_check_cache = None
         self._cache_timestamp = None
 
         self._display_games()
+        # Schedule background image fetching after UI rendered
+        self._schedule_fetch_game_images()
 
     def _get_update_info(self):
         """Get update information with caching to avoid multiple API calls"""
@@ -138,9 +145,11 @@ class GameListFrame(ctk.CTkScrollableFrame):
             # Game Image
             image_path = game.image_path
             if not image_path or (image_path and not Path(image_path).exists()):
-                image_path = self.game_scanner.fetch_game_image(game.name, game.appid)
-                if image_path:
-                    game.image_path = image_path
+                # Schedule async fetch to avoid blocking UI
+                image_path = None
+            else:
+                # If we have image_path already, ensure the label is updated synchronously
+                pass
 
             # Define the target height for all images
             target_height = 80
@@ -155,12 +164,18 @@ class GameListFrame(ctk.CTkScrollableFrame):
                     new_width = int(original_width * (target_height / original_height))
                     new_height = target_height # Height is fixed
 
-                    img = img.resize((new_width, new_height), Image.LANCZOS)
+                    resampler = getattr(Image, 'Resampling', None)
+                    if resampler is not None:
+                        lanczos = resampler.LANCZOS
+                    else:
+                        lanczos = Image.LANCZOS
+                    img = img.resize((new_width, new_height), lanczos)
 
                     # Create CTkImage with the *actual* new dimensions of the resized image
                     ctk_image = ctk.CTkImage(light_image=img, dark_image=img, size=(new_width, new_height))
                     img_label = ctk.CTkLabel(game_frame, image=ctk_image, text="")
-                    img_label.image = ctk_image # Keep a reference
+                    setattr(img_label, '_ctk_image_ref', ctk_image)  # Keep a reference
+                    self._image_label_map[game.path] = img_label
                     img_label.grid(row=0, column=0, sticky="w")
                 except Exception as e:
                     # Fallback to placeholder if image loading fails
@@ -169,7 +184,8 @@ class GameListFrame(ctk.CTkScrollableFrame):
                     placeholder_img = Image.new('RGB', (placeholder_width, target_height), color = 'gray')
                     ctk_placeholder_image = ctk.CTkImage(light_image=placeholder_img, dark_image=placeholder_img, size=(placeholder_width, target_height))
                     placeholder_label = ctk.CTkLabel(game_frame, image=ctk_placeholder_image, text=game.name, compound="center", font=("Arial", 10))
-                    placeholder_label.image = ctk_placeholder_image # Keep a reference
+                    setattr(placeholder_label, '_ctk_image_ref', ctk_placeholder_image)  # Keep a reference
+                    self._image_label_map[game.path] = placeholder_label
                     placeholder_label.grid(row=0, column=0, sticky="w")
             else:
                 # For placeholder, create a dynamically sized gray image based on a common aspect ratio
@@ -180,8 +196,16 @@ class GameListFrame(ctk.CTkScrollableFrame):
                 placeholder_img = Image.new('RGB', (placeholder_width, target_height), color = 'gray')
                 ctk_placeholder_image = ctk.CTkImage(light_image=placeholder_img, dark_image=placeholder_img, size=(placeholder_width, target_height))
                 placeholder_label = ctk.CTkLabel(game_frame, image=ctk_placeholder_image, text=game.name, compound="center", font=("Arial", 10))
-                placeholder_label.image = ctk_placeholder_image # Keep a reference
+                setattr(placeholder_label, '_ctk_image_ref', ctk_placeholder_image)  # Keep a reference
                 placeholder_label.grid(row=0, column=0, sticky="w")
+                # Store label reference for later update after image fetch
+                self._image_label_map[game.path] = placeholder_label
+    # NOTE: _schedule_fetch_game_images was previously inserted into the middle of the
+    # _display_games method by mistake which caused UI construction code to become
+    # part of the scheduler. The corrected method below only performs background
+    # image fetch tasks and updates existing placeholder labels via the mapping.
+
+    # _schedule_fetch_game_images removed from this location and redefined below
 
             # Game Name and Path
             info_frame = ctk.CTkFrame(game_frame)
@@ -254,6 +278,44 @@ class GameListFrame(ctk.CTkScrollableFrame):
             open_folder_button = ctk.CTkButton(buttons_frame, text=t("ui.open_folder"),
                                              command=lambda p=game.path: self._open_game_folder(p))
             open_folder_button.grid(row=row_offset, column=0, padx=5, pady=2, sticky="e")
+
+    def _schedule_fetch_game_images(self):
+        """Schedule background tasks to fetch images for games that are missing one."""
+        target_height = 80
+
+        def fetch_and_update(game):
+            try:
+                image_path = self.game_scanner.fetch_game_image(game.name, game.appid)
+                if image_path:
+                    game.image_path = image_path
+
+                    def _update():
+                        img_label = self._image_label_map.get(game.path)
+                        if not img_label or not Path(image_path).exists():
+                            return
+                        try:
+                            img = Image.open(image_path)
+                            original_width, original_height = img.size
+                            new_width = int(original_width * (target_height / original_height))
+                            resampler = getattr(Image, 'Resampling', None)
+                            if resampler is not None:
+                                lanczos = resampler.LANCZOS
+                            else:
+                                lanczos = Image.LANCZOS
+                            img = img.resize((new_width, target_height), lanczos)
+                            ctk_image = ctk.CTkImage(light_image=img, dark_image=img, size=(new_width, target_height))
+                            img_label.configure(image=ctk_image)
+                            setattr(img_label, '_ctk_image_ref', ctk_image)
+                        except Exception as e:
+                            debug_log(f"Failed to update game image for {game.path}: {e}")
+
+                    self.after(0, _update)
+            except Exception as e:
+                debug_log(f"Error fetching image for {game.name}: {e}")
+
+        for game in self.games:
+            if not getattr(game, 'image_path', None) or not Path(getattr(game, 'image_path', '')).exists():
+                self._executor.submit(fetch_and_update, game)
 
     def _install_optiscaler_for_game(self, game):
         """Install OptiScaler for the selected game with enhanced error handling"""
@@ -605,3 +667,12 @@ class GameListFrame(ctk.CTkScrollableFrame):
             subprocess.Popen(f'explorer \"{path}\"')
         else:
             CTkMessagebox(title=t("ui.error"), message=t("ui.game_folder_not_found"))
+
+    def destroy(self):
+        """Ensure executor is shutdown when frame is destroyed to prevent background threads from lingering."""
+        try:
+            if hasattr(self, '_executor') and self._executor:
+                self._executor.shutdown(wait=False)
+        except Exception as e:
+            debug_log(f"Error shutting down executor: {e}")
+        super().destroy()
