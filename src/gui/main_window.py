@@ -117,15 +117,7 @@ class MainWindow(ctk.CTk):
         except Exception as e:
             debug_log(f"ERROR: Failed to show log: {e}")
     
-    def refresh_ui(self):
-        """Refresh UI components - called when debug mode changes"""
-        self._update_log_button_visibility()
-        # Refresh current frame if it's settings to update debug toggle
-        if hasattr(self, 'current_frame') and hasattr(self.current_frame, '_create_debug_section'):
-            try:
-                self.current_frame._create_debug_section()
-            except:
-                pass
+    # NOTE: refresh_ui defined further below (this was a short duplicate). Keep single implementation.
     
     def show_game_list(self):
         """Show the game list with progress feedback"""
@@ -247,6 +239,14 @@ class MainWindow(ctk.CTk):
                 self.show_game_list()
             elif isinstance(self.current_frame, GlobalSettingsFrame):
                 self.show_settings()
+            else:
+                # Some frames may expose a _create_debug_section hook to expose debug controls
+                hook = getattr(self.current_frame, '_create_debug_section', None)
+                if callable(hook):
+                    try:
+                        hook()
+                    except Exception:
+                        pass
     
     def edit_game_settings(self, game_path):
         """Edit settings for a specific game with progress feedback"""
@@ -368,7 +368,7 @@ class MainWindow(ctk.CTk):
     
     def _show_update_notification(self, update_info):
         """Show update notification to user"""
-        from customtkinter import CTkMessagebox
+        from CTkMessagebox import CTkMessagebox
         
         latest_version = update_info.get("latest_version", "Unknown")
         release_info = update_info.get("release_info", {})

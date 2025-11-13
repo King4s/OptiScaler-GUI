@@ -106,6 +106,13 @@
       "startup_update_message": "En ny version af OptiScaler er tilgængelig!",
       "update_individual_games": "Du kan opdatere individuelle spil fra spil listen.",
       "ok": "OK"
+    ,
+    "community_verified": "Verificeret",
+    "anti_cheat": "Anti-snyd",
+    "anti_cheat_warning_title": "Anti-snyd registreret",
+    "anti_cheat_warning_message": "Dette spil ser ud til at have disse anti-snyd komponenter: {ac}. Installation af OptiScaler kan aktivere anti-snyd. Fortsæt med forsigtighed.",
+    "engine_unknown_warning_title": "Ukendt Engine",
+    "engine_unknown_warning_message": "Dette spil bruger en ukendt engine - kompatibilitet kan være begrænset. Fortsæt med forsigtighed."
     },
   "sections": {
     "OptiScaler": "OptiScaler Hoved Indstillinger",

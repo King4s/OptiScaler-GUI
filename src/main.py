@@ -20,7 +20,8 @@ def setup_environment():
         os.chdir(application_path)
         
         # Add paths for imports
-        bundle_dir = Path(sys._MEIPASS) if hasattr(sys, '_MEIPASS') else application_path
+        # Use getattr to safely access _MEIPASS if present in PyInstaller runtime
+        bundle_dir = Path(getattr(sys, '_MEIPASS', application_path))
         sys.path.insert(0, str(bundle_dir))
     else:
         # Running as script - add src to path if needed

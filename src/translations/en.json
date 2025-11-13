@@ -106,6 +106,13 @@
     "startup_update_message": "A new version of OptiScaler is available!",
     "update_individual_games": "You can update individual games from the game list.",
     "ok": "OK"
+  ,
+  "community_verified": "Verified",
+  "anti_cheat": "Anti-cheat",
+  "anti_cheat_warning_title": "Anti-cheat Detected",
+  "anti_cheat_warning_message": "This game appears to have the following anti-cheat components: {ac}. Installing OptiScaler may trigger anti-cheat protections. Proceed at your own risk.",
+  "engine_unknown_warning_title": "Unknown Engine",
+  "engine_unknown_warning_message": "This game uses an unknown engine - compatibility may be limited. Proceed with caution."
   },
   "sections": {
     "OptiScaler": "OptiScaler Main Settings",

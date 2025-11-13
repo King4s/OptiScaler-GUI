@@ -1,0 +1,7 @@
+{
+  "games": [
+    {"name": "Cyberpunk 2077", "appid": "1091500"},
+    {"name": "Doom Eternal", "appid": "782330"},
+    {"name": "The Witcher 3: Wild Hunt", "appid": "292030"}
+  ]
+}

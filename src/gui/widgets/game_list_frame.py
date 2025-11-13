@@ -1,5 +1,10 @@
 import customtkinter as ctk
 from PIL import Image
+# Determine correct LANCZOS constant across Pillow versions without static attribute
+LANCZOS = getattr(getattr(Image, 'Resampling', Image), 'LANCZOS', None)
+if LANCZOS is None:
+    # Fallback to a commonly available resampling filter (BICUBIC or NEAREST if not present)
+    LANCZOS = getattr(Image, 'BICUBIC', getattr(Image, 'NEAREST', None))
 from pathlib import Path
 from optiscaler.manager import OptiScalerManager
 from CTkMessagebox import CTkMessagebox
@@ -85,6 +90,16 @@ else:
                 return False, "robust_wrapper not available", False
             def _fallback_is_installed(self, path):
                 return False
+            def validate_operation_environment(self, operation, path):
+                # Default: assume environment is valid (no additional checks available)
+                return True, []
+            def _fallback_install(self, path):
+                return False, "Installation not supported in this environment"
+            def _fallback_uninstall(self, path):
+                return False, "Uninstallation not supported in this environment"
+            def __init__(self):
+                # Provide the attribute that other code expects to exist
+                self.optiscaler_manager = None
         robust_wrapper = FallbackRobustWrapper()
 
 class GameListFrame(ctk.CTkScrollableFrame):
@@ -168,7 +183,7 @@ class GameListFrame(ctk.CTkScrollableFrame):
                     if resampler is not None:
                         lanczos = resampler.LANCZOS
                     else:
-                        lanczos = Image.LANCZOS
+                        lanczos = LANCZOS
                     img = img.resize((new_width, new_height), lanczos)
 
                     # Create CTkImage with the *actual* new dimensions of the resized image
@@ -221,6 +236,18 @@ class GameListFrame(ctk.CTkScrollableFrame):
                 tag_label = ctk.CTkLabel(info_frame, text=game.platform, font=("Arial", 10, "italic"),
                                          fg_color="#444", text_color="#fff", corner_radius=6, padx=6, pady=2)
                 tag_label.grid(row=0, column=1, padx=8, sticky="w")
+
+            # Community-verified tag or anti-cheat warning
+            # Community verified games get a green badge
+            if getattr(game, 'community_verified', False):
+                verified_label = ctk.CTkLabel(info_frame, text=t('ui.community_verified') if t('ui.community_verified') else "Verified", font=("Arial", 10),
+                                             fg_color="#2e7d32", text_color="#fff", corner_radius=6, padx=6, pady=2)
+                verified_label.grid(row=0, column=2, padx=8, sticky="w")
+            elif getattr(game, 'anti_cheat_list', None):
+                ac_text = ", ".join(game.anti_cheat_list)
+                ac_label = ctk.CTkLabel(info_frame, text=f"{t('ui.anti_cheat') if t('ui.anti_cheat') else 'Anti-cheat'}: {ac_text}", font=("Arial", 10),
+                                       fg_color="#ffa000", text_color="#000", corner_radius=6, padx=6, pady=2)
+                ac_label.grid(row=0, column=2, padx=8, sticky="w")
 
             # Game path
             path_label = ctk.CTkLabel(info_frame, text=game.path, font=("Arial", 10))
@@ -301,7 +328,7 @@ class GameListFrame(ctk.CTkScrollableFrame):
                             if resampler is not None:
                                 lanczos = resampler.LANCZOS
                             else:
-                                lanczos = Image.LANCZOS
+                                lanczos = LANCZOS
                             img = img.resize((new_width, target_height), lanczos)
                             ctk_image = ctk.CTkImage(light_image=img, dark_image=img, size=(new_width, target_height))
                             img_label.configure(image=ctk_image)
@@ -321,6 +348,37 @@ class GameListFrame(ctk.CTkScrollableFrame):
         """Install OptiScaler for the selected game with enhanced error handling"""
         debug_log(f"Installing OptiScaler for {game.name} at {game.path}")
         
+        # Analyze game safety: anti-cheat, engine, community verification
+        safety = self.game_scanner.analyze_game_safety(game)
+        anti_cheat_list = safety.get('anti_cheat_list', []) if safety else []
+        engine = safety.get('engine', 'Unknown') if safety else 'Unknown'
+        community_verified = safety.get('community_verified', False) if safety else False
+
+        # Warn user if anti-cheat is present
+        if anti_cheat_list:
+            ac_text = ', '.join(anti_cheat_list)
+            res = CTkMessagebox(
+                title=t('ui.anti_cheat_warning_title'),
+                message=t('ui.anti_cheat_warning_message').format(ac=ac_text) if t('ui.anti_cheat_warning_message') else f"Anti-cheat detected: {ac_text}",
+                icon='warning',
+                option_1=t('ui.cancel'),
+                option_2=t('ui.continue')
+            )
+            if res.get() == t('ui.cancel'):
+                return
+
+        # Warn about unknown engine if not community verified
+        if engine == 'Unknown' and not community_verified:
+            res2 = CTkMessagebox(
+                title=t('ui.engine_unknown_warning_title'),
+                message=t('ui.engine_unknown_warning_message') if t('ui.engine_unknown_warning_message') else "Unknown engine. Proceed?",
+                icon='warning',
+                option_1=t('ui.cancel'),
+                option_2=t('ui.continue')
+            )
+            if res2.get() == t('ui.cancel'):
+                return
+
         # Validate environment before installation
         env_valid, env_warnings = robust_wrapper.validate_operation_environment("install", game.path)
         
@@ -432,8 +490,10 @@ class GameListFrame(ctk.CTkScrollableFrame):
         debug_log(f"Updating OptiScaler for {game.name} at {game.path}")
         
         # Use cached update info to avoid double-checking
-        update_info = self._get_update_info()
-        
+        update_info = self._get_update_info() or {}
+        if not isinstance(update_info, dict):
+            update_info = {}
+
         if not update_info.get("available", False):
             # No updates available
             CTkMessagebox(
@@ -445,13 +505,16 @@ class GameListFrame(ctk.CTkScrollableFrame):
         # Check compatibility and get recommendations
         latest_version = update_info.get("latest_version", "Unknown")
         current_version = update_info.get("cached_version", "Unknown")
-        
-        compatibility = compatibility_checker.check_version_compatibility(latest_version)
-        recommendation = compatibility_checker.get_safe_update_recommendation(current_version, latest_version)
+        # Ensure we pass strings to the compatibility checker
+        latest_str = str(latest_version) if latest_version is not None else "Unknown"
+        current_str = str(current_version) if current_version is not None else "Unknown"
+
+        compatibility = compatibility_checker.check_version_compatibility(latest_str)
+        recommendation = compatibility_checker.get_safe_update_recommendation(current_str, latest_str)
         
         # Build update message with warnings
-        release_info = update_info.get("release_info", {})
-        release_name = release_info.get("name", latest_version)
+        release_info = update_info.get("release_info", {}) if isinstance(update_info, dict) else {}
+        release_name = release_info.get("name", latest_version) if isinstance(release_info, dict) else latest_version
         
         message_parts = [
             f"{t('ui.new_version_available')}\n",
@@ -533,25 +596,25 @@ class GameListFrame(ctk.CTkScrollableFrame):
                     # Report any issues to compatibility checker
                     if not success:
                         compatibility_checker.report_installation_issue(
-                            latest_version,
+                            latest_str,
                             message,
                             {"operation": "update", "game": game.name, "path": game.path}
                         )
                     
                     # Update UI in main thread
-                    self.after(0, lambda: self._handle_update_result(game, success, message, latest_version))
+                    self.after(0, lambda: self._handle_update_result(game, success, message, latest_str))
                     
                 except Exception as e:
                     debug_log(f"ERROR: Update failed: {e}")
                     
                     # Report exception to compatibility checker
                     compatibility_checker.report_installation_issue(
-                        latest_version,
+                        latest_str,
                         str(e),
                         {"operation": "update", "game": game.name, "path": game.path, "exception": True}
                     )
                     
-                    self.after(0, lambda: self._handle_update_result(game, False, str(e), latest_version))
+                    self.after(0, lambda: self._handle_update_result(game, False, str(e), latest_str))
             
             # Start update in background
             import threading
