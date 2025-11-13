@@ -181,14 +181,11 @@ class GameScanner:
             # Godot detection: .import/gui or project file
             if any(game_path.glob('*.godot')) or (game_path / '.import').exists():
                 return 'Godot'
-            # Prism3D detection (SCS/EURO Truck Simulator / American Truck Simulator)
-            # Basic heuristic: look for 'prism' in filenames or common SCS exe names
+            # Prism3D detection: prefer checking top-level names to avoid deep recursion
             try:
-                for p in game_path.rglob('*'):
+                for p in game_path.glob('*.exe'):
                     name = p.name.lower()
-                    if 'prism' in name:
-                        return 'Prism3D'
-                    if name.endswith('.exe') and ('euro' in name or 'truck' in name or 'amer' in name or 'ats' in name):
+                    if 'prism' in name or ('euro' in name and 'truck' in name) or 'ats' in name:
                         return 'Prism3D'
             except Exception:
                 pass
@@ -213,7 +210,24 @@ class GameScanner:
             for name, patterns in indicators.items():
                 for pattern in patterns:
                     # Look for files or folders containing the pattern
-                    if any(p.name.lower() == pattern.lower() or pattern.lower() in p.name.lower() for p in game_path.rglob('*')):
+                    # Prefers top-level check and limited depth to avoid full recursive traversal
+                    try:
+                        # Check top-level
+                        if any(p.name.lower() == pattern.lower() or pattern.lower() in p.name.lower() for p in game_path.iterdir() if p.is_file()):
+                            ac_list.append(name)
+                            break
+                        # Check a shallow depth: direct children directories' files
+                        for sub in (game_path.iterdir() if game_path.exists() else []):
+                            if sub.is_dir():
+                                for p in sub.iterdir():
+                                    if p.is_file() and (p.name.lower() == pattern.lower() or pattern.lower() in p.name.lower()):
+                                        ac_list.append(name)
+                                        raise StopIteration
+                        # As a final fallback, check a limited set of files via glob patterns
+                    except StopIteration:
+                        break
+                    except Exception:
+                        pass
                         ac_list.append(name)
                         break
             # Filter duplicates
@@ -222,6 +236,28 @@ class GameScanner:
         except Exception as e:
             debug_log(f"Anti-cheat detection failed for {game_path}: {e}")
             return ac_list
+
+    def _detect_anti_cheat_shallow(self, game_path: Path) -> list:
+        """Shallow anti-cheat detection for registry/appx scans to avoid expensive recursive scans."""
+        ac_list = []
+        try:
+                indicators = {
+                    'EasyAntiCheat': ['EasyAntiCheat.sys', 'EasyAntiCheat.exe', 'EasyAntiCheat'],
+                    'BattlEye': ['beclient.dll', 'BEService.exe', 'BattleEye'],
+                    'Vanguard': ['vgc.sys', 'vgtray.exe', 'Vanguard']
+                }
+                # List only top-level files and folders (avoid recursion)
+                for p in Path(game_path).iterdir():
+                    name = p.name.lower()
+                    for ac_name, patterns in indicators.items():
+                        for pattern in patterns:
+                            if pattern.lower() in name:
+                                ac_list.append(ac_name)
+                                break
+                return list(dict.fromkeys(ac_list))
+        except Exception as e:
+            debug_log(f"Shallow anti-cheat detection failed for {game_path}: {e}")
+            return []
 
     def _is_community_verified(self, name: str, appid: str) -> bool:
         name_key = (name or '').lower().strip()
@@ -351,9 +387,31 @@ class GameScanner:
                                         path_candidate = Path(display_icon.split(',')[0].strip('"'))
                                         if path_candidate.exists():
                                             path_to_check = path_candidate.parent
-                                    if path_to_check and self._is_game_folder(path_to_check):
+                                    # Guard against scanning system root folders or top-level Program Files
+                                    root_blacklist = {Path("C:/Program Files"), Path("C:/Program Files (x86)"), Path("C:/Windows"), Path("C:/"), Path("C:/Program Files/Common Files")}
+                                    # Skip scanning if path is too shallow (root or Program Files root)
+                                    if not path_to_check:
+                                        continue
+                                    try:
+                                        resolved = Path(path_to_check).resolve()
+                                        if len(resolved.parts) <= 2:
+                                            continue
+                                    except Exception:
+                                        # If we can't resolve, skip unsafe scanning
+                                        continue
+                                    if Path(path_to_check) and Path(path_to_check) not in root_blacklist and self._is_game_folder(path_to_check):
                                         optiscaler_installed = self._detect_optiscaler(path_to_check)
-                                        safety = self.analyze_game_safety(Game(display_name, str(path_to_check)))
+                                        # Use shallow safety check to avoid deep scans when enumerating installed programs
+                                        engine = self._detect_engine_type(Path(path_to_check))
+                                        anti_cheat_list = self._detect_anti_cheat_shallow(Path(path_to_check))
+                                        community_verified = self._is_community_verified(display_name, '')
+                                        engine_supported = compatibility_checker.is_engine_supported(engine)
+                                        safety = {
+                                            'engine': engine,
+                                            'anti_cheat_list': anti_cheat_list,
+                                            'community_verified': community_verified,
+                                            'engine_supported': engine_supported
+                                        }
                                         games.append(Game(name=display_name, path=str(path_to_check), image_path=None, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Registry'))
                             except Exception:
                                 continue
@@ -386,7 +444,17 @@ class GameScanner:
                     continue
                 if Path(install_loc).exists() and self._is_game_folder(install_loc):
                     optiscaler_installed = self._detect_optiscaler(install_loc)
-                    safety = self.analyze_game_safety(Game(name, install_loc))
+                    # Use shallow detections for Appx packages
+                    engine = self._detect_engine_type(Path(install_loc))
+                    anti_cheat_list = self._detect_anti_cheat_shallow(Path(install_loc))
+                    community_verified = self._is_community_verified(name, '')
+                    engine_supported = compatibility_checker.is_engine_supported(engine)
+                    safety = {
+                        'engine': engine,
+                        'anti_cheat_list': anti_cheat_list,
+                        'community_verified': community_verified,
+                        'engine_supported': engine_supported
+                    }
                     games.append(Game(name=name, path=install_loc, image_path=None, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Appx'))
         except Exception as e:
             debug_log(f"Appx scan failed: {e}")
