@@ -7,3 +7,4 @@ psutil
 py7zr
 vdf
 CTkMessagebox
+pytest

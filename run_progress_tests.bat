@@ -9,6 +9,7 @@ echo 1. Minimal Test (pure tkinter - no dependencies)
 echo 2. Simple Test (CustomTkinter with progress overlay)
 echo 3. Advanced Test (Full Settings Editor simulation)
 echo 4. Run All Tests
+echo 5. Integration Tests (pytest)
 echo.
 set /p choice="Enter your choice (1-4): "
 
@@ -16,6 +17,7 @@ if "%choice%"=="1" goto minimal
 if "%choice%"=="2" goto simple
 if "%choice%"=="3" goto advanced
 if "%choice%"=="4" goto all
+if "%choice%"=="5" goto integration
 goto end
 
 :minimal
@@ -50,6 +52,12 @@ timeout /t 2 >nul
 echo.
 echo === Test 3: Advanced ===
 start "Advanced Test" python test_progress_advanced.py
+goto end
+ 
+:integration
+echo.
+echo Running Integration Tests (pytest)...
+python -m pytest -q tests
 goto end
 
 :end

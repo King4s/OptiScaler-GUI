@@ -1,3 +1,6 @@
+# Test environment (local testing only, excluded from git)
+test_env/
+
 # Cache and temporary files
 cache/
 
