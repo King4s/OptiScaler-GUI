@@ -231,6 +231,9 @@ class GameListFrame(ctk.CTkScrollableFrame):
             name_label = ctk.CTkLabel(info_frame, text=game.name, font=("Arial", 14, "bold"))
             name_label.grid(row=0, column=0, sticky="w")
 
+            # Debug: log community verified state for each game displayed
+            debug_log(f"Displaying game: {game.name}, community_verified={getattr(game, 'community_verified', False)}")
+
             # Platform/Manager tag
             if hasattr(game, 'platform') and game.platform:
                 tag_label = ctk.CTkLabel(info_frame, text=game.platform, font=("Arial", 10, "italic"),

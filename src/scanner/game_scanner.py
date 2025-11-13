@@ -211,8 +211,18 @@ class GameScanner:
 
     def _is_community_verified(self, name: str, appid: str) -> bool:
         name_key = (name or '').lower().strip()
-        appid_key = str(appid or '')
-        return (name_key, appid_key) in self.community_verified
+        appid_key = str(appid or '').strip()
+        # Match by (name, appid) pair if available
+        if (name_key, appid_key) in self.community_verified:
+            return True
+        # Match by name-only if present
+        # If any entry matches the name regardless of appid, consider it verified
+        if any(entry[0] == name_key for entry in self.community_verified):
+            return True
+        # Match by appid-only if present
+        if any(entry[1] == appid_key and appid_key for entry in self.community_verified):
+            return True
+        return False
 
     def analyze_game_safety(self, game: Game) -> dict:
         """Return safety analysis info for a game (engine, anti_cheat_list, community_verified)
@@ -223,6 +233,8 @@ class GameScanner:
             engine = self._detect_engine_type(gp)
             anti_cheat_list = self._detect_anti_cheat(gp)
             community_verified = self._is_community_verified(game.name, str(game.appid or ''))
+            # Debug: log safety detection results
+            debug_log(f"Game safety for {game.name} at {game.path}: engine={engine}, anti_cheat={anti_cheat_list}, community_verified={community_verified}")
             return {
                 'engine': engine,
                 'anti_cheat_list': anti_cheat_list,
