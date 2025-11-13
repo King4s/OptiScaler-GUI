@@ -4,6 +4,7 @@ import shutil
 from utils.translation_manager import t, get_translation_manager, get_languages, set_language
 from utils.debug import debug_log
 from utils.config import get_config_value, set_config_value
+from utils.archive_extractor import archive_extractor
 import webbrowser
 
 class GlobalSettingsFrame(ctk.CTkScrollableFrame):
@@ -115,6 +116,16 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
                                      variable=self.theme_var,
                                      command=self._on_theme_change)
         theme_menu.grid(row=3, column=1, padx=15, pady=(5, 15), sticky="w")
+
+        # Prefer system 7z setting
+        self.prefer_7z_var = ctk.BooleanVar(value=bool(get_config_value('prefer_system_7z', True)))
+        prefer_7z_label = ctk.CTkLabel(app_frame, text=t("ui.prefer_system_7z"))
+        prefer_7z_label.grid(row=4, column=0, padx=15, pady=5, sticky="w")
+        prefer_7z_switch = ctk.CTkSwitch(app_frame,
+                                        text=t("ui.prefer_system_7z_switch"),
+                                        variable=self.prefer_7z_var,
+                                        command=self._on_prefer_7z_toggle)
+        prefer_7z_switch.grid(row=4, column=1, padx=15, pady=(5, 15), sticky="w")
     
     def _create_cache_section(self):
         """Create cache management section"""
@@ -240,6 +251,13 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
         ctk_theme = theme_map.get(theme, "system")
         ctk.set_appearance_mode(ctk_theme)
         debug_log(f"Theme changed to: {theme}")
+
+    def _on_prefer_7z_toggle(self):
+        """Handle prefer system 7z toggle"""
+        prefer_value = bool(self.prefer_7z_var.get())
+        archive_extractor.set_prefer_system_7z(prefer_value)
+        set_config_value('prefer_system_7z', prefer_value)
+        debug_log(f"Prefer system 7z set to: {prefer_value}")
     
     def _get_cache_info(self):
         """Get cache directory information"""

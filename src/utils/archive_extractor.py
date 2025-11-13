@@ -32,6 +32,7 @@ import subprocess
 import zipfile
 from utils.debug import debug_log
 from utils.translation_manager import t
+from utils.config import get_config_value, set_config_value
 
 # Try to import py7zr with fallback
 try:
@@ -72,8 +73,8 @@ class ArchiveExtractor:
         # Filter out None values
         self.seven_zip_paths = [path for path in self.seven_zip_paths if path is not None]
         self.system_7z_path = self._find_system_7z()
-        # Prefer system 7z over py7zr when available
-        self.prefer_system_7z = True
+        # Prefer system 7z over py7zr when available (configurable)
+        self.prefer_system_7z = bool(get_config_value('prefer_system_7z', True))
         
     def _get_bundled_7z_path(self):
         """Get path to bundled 7z.exe in portable version"""
@@ -167,6 +168,15 @@ class ArchiveExtractor:
         error_msg = "Cannot extract 7z archive: Neither system 7z.exe nor py7zr library available"
         debug_log(error_msg)
         return False, error_msg, None
+
+    def set_prefer_system_7z(self, value: bool):
+        """Set whether to prefer system 7z and persist the setting."""
+        self.prefer_system_7z = bool(value)
+        try:
+            set_config_value('prefer_system_7z', self.prefer_system_7z)
+        except Exception:
+            pass
+        return self.prefer_system_7z
     
     def _extract_7z_system(self, archive_path, extract_path, progress_callback=None):
         """Extract 7z using system 7z.exe"""

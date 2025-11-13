@@ -3,6 +3,7 @@ Configuration management for OptiScaler-GUI
 """
 import os
 from pathlib import Path
+import json
 
 class Config:
     """Configuration manager for OptiScaler-GUI"""
@@ -39,6 +40,30 @@ class Config:
         self.max_scan_depth = 3
         self.image_download_timeout = 10
         self.concurrent_downloads = 5
+        # Persistent GUI settings file
+        self.config_file = self.cache_dir / 'config.json'
+        # Load existing settings or create defaults
+        self._settings = self._load_settings_file()
+
+    def _load_settings_file(self):
+        """Load settings from JSON file; return dict or empty dict on error"""
+        try:
+            if self.config_file.exists():
+                with open(self.config_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            else:
+                return {}
+        except Exception:
+            return {}
+
+    def _save_settings_file(self, settings: dict):
+        """Save settings dict into JSON file"""
+        try:
+            with open(self.config_file, 'w', encoding='utf-8') as f:
+                json.dump(settings, f, indent=2)
+            return True
+        except Exception:
+            return False
         
     @property
     def no_image_path(self):
@@ -65,11 +90,24 @@ config = Config()
 
 # Simple config value functions for backwards compatibility
 def get_config_value(key, default=None):
-    """Get configuration value"""
-    # This would be extended with a JSON config file in the future
-    return default
+    """Get configuration value from persisted JSON settings (cache/config.json)"""
+    return config._settings.get(key, default)
 
 def set_config_value(key, value):
-    """Set configuration value"""
-    # This would be extended with a JSON config file in the future
+    """Set configuration value and persist to JSON settings file"""
+    config._settings[key] = value
+    try:
+        config._save_settings_file(config._settings)
+    except Exception:
+        return False
     return True
+
+# Compatibility function - left for testability in case other modules used it
+def _read_json_file(file_path):
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
