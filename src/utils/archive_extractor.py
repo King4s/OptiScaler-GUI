@@ -13,7 +13,7 @@ def setup_paths():
     """Setup paths for both development and PyInstaller environments"""
     if getattr(sys, 'frozen', False):
         # PyInstaller environment
-        bundle_dir = Path(sys._MEIPASS)
+        bundle_dir = Path(getattr(sys, '_MEIPASS', ''))
         src_dir = bundle_dir / 'src'
     else:
         # Development environment
@@ -38,18 +38,25 @@ try:
     import py7zr
     PY7ZR_AVAILABLE = True
     debug_log("py7zr library available for 7z extraction")
+    _py7zr_exceptions_mod = getattr(py7zr, 'exceptions', None)
+    if _py7zr_exceptions_mod and hasattr(_py7zr_exceptions_mod, 'Bad7zFile'):
+        PY7ZR_BAD_7Z_EXC = getattr(_py7zr_exceptions_mod, 'Bad7zFile')
+    else:
+        PY7ZR_BAD_7Z_EXC = Exception
 except ImportError:
     PY7ZR_AVAILABLE = False
     debug_log("py7zr library not available - 7z extraction will use system 7z.exe only")
+    PY7ZR_BAD_7Z_EXC = Exception
 
 class ArchiveExtractor:
     """
     Robust archive extractor with multiple fallback methods
     
-    Extraction priority:
-    1. System 7z.exe (fastest, most reliable for 7z)
-    2. py7zr Python library (cross-platform fallback for 7z)
-    3. Python zipfile (for ZIP archives)
+    By default this extractor prefers using the system 7z.exe (fastest and most
+    reliable for .7z archives). If system 7z is not available or extraction
+    fails, it falls back to the py7zr Python library (if installed). ZIP
+    archives always use Python's `zipfile` module. You can control behavior
+    via the `self.prefer_system_7z` boolean (True by default).
     """
     
     def __init__(self):
@@ -65,6 +72,8 @@ class ArchiveExtractor:
         # Filter out None values
         self.seven_zip_paths = [path for path in self.seven_zip_paths if path is not None]
         self.system_7z_path = self._find_system_7z()
+        # Prefer system 7z over py7zr when available
+        self.prefer_system_7z = True
         
     def _get_bundled_7z_path(self):
         """Get path to bundled 7z.exe in portable version"""
@@ -130,18 +139,27 @@ class ArchiveExtractor:
     
     def _extract_7z(self, archive_path, extract_path, progress_callback=None):
         """Extract 7z archive with multiple fallback methods"""
-        
-        # Method 1: Try system 7z.exe first (fastest and most reliable)
-        if self.system_7z_path:
+        # If configured to prefer the system 7z, try it first (fastest and most reliable)
+        if self.prefer_system_7z and self.system_7z_path:
             success, message, path = self._extract_7z_system(archive_path, extract_path, progress_callback)
             if success:
                 return success, message, path
-            
+
             debug_log(f"System 7z failed: {message}, trying Python fallback...")
             if progress_callback:
                 progress_callback("System 7z failed, trying Python fallback...")
-        
-        # Method 2: Try py7zr Python library as fallback
+
+        # If we're not preferring system 7z, and py7zr is available, try Python method first.
+        if not self.prefer_system_7z and PY7ZR_AVAILABLE:
+            success, message, path = self._extract_7z_python(archive_path, extract_path, progress_callback)
+            if success:
+                return success, message, path
+
+            debug_log(f"Python py7zr extraction failed: {message}, trying system 7z...")
+            if progress_callback:
+                progress_callback("Python py7zr failed, trying system 7z...")
+
+        # Fallback: If py7zr is available, try it as a fallback
         if PY7ZR_AVAILABLE:
             return self._extract_7z_python(archive_path, extract_path, progress_callback)
         
@@ -152,6 +170,11 @@ class ArchiveExtractor:
     
     def _extract_7z_system(self, archive_path, extract_path, progress_callback=None):
         """Extract 7z using system 7z.exe"""
+        # Make a safe local string copy to satisfy static type checkers
+        if not self.system_7z_path:
+            return False, "System 7z path not set", None
+        system_path = str(self.system_7z_path)
+        extract_path_str = str(extract_path)
         try:
             if progress_callback:
                 progress_callback("Extracting with system 7z.exe...")
@@ -159,7 +182,7 @@ class ArchiveExtractor:
             debug_log(f"Extracting {archive_path} with system 7z: {self.system_7z_path}")
             
             result = subprocess.run(
-                [self.system_7z_path, 'x', str(archive_path), f'-o{extract_path}', '-y'],
+                [system_path, 'x', str(archive_path), f'-o{extract_path_str}', '-y'],
                 check=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -204,12 +227,13 @@ class ArchiveExtractor:
             debug_log("Python py7zr extraction successful")
             return True, "Extracted successfully with Python py7zr library", str(extract_path)
             
-        except py7zr.exceptions.Bad7zFile:
-            error_msg = "Invalid or corrupted 7z file"
-            debug_log(error_msg)
-            return False, error_msg, None
-            
         except Exception as e:
+            # If py7zr provides a Bad7zFile exception, prefer to classify this via its
+            # exception class; otherwise, handle generically.
+            if PY7ZR_AVAILABLE and isinstance(e, PY7ZR_BAD_7Z_EXC):
+                error_msg = "Invalid or corrupted 7z file"
+                debug_log(error_msg)
+                return False, error_msg, None
             error_msg = f"Python py7zr extraction failed: {e}"
             debug_log(error_msg)
             return False, error_msg, None

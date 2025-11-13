@@ -24,7 +24,7 @@ Be concise. This file summarizes the essential, discoverable patterns and workfl
  - Translations: use the `t()` helper from `utils.translation_manager` for all visible strings. Language files live in `src/translations/*.json`.
  - Debugging/logging: use `utils.debug.debug_log()` and `utils.debug` toggles. UI exposes a debug-mode log button — don't print directly to stdout in GUI contexts.
  - File operations: code uses pathlib (`Path`) and writes Windows batch scripts for installers/uninstallers. When modifying install logic, respect the Unreal-Engine install path detection rule: install to `Engine/Binaries/Win64` if that folder exists (see `OptiScalerManager._determine_install_directory`).
- - Archive handling: extraction uses a robust multi-tier approach: system 7z.exe → `py7zr` → Python zip fallback. Reuse `utils/archive_extractor.py` for validation/extraction.
+ - Archive handling: extraction prefers system 7z.exe first (fastest and most reliable). Only fall back to `py7zr` if system 7z is not available or fails; Python zipfile is used as a last resort for `.zip` archives only. Reuse `utils/archive_extractor.py` for validation/extraction. Set `archive_extractor.prefer_system_7z = True` to enforce this behavior.
  - Network/IO: downloads use `requests` with timeouts and chunked writes; preserve progress callbacks and graceful failure handling (refer to `_download_latest_release` and `_download_file`).
 
 4) Integration & external dependencies

@@ -106,7 +106,7 @@
 1. **Download Process**:
    - Fetches latest OptiScaler releases from [official GitHub](https://github.com/optiscaler/OptiScaler)
    - Downloads `.7z` archives (e.g., `OptiScaler_v0.7.7-pre9_Daria.7z`)
-   - Extracts using bundled 7z.exe or system 7-Zip
+   - Extracts using system 7z.exe preferred (fastest), falling back to py7zr or Python zipfile
 
 2. **Installation Process**:
    - Copies `OptiScaler.dll` to your game directory
