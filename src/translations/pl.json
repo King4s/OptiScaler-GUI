@@ -109,6 +109,7 @@
     "anti_cheat_warning_message": "Wykryto następujące komponenty anti-cheat: {ac}. Instalacja OptiScaler może wywołać blokady anti-cheat. Kontynuuj ostrożnie.",
     "engine_unknown_warning_title": "Nieznany silnik",
     "engine_unknown_warning_message": "To gra korzysta z nieznanego silnika – kompatybilność może być ograniczona. Kontynuuj ostrożnie."
+      ,"engine_unsupported": "Nieobsługiwany"
   },
   "sections": {
     "OptiScaler": "OptiScaler Główne Ustawienia",

@@ -46,6 +46,9 @@ class OptiScalerCompatibilityChecker:
         
         # Load known compatibility data
         self._load_compatibility_data()
+
+        # Supported engines definition - engines not in this set are considered unsupported by default
+        self.supported_engines = set(['Unreal', 'Unity', 'Godot'])
     
     def _load_compatibility_data(self):
         """Load compatibility data from cache"""
@@ -279,6 +282,16 @@ class OptiScalerCompatibilityChecker:
         
         self._save_compatibility_data()
         debug_log(f"Reported issue for {version}: {error}")
+
+    def is_engine_supported(self, engine_name: str) -> bool:
+        """Return True if the engine is in the supported engine set."""
+        try:
+            if not engine_name:
+                return False
+            return engine_name in self.supported_engines
+        except Exception as e:
+            debug_log(f"Engine support check failed for '{engine_name}': {e}")
+            return False
 
 # Global instance
 compatibility_checker = OptiScalerCompatibilityChecker()

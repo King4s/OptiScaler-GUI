@@ -113,6 +113,7 @@
     "anti_cheat_warning_message": "Dette spil ser ud til at have disse anti-snyd komponenter: {ac}. Installation af OptiScaler kan aktivere anti-snyd. Fortsæt med forsigtighed.",
     "engine_unknown_warning_title": "Ukendt Engine",
     "engine_unknown_warning_message": "Dette spil bruger en ukendt engine - kompatibilitet kan være begrænset. Fortsæt med forsigtighed."
+    ,"engine_unsupported": "Understøttes ikke"
     },
   "sections": {
     "OptiScaler": "OptiScaler Hoved Indstillinger",

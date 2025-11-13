@@ -252,6 +252,19 @@ class GameListFrame(ctk.CTkScrollableFrame):
                                        fg_color="#ffa000", text_color="#000", corner_radius=6, padx=6, pady=2)
                 ac_label.grid(row=0, column=2, padx=8, sticky="w")
 
+            # Engine badge - show type and whether it's unsupported
+            engine = getattr(game, 'engine', None)
+            engine_supported = getattr(game, 'engine_supported', True)
+            if engine and not engine_supported:
+                engine_label = ctk.CTkLabel(info_frame, text=f"{engine} ({t('ui.engine_unsupported')})", font=("Arial", 10),
+                                             fg_color="#d32f2f", text_color="#fff", corner_radius=6, padx=6, pady=2)
+                engine_label.grid(row=0, column=3, padx=8, sticky="w")
+            elif engine:
+                # If engine is known and supported, show a subtle tag
+                engine_label = ctk.CTkLabel(info_frame, text=f"{engine}", font=("Arial", 10),
+                                             fg_color="#666", text_color="#fff", corner_radius=6, padx=6, pady=2)
+                engine_label.grid(row=0, column=3, padx=8, sticky="w")
+
             # Game path
             path_label = ctk.CTkLabel(info_frame, text=game.path, font=("Arial", 10))
             path_label.grid(row=1, column=0, columnspan=2, sticky="w")
@@ -370,8 +383,8 @@ class GameListFrame(ctk.CTkScrollableFrame):
             if res.get() == t('ui.cancel'):
                 return
 
-        # Warn about unknown engine if not community verified
-        if engine == 'Unknown' and not community_verified:
+        # Warn about unknown or unsupported engine if not community verified
+        if (engine == 'Unknown' or not compatibility_checker.is_engine_supported(engine)) and not community_verified:
             res2 = CTkMessagebox(
                 title=t('ui.engine_unknown_warning_title'),
                 message=t('ui.engine_unknown_warning_message') if t('ui.engine_unknown_warning_message') else "Unknown engine. Proceed?",

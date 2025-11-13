@@ -11,15 +11,18 @@ from utils.config import config
 from utils.cache_manager import cache_manager
 from utils.performance import timed
 from utils.debug import debug_log
+from utils.compatibility_checker import compatibility_checker
 
 class Game:
-    def __init__(self, name, path, appid=None, image_path=None, optiscaler_installed=False, engine=None, anti_cheat_list=None, community_verified=False):
+    def __init__(self, name, path, appid=None, image_path=None, optiscaler_installed=False, engine=None, anti_cheat_list=None, community_verified=False, engine_supported=True, platform=None):
         self.name = name
         self.path = str(path)  # Ensure string for compatibility
         self.appid = appid
         self.image_path = image_path
         self.optiscaler_installed = optiscaler_installed  # Track OptiScaler installation status
         self.engine = engine
+        self.engine_supported = engine_supported
+        self.platform = platform
         self.anti_cheat_list = anti_cheat_list or []
         self.community_verified = community_verified
 
@@ -178,6 +181,17 @@ class GameScanner:
             # Godot detection: .import/gui or project file
             if any(game_path.glob('*.godot')) or (game_path / '.import').exists():
                 return 'Godot'
+            # Prism3D detection (SCS/EURO Truck Simulator / American Truck Simulator)
+            # Basic heuristic: look for 'prism' in filenames or common SCS exe names
+            try:
+                for p in game_path.rglob('*'):
+                    name = p.name.lower()
+                    if 'prism' in name:
+                        return 'Prism3D'
+                    if name.endswith('.exe') and ('euro' in name or 'truck' in name or 'amer' in name or 'ats' in name):
+                        return 'Prism3D'
+            except Exception:
+                pass
             return 'Unknown'
         except Exception as e:
             debug_log(f"Engine detection failed for {game_path}: {e}")
@@ -233,12 +247,14 @@ class GameScanner:
             engine = self._detect_engine_type(gp)
             anti_cheat_list = self._detect_anti_cheat(gp)
             community_verified = self._is_community_verified(game.name, str(game.appid or ''))
+            engine_supported = compatibility_checker.is_engine_supported(engine)
             # Debug: log safety detection results
             debug_log(f"Game safety for {game.name} at {game.path}: engine={engine}, anti_cheat={anti_cheat_list}, community_verified={community_verified}")
             return {
                 'engine': engine,
                 'anti_cheat_list': anti_cheat_list,
                 'community_verified': community_verified
+                , 'engine_supported': engine_supported
             }
         except Exception as e:
             debug_log(f"Failed to analyze safety for {game}: {e}")
@@ -290,6 +306,92 @@ class GameScanner:
         # and a reasonable number of files (to filter out empty or very small folders)
         return (found_exe or found_game_content) and file_count > 5
 
+    def _scan_installed_programs(self):
+        """Scan Windows registry for installed programs and return Game objects.
+        This covers classic Win32 installed programs under the Uninstall registry key.
+        """
+        games = []
+        try:
+            import winreg
+            # Check both HKLM and HKCU uninstall keys (32/64-bit aware)
+            uninstall_keys = [
+                (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+                (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
+                (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+            ]
+
+            for root, subkey in uninstall_keys:
+                try:
+                    with winreg.OpenKey(root, subkey) as key:
+                        for i in range(0, winreg.QueryInfoKey(key)[0]):
+                            try:
+                                sk_name = winreg.EnumKey(key, i)
+                                with winreg.OpenKey(key, sk_name) as sk:
+                                    try:
+                                        display_name = winreg.QueryValueEx(sk, 'DisplayName')[0]
+                                    except Exception:
+                                        display_name = None
+                                    try:
+                                        install_loc = winreg.QueryValueEx(sk, 'InstallLocation')[0]
+                                    except Exception:
+                                        install_loc = None
+                                    try:
+                                        display_icon = winreg.QueryValueEx(sk, 'DisplayIcon')[0]
+                                    except Exception:
+                                        display_icon = None
+
+                                    # Normalize name & pick a path to check
+                                    if not display_name:
+                                        continue
+                                    path_to_check = None
+                                    if install_loc and Path(install_loc).exists():
+                                        path_to_check = Path(install_loc)
+                                    elif display_icon:
+                                        # DisplayIcon may be like C:\Program Files\App\app.exe, strip args
+                                        path_candidate = Path(display_icon.split(',')[0].strip('"'))
+                                        if path_candidate.exists():
+                                            path_to_check = path_candidate.parent
+                                    if path_to_check and self._is_game_folder(path_to_check):
+                                        optiscaler_installed = self._detect_optiscaler(path_to_check)
+                                        safety = self.analyze_game_safety(Game(display_name, str(path_to_check)))
+                                        games.append(Game(name=display_name, path=str(path_to_check), image_path=None, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Registry'))
+                            except Exception:
+                                continue
+                except (FileNotFoundError, PermissionError):
+                    continue
+        except Exception as e:
+            debug_log(f"Registry scan failed: {e}")
+        return games
+
+    def _scan_appx_packages(self):
+        """Scan Appx/UWP packages using PowerShell Get-AppxPackage command and return Game objects.
+        This is a pragmatic approach that uses PowerShell's Get-AppxPackage -> ConvertTo-Json output.
+        """
+        games = []
+        try:
+            import subprocess, json
+            # Use PowerShell to list appx packages and get Name, PackageFullName, InstallLocation
+            ps_cmd = "Get-AppxPackage | Select Name, PackageFullName, InstallLocation | ConvertTo-Json"
+            proc = subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], capture_output=True, text=True, timeout=30)
+            if proc.returncode != 0 or not proc.stdout:
+                return games
+            # Parse JSON; can be an array or single object
+            data = json.loads(proc.stdout)
+            if isinstance(data, dict):
+                data = [data]
+            for p in data:
+                name = p.get('Name')
+                install_loc = p.get('InstallLocation')
+                if not name or not install_loc:
+                    continue
+                if Path(install_loc).exists() and self._is_game_folder(install_loc):
+                    optiscaler_installed = self._detect_optiscaler(install_loc)
+                    safety = self.analyze_game_safety(Game(name, install_loc))
+                    games.append(Game(name=name, path=install_loc, image_path=None, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Appx'))
+        except Exception as e:
+            debug_log(f"Appx scan failed: {e}")
+        return games
+
     @timed("game_scan")
     def scan_games(self):
         # Perform cache cleanup before scanning
@@ -300,6 +402,15 @@ class GameScanner:
         all_games.extend(self._scan_epic_games())
         all_games.extend(self._scan_gog_games())
         all_games.extend(self._scan_xbox_games())
+        # Add Windows Registry and Appx/UWP package listings to capture store-installed games
+        try:
+            all_games.extend(self._scan_installed_programs())
+        except Exception as e:
+            debug_log(f"Failed to scan installed programs/registry: {e}")
+        try:
+            all_games.extend(self._scan_appx_packages())
+        except Exception as e:
+            debug_log(f"Failed to scan Appx/UWP packages: {e}")
 
         # Deduplicate games
         unique_games = {}
@@ -369,7 +480,7 @@ class GameScanner:
                 image_path = self.fetch_game_image(name, appid)
                 optiscaler_installed = self._detect_optiscaler(game_path)
                 safety = self.analyze_game_safety(Game(name, str(game_path), appid=appid))
-                return Game(name=name, path=str(game_path), appid=appid, image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'])
+                return Game(name=name, path=str(game_path), appid=appid, image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True))
             
         except Exception as e:
             debug_log(f"Error parsing ACF file {acf_file}: {e}")
@@ -417,16 +528,16 @@ class GameScanner:
 
                 game_info = self._find_steam_game_info(game_folder.name, steamapps_path)
                 if game_info:
-                        name, appid = game_info
-                        image_path = self.fetch_game_image(name, appid)
-                        optiscaler_installed = self._detect_optiscaler(game_folder)
-                        safety = self.analyze_game_safety(Game(name, str(game_folder), appid=appid))
-                        return Game(name=name, path=str(game_folder), appid=appid, image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'])
+                    name, appid = game_info
+                    image_path = self.fetch_game_image(name, appid)
+                    optiscaler_installed = self._detect_optiscaler(game_folder)
+                    safety = self.analyze_game_safety(Game(name, str(game_folder), appid=appid))
+                    return Game(name=name, path=str(game_folder), appid=appid, image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Steam')
                 else:
                     image_path = self.fetch_game_image(game_folder.name)
                     optiscaler_installed = self._detect_optiscaler(game_folder)
                     safety = self.analyze_game_safety(Game(game_folder.name, str(game_folder)))
-                    return Game(name=game_folder.name, path=str(game_folder), image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'])
+                    return Game(name=game_folder.name, path=str(game_folder), image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Steam')
             except Exception as e:
                 debug_log(f"Error processing game folder {game_folder}: {e}")
                 return None
@@ -485,7 +596,7 @@ class GameScanner:
                             image_path = self.fetch_game_image(game_name)
                             optiscaler_installed = self._detect_optiscaler(game_folder)
                             safety = self.analyze_game_safety(Game(game_name, str(game_folder)))
-                            return Game(name=game_name, path=str(game_folder), image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'])
+                            return Game(name=game_name, path=str(game_folder), image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Epic')
                         return None
                     except Exception as e:
                         debug_log(f"Error processing Epic folder {game_folder}: {e}")
@@ -533,7 +644,7 @@ class GameScanner:
                                     image_path = self.fetch_game_image(game_name)
                                     optiscaler_installed = self._detect_optiscaler(game_folder)
                                     safety = self.analyze_game_safety(Game(game_name, str(game_folder)))
-                                    return Game(name=game_name, path=str(game_folder), image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'])
+                                    return Game(name=game_name, path=str(game_folder), image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='GOG')
                             except (json.JSONDecodeError, UnicodeDecodeError, KeyError) as e:
                                 debug_log(f"Error parsing GOG info file {info_files[0].name}: {e}")
 
@@ -541,7 +652,7 @@ class GameScanner:
                         game_name = game_folder.name.replace("_", " ").replace("-", " ").title()
                         optiscaler_installed = self._detect_optiscaler(game_folder)
                         safety = self.analyze_game_safety(Game(game_name, str(game_folder)))
-                        return Game(name=game_name, path=str(game_folder), optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'])
+                        return Game(name=game_name, path=str(game_folder), optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Epic')
                     except Exception as e:
                         debug_log(f"Error processing GOG folder {game_folder}: {e}")
                         return None
@@ -580,7 +691,7 @@ class GameScanner:
                         image_path = self.fetch_game_image(game_name)
                         optiscaler_installed = self._detect_optiscaler(game_folder)
                         safety = self.analyze_game_safety(Game(game_name, str(game_folder)))
-                        return Game(name=game_name, path=str(game_folder), image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'])
+                        return Game(name=game_name, path=str(game_folder), image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Xbox')
                     except Exception as e:
                         debug_log(f"Error processing Xbox folder {game_folder}: {e}")
                         return None

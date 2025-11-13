@@ -113,6 +113,7 @@
   "anti_cheat_warning_message": "This game appears to have the following anti-cheat components: {ac}. Installing OptiScaler may trigger anti-cheat protections. Proceed at your own risk.",
   "engine_unknown_warning_title": "Unknown Engine",
   "engine_unknown_warning_message": "This game uses an unknown engine - compatibility may be limited. Proceed with caution."
+  ,"engine_unsupported": "Unsupported"
   },
   "sections": {
     "OptiScaler": "OptiScaler Main Settings",
