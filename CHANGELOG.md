@@ -1,5 +1,27 @@
 # Changelog
 
+## [Unreleased]
+
+### 🔄 **OptiScaler v0.7.9 Compatibility Update**
+
+#### Compatibility
+- **Expanded Support**: Updated to support OptiScaler v0.7.0 - v0.7.9 (previously v0.7.0 - v0.7.7-pre9)
+- **FSR 4.0.2 Support**: Ready for FidelityFX SDK 2.0.0 and FSR 4.0.2/3.1.5 files
+- **Game Quirks**: Aligned with latest OptiScaler game-specific workarounds
+
+#### Important v0.7.9 Changes
+- **DLSS Inputs Behavior**: No longer creates `nvngx.dll` when user selects "Yes" to DLSS Inputs (AMD/Intel)
+  - Only modifies `Dxgi=false` when user selects "No"
+  - Reduces installation complexity and redundant files
+- **Configuration Updated**: Default config reflects latest OptiScaler structure
+
+#### Files
+- Updated `README.md`: Version compatibility table now includes v0.7.9
+- Updated `.github/copilot-instructions.md`: Added v0.7.9 compatibility notes
+- Enhanced `OptiScalerManager`: Added v0.7.9+ file support and documentation
+
+---
+
 ## 0.3.5 - 2025-07-30
 
 ### 🎯 **Ultra-Compact Release - 66% Size Reduction**

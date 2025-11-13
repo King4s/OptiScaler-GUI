@@ -297,7 +297,7 @@ python build.py                     # Creates portable .exe in dist/
 
 | GUI Version | Compatible OptiScaler Versions | Status |
 |-------------|--------------------------------|--------|
-| **v0.3.5** | v0.7.0 - v0.7.7-pre9 | ✅ Current |
+| **v0.3.5** | v0.7.0 - v0.7.9 | ✅ Current |
 | v0.3.0 | v0.7.0 - v0.7.7-pre9 | 🟡 Legacy |
 | v0.2.0 | v0.6.0 - v0.7.0 | 🟡 Legacy |
 | v0.1.0 | v0.5.0 - v0.6.5 | ❌ Deprecated |

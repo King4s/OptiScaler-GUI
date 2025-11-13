@@ -34,6 +34,9 @@ class OptiScalerConfig:
         "libxess_dx11.dll",
         "libxess.dll",
         "nvngx_dlss.dll",
+        # v0.7.9+ files
+        "amd_fidelityfx_dx12_v2.dll",  # FidelityFX SDK 2.0.0
+        "amd_fidelityfx_vk_v2.dll",    # FidelityFX SDK 2.0.0
     ]
     
     PROXY_FILENAMES = [
@@ -67,6 +70,12 @@ class OptiScalerManager:
     
     This manager automatically downloads the latest releases from the official repository
     and provides GUI-friendly installation methods.
+    
+    IMPORTANT COMPATIBILITY NOTES:
+    - v0.7.9+: DLSS Inputs (AMD/Intel) no longer creates nvngx.dll file. Only modifies Dxgi=false
+      when user selects "No" to DLSS Inputs. This reduces installation complexity.
+    - v0.7.8+: Updated default configuration structure and game quirks handling
+    - v0.7.9+: Added FSR 4.0.2 and FidelityFX SDK 2.0.0 support
     """
     def __init__(self, download_dir=None):
         self.github_release_url = OptiScalerConfig.GITHUB_API_URL

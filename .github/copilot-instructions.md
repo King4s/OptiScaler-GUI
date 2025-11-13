@@ -29,6 +29,7 @@ Be concise. This file summarizes the essential, discoverable patterns and workfl
 
 4) Integration & external dependencies
  - OptiScaler releases are fetched from GitHub API (see `OptiScalerConfig.GITHUB_API_URL` in `src/optiscaler/manager.py`). Tests or mock work should patch network calls.
+ - **v0.7.9 update**: DLSS Inputs (AMD/Intel) no longer creates `nvngx.dll` file. Only modifies `Dxgi=false` when user selects "No". Update setup logic accordingly.
  - 7-Zip: code tries standard install locations plus PATH; tests should mock `shutil.which` or the `_find_seven_zip` result.
  - PyInstaller: `src/main.py` checks `sys.frozen` / `sys._MEIPASS`. When editing startup logic, preserve both source and frozen behaviors.
 
