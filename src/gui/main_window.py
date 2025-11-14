@@ -66,15 +66,9 @@ class MainWindow(ctk.CTk):
         )
         self.settings_btn.grid(row=0, column=1, padx=5, pady=5)
         
-        # Log tab (initially hidden)
-        self.log_btn = ctk.CTkButton(
-            self.header_frame,
-            text=t("ui.log_tab"),
-            command=self.show_log,
-            width=100
-        )
-        # Initially hide log button
-        self._update_log_button_visibility()
+        # NOTE: The Log button was previously in the header and made the UI noisy.
+        # Move the log viewer access into Settings (GlobalSettingsFrame) to avoid
+        # showing debug UI in the header by default.
         
         # Rescan button
         self.rescan_btn = ctk.CTkButton(
@@ -84,28 +78,20 @@ class MainWindow(ctk.CTk):
             width=100
         )
         self.rescan_btn.grid(row=0, column=3, padx=5, pady=5)
-        # Clear discovery cache
-        from CTkMessagebox import CTkMessagebox
-        def _clear_cache_btn_action():
-            from scanner.library_discovery import clear_library_cache
-            ok = clear_library_cache()
-            if ok:
-                # Use translation fallback default instead of checking truthiness
-                msg = t('ui.library_discovery_cache_cleared', 'Library discovery cache cleared')
-                CTkMessagebox(title=t('ui.success', 'Success'), message=msg)
-            else:
-                msg = t('ui.failed_to_clear_cache', 'Failed to clear library discovery cache')
-                CTkMessagebox(title=t('ui.error', 'Error'), message=msg)
+        # Library discovery cache clearing is available in Settings
 
-        self.clear_cache_btn = ctk.CTkButton(self.header_frame, text=t('ui.clear_cache'), command=_clear_cache_btn_action, width=140)
-        self.clear_cache_btn.grid(row=0, column=4, padx=5, pady=5)
+        # NOTE: Cache clearing is available in Settings (GlobalSettingsFrame) via
+        # a Clear Cache button and Clear library discovery cache button, so we
+        # no longer expose a Clear Cache button here in the header.
     
     def _create_content_area(self):
         """Create main content area"""
         self.content_frame = ctk.CTkFrame(self)
         self.content_frame.grid(row=1, column=0, padx=5, pady=(0, 5), sticky="nsew")
         self.content_frame.grid_columnconfigure(0, weight=1)
-        self.content_frame.grid_rowconfigure(0, weight=1)
+        # Reserve row 0 for optional summary (weight=0) and let row 1 take the rest
+        self.content_frame.grid_rowconfigure(0, weight=0)
+        self.content_frame.grid_rowconfigure(1, weight=1)
     
     def _create_footer(self):
         """Create footer - no longer needed for progress"""
@@ -119,12 +105,9 @@ class MainWindow(ctk.CTk):
         # Register with progress manager
         progress_manager.register_progress_overlay("main", self.progress_overlay)
     
-    def _update_log_button_visibility(self):
-        """Update log button visibility based on debug mode"""
-        if is_debug_enabled():
-            self.log_btn.grid(row=0, column=2, padx=5, pady=5)
-        else:
-            self.log_btn.grid_remove()
+    # NOTE: Log button moved into Settings (GlobalSettingsFrame); header no
+    # longer directly exposes the debug log view. The visibility toggles and
+    # access are managed via Settings UI to avoid cluttering the header.
     
     def show_log(self):
         """Show the debug log window"""
@@ -229,26 +212,36 @@ class MainWindow(ctk.CTk):
                         pass
                 self._summary_holder = ctk.CTkFrame(self.content_frame, fg_color="transparent")
                 self._summary_holder.grid(row=0, column=0, sticky='ew', padx=10, pady=(4, 0))
+                # Keep the summary label compact (do not expand to fill width); reserve any
+                # remaining space for the actual game list.
+                try:
+                    self._summary_holder.grid_columnconfigure(0, weight=0)
+                except Exception:
+                    pass
                 last_summary = getattr(self.scanner, 'last_library_summary', None)
                 last_seconds = getattr(self.scanner, 'last_library_scan_seconds', None)
                 if last_summary:
-                    items = [f"{k}: {v}" for k, v in last_summary.items() if k != 'total']
-                    summary_text = f"Scanned {last_summary.get('total', 0)} libraries" + (f" in {last_seconds:.2f}s" if last_seconds else "")
-                    if items:
-                        summary_text += " — " + ", ".join(items)
+                    # Only show the total libraries in the visible summary. We do
+                    # not show scan duration or per-source breakdown here as these
+                    # are primarily useful for debugging; the full breakdown and
+                    # timing are available in the log view.
+                    summary_text = f"Scanned {last_summary.get('total', 0)} libraries"
+                    # If debug mode is enabled, provide a short tooltip hint to
+                    # point users to the Log for more details.
+                    if is_debug_enabled():
+                        summary_text += " — see Log for details"
                     # Add a CTkLabel for the visible summary and a small tkinter.Label
                     # for tests to access via cget('text') while keeping styling consistent.
                     import tkinter as tk
                     self._summary_ctk_label = ctk.CTkLabel(self._summary_holder, text=summary_text, anchor='w')
-                    self._summary_ctk_label.grid(row=0, column=0, sticky='ew')
-                    # Keep a hidden plain tkinter label for test assertions (not visually intrusive).
-                    self._summary_tk_label = tk.Label(self._summary_holder, text=summary_text)
-                    # Use a very small font to avoid visual space while remaining accessible to tests.
-                    try:
-                        self._summary_tk_label.configure(font=("Arial", 1), bg=self._summary_holder.cget('bg'))
-                    except Exception:
-                        pass
-                    self._summary_tk_label.grid(row=0, column=1, sticky='w')
+                    # Only align to the left - do not force expansion to fill the container
+                    self._summary_ctk_label.grid(row=0, column=0, sticky='w')
+                    # NOTE: we intentionally do not create a plain tkinter label here.
+                    # Previous code created a small tkinter.Label for tests which caused
+                    # an unwanted visible white rectangle in some environments when
+                    # placed inside a CTkFrame. The CTkLabel provides `cget('text')`
+                    # access and is sufficient for tests, so we avoid mixing Tk widgets
+                    # into CTk frames.
             except Exception as e:
                 debug_log(f"Failed to create summary holder: {e}")
 
@@ -314,12 +307,7 @@ class MainWindow(ctk.CTk):
         self.games_btn.configure(text=t("ui.games_tab"))
         self.settings_btn.configure(text=t("ui.settings_tab"))
         
-        # Update log button visibility based on debug mode
-        self._update_log_button_visibility()
-        
-        # Update log button text if visible
-        if is_debug_enabled():
-            self.log_btn.configure(text=t("ui.log_tab"))
+        # Log viewer is accessible from the Settings UI; do not update header log button here.
         
         # Refresh current frame
         if hasattr(self, 'current_frame') and self.current_frame:

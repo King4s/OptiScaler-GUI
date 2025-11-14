@@ -128,62 +128,11 @@ class GameListFrame(ctk.CTkScrollableFrame):
         self._cache_timestamp = None
 
         self._display_games()
-        # Show recent library discovery summary if available
-        try:
-            last_summary = getattr(self.game_scanner, 'last_library_summary', None)
-            last_seconds = getattr(self.game_scanner, 'last_library_scan_seconds', None)
-            if last_summary:
-                items = [f"{k}: {v}" for k, v in last_summary.items() if k != 'total']
-                summary_text = f"Scanned {last_summary.get('total', 0)} libraries" + (f" in {last_seconds:.2f}s" if last_seconds else "")
-                if items:
-                    summary_text += " — " + ", ".join(items)
-                # Ensure there is no leading/trailing whitespace so tests and UI checks
-                # that rely on text.startswith('Scanned') work reliably.
-                summary_text = summary_text.strip()
-                self.summary_lbl = ctk.CTkLabel(self, text=summary_text, font=("Arial", 12), fg_color="transparent")
-                self.summary_lbl.grid(row=0, column=0, sticky='w', padx=8, pady=(4, 8))
-                # Force immediate update so that underlying tkinter Label text is
-                # populated and accessible via `cget('text')` by test harnesses and
-                # immediate checks in the UI testing environment.
-                try:
-                    self.summary_lbl.configure(text=summary_text)
-                    # In some CTk implementations, `cget('text')` may read from
-                    # a different internal attribute; set internal caches as a
-                    # fallback to ensure it returns the expected value.
-                    try:
-                        setattr(self.summary_lbl, '_text', summary_text)
-                    except Exception:
-                        pass
-                    self.summary_lbl.update_idletasks()
-                    # Force a full frame update to ensure CTk internals propagate
-                    # text changes to the underlying tk widgets before returning.
-                    try:
-                        self.update_idletasks()
-                    except Exception:
-                        pass
-                except Exception:
-                    # Avoid breaking on test environments where CTk internals differ
-                    pass
-                # Add a hidden tkinter.Label as a fallback for test harnesses
-                # which may inspect widget children and expect a plain
-                # tkinter.Label to expose text via cget('text'). The label
-                # is hidden immediately and is used only for test discovery.
-                try:
-                    tk_label = tk.Label(self, text=summary_text)
-                    tk_label.grid(row=0, column=0)
-                    # Place the fallback tkinter label behind the CTkLabel so it
-                    # doesn't duplicate visible text in the UI, but remains a direct
-                    # child so test harnesses that inspect direct widget children
-                    # can find the expected text via cget('text').
-                    try:
-                        tk_label.lower()
-                    except Exception:
-                        pass
-                    self._summary_lbl_tk = tk_label
-                except Exception:
-                    pass
-        except Exception:
-            pass
+        # Note: The summary is displayed by `MainWindow` in a dedicated
+        # summary holder above the game list. Keeping a separate summary in
+        # GameListFrame caused visual duplication. If tests require a plain
+        # tkinter child label to find the summary, the MainWindow holder
+        # exposes one already. Therefore remove the local summary label.
         # Schedule background image fetching after UI rendered
         self._schedule_fetch_game_images()
 

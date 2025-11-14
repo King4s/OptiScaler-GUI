@@ -87,14 +87,21 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
         debug_label = ctk.CTkLabel(app_frame, text=t("ui.debug_mode"))
         debug_label.grid(row=1, column=0, padx=15, pady=5, sticky="w")
         
+        from utils.config import get_config_value
         self.debug_var = ctk.BooleanVar()
+        # Persisted debug setting takes precedence; otherwise use current runtime state
         from utils.debug import is_debug_enabled
-        self.debug_var.set(is_debug_enabled())
+        persisted_debug = bool(get_config_value('debug', is_debug_enabled()))
+        self.debug_var.set(persisted_debug)
         debug_switch = ctk.CTkSwitch(app_frame, 
                                    text=t("ui.enable_debug"),
                                    variable=self.debug_var,
                                    command=self._on_debug_toggle)
         debug_switch.grid(row=1, column=1, padx=15, pady=5, sticky="w")
+        # Add a button inside Settings to open the debug Log frame; disabled when not in debug mode.
+        self.view_log_btn = ctk.CTkButton(app_frame, text=t("ui.view_log", "View Log"), command=self._open_log)
+        self.view_log_btn.grid(row=1, column=2, padx=15, pady=5, sticky="w")
+        self.view_log_btn.configure(state='normal' if self.debug_var.get() else 'disabled')
         
         # Auto-update checking
         update_label = ctk.CTkLabel(app_frame, text=t("ui.auto_update_check"))
@@ -335,11 +342,30 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
         """Handle debug mode toggle"""
         from utils.debug import set_debug_enabled
         set_debug_enabled(self.debug_var.get())
+        # Persist debug setting across restarts
+        try:
+            from utils.config import set_config_value
+            set_config_value('debug', bool(self.debug_var.get()))
+        except Exception:
+            pass
         debug_log(f"Debug mode {'enabled' if self.debug_var.get() else 'disabled'} from settings")
         
         # Update main window UI (show/hide log tab)
         if self.main_window and hasattr(self.main_window, 'refresh_ui'):
             self.main_window.refresh_ui()
+        # Enable/disable the view log button accordingly
+        try:
+            self.view_log_btn.configure(state='normal' if self.debug_var.get() else 'disabled')
+        except Exception:
+            pass
+
+    def _open_log(self):
+        """Open the debug log viewer using the main window if available."""
+        if self.main_window and hasattr(self.main_window, 'show_log'):
+            try:
+                self.main_window.show_log()
+            except Exception as e:
+                debug_log(f"ERROR: Failed to open log window: {e}")
     
     def _on_theme_change(self, theme):
         """Handle theme change"""

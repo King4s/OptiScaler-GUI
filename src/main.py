@@ -103,6 +103,13 @@ def main():
             except ImportError:
                 pass  # Skip warning if GUI not available
         
+        # Set debug enabled from persisted configuration (if any)
+        try:
+            from utils.config import get_config_value
+            from utils.debug import set_debug_enabled
+            set_debug_enabled(bool(get_config_value('debug', False)))
+        except Exception:
+            pass
         # Set appearance mode and theme
         ctk.set_appearance_mode("system")
         ctk.set_default_color_theme("blue")
