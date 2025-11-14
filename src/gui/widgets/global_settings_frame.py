@@ -247,8 +247,8 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
         open_button.grid(row=2, column=1, padx=15, pady=(5, 15), sticky="w")
         # Clear discovery cache button
         clear_lib_cache_button = ctk.CTkButton(cache_frame,
-                               text='Clear library discovery cache',
-                               command=self._clear_library_discovery_cache)
+                       text=t('ui.clear_library_discovery_cache', 'Clear library discovery cache'),
+                       command=self._clear_library_discovery_cache)
         clear_lib_cache_button.grid(row=3, column=0, padx=15, pady=(5, 15), sticky='w')
     
     def _create_about_section(self):
@@ -445,9 +445,9 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
         from CTkMessagebox import CTkMessagebox
         ok = clear_library_cache()
         if ok:
-            CTkMessagebox(title=t('ui.success'), message='Library discovery cache cleared')
+            CTkMessagebox(title=t('ui.success', 'Success'), message=t('ui.library_discovery_cache_cleared', 'Library discovery cache cleared'))
         else:
-            CTkMessagebox(title=t('ui.error'), message='Failed to clear library discovery cache')
+            CTkMessagebox(title=t('ui.error', 'Error'), message=t('ui.failed_to_clear_cache', 'Failed to clear library discovery cache'))
 
     def _view_library_roots(self):
         # Import lazily to avoid circular imports

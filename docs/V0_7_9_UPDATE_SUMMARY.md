@@ -1,10 +1,10 @@
-# OptiScaler v0.7.9 Update Summary **(moved to docs/V0_7_9_UPDATE_SUMMARY.md)**
+<!-- Moved from root V0_7_9_UPDATE_SUMMARY.md -->
+```markdown
+# OptiScaler v0.7.9 Update Summary
 
 **Date Updated**: November 13, 2025  
 **OptiScaler Release**: https://github.com/optiscaler/OptiScaler/releases/tag/v0.7.9  
 **Project Compatibility**: v0.7.0 - v0.7.9
-
-This summary has been moved to `docs/V0_7_9_UPDATE_SUMMARY.md` — please consult the docs folder for the full update summary.
 
 ## What Changed in OptiScaler v0.7.9
 
@@ -34,7 +34,7 @@ This summary has been moved to `docs/V0_7_9_UPDATE_SUMMARY.md` — please consul
 - Changed from: `v0.7.0 - v0.7.7-pre9`
 - Changed to: `v0.7.0 - v0.7.9`
 
-#### 2. `docs/CHANGELOG.md`
+#### 2. `CHANGELOG.md`
 - Added new unreleased section documenting v0.7.9 support
 - Documented DLSS Inputs behavior change
 - Listed FSR 4.0.2 support
@@ -89,3 +89,4 @@ When releasing next version of OptiScaler-GUI:
 - OptiScaler v0.7.9 Release: https://github.com/optiscaler/OptiScaler/releases/tag/v0.7.9
 - OptiScaler GitHub: https://github.com/optiscaler/OptiScaler
 - OptiPatcher (mentioned in v0.7.9): https://github.com/optiscaler/OptiPatcher
+```

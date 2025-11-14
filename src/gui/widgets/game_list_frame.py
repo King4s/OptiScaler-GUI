@@ -308,12 +308,12 @@ class GameListFrame(ctk.CTkScrollableFrame):
             # Community-verified tag or anti-cheat warning
             # Community verified games get a green badge
             if getattr(game, 'community_verified', False):
-                verified_label = ctk.CTkLabel(info_frame, text=t('ui.community_verified') if t('ui.community_verified') else "Verified", font=("Arial", 10),
+                verified_label = ctk.CTkLabel(info_frame, text=t('ui.community_verified', 'Verified'), font=("Arial", 10),
                                              fg_color="#2e7d32", text_color="#fff", corner_radius=6, padx=6, pady=2)
                 verified_label.grid(row=0, column=2, padx=8, sticky="w")
             elif getattr(game, 'anti_cheat_list', None):
                 ac_text = ", ".join(game.anti_cheat_list)
-                ac_label = ctk.CTkLabel(info_frame, text=f"{t('ui.anti_cheat') if t('ui.anti_cheat') else 'Anti-cheat'}: {ac_text}", font=("Arial", 10),
+                ac_label = ctk.CTkLabel(info_frame, text=f"{t('ui.anti_cheat', 'Anti-cheat')}: {ac_text}", font=("Arial", 10),
                                        fg_color="#ffa000", text_color="#000", corner_radius=6, padx=6, pady=2)
                 ac_label.grid(row=0, column=2, padx=8, sticky="w")
 
@@ -440,7 +440,7 @@ class GameListFrame(ctk.CTkScrollableFrame):
             ac_text = ', '.join(anti_cheat_list)
             res = CTkMessagebox(
                 title=t('ui.anti_cheat_warning_title'),
-                message=t('ui.anti_cheat_warning_message').format(ac=ac_text) if t('ui.anti_cheat_warning_message') else f"Anti-cheat detected: {ac_text}",
+                message=t('ui.anti_cheat_warning_message', 'Anti-cheat detected: {ac}').format(ac=ac_text),
                 icon='warning',
                 option_1=t('ui.cancel'),
                 option_2=t('ui.continue')
@@ -452,7 +452,7 @@ class GameListFrame(ctk.CTkScrollableFrame):
         if (engine == 'Unknown' or not compatibility_checker.is_engine_supported(engine)) and not community_verified:
             res2 = CTkMessagebox(
                 title=t('ui.engine_unknown_warning_title'),
-                message=t('ui.engine_unknown_warning_message') if t('ui.engine_unknown_warning_message') else "Unknown engine. Proceed?",
+                message=t('ui.engine_unknown_warning_message', 'Unknown engine. Proceed?'),
                 icon='warning',
                 option_1=t('ui.cancel'),
                 option_2=t('ui.continue')

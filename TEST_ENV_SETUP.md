@@ -1,8 +1,8 @@
-# Test Environment Setup Guide
+# Test Environment Setup Guide (moved to docs/test_env/)
 
 ## Quick Start
 
-The test environment has been initialized. Here's how to use it:
+This file has been moved to `docs/test_env/TEST_ENV_SETUP.md`. Please refer to the docs directory for the latest version.
 
 ### 1. Using the Test Environment
 

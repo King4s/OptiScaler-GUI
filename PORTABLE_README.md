@@ -1,4 +1,4 @@
-# OptiScaler-GUI v0.3.0 - Portable Version
+# OptiScaler-GUI v0.3.0 - Portable Version (moved to `docs/PORTABLE_README.md`)
 
 ![OptiScaler-GUI](https://img.shields.io/badge/Version-0.3.0-blue) ![License](https://img.shields.io/badge/License-MIT-green) ![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey)
 
@@ -40,6 +40,8 @@ OptiScaler-GUI v0.3.0 er en tidlig udviklings-version med portable funktionalite
 3. **Run**: Double-click `OptiScaler-GUI.exe` inside the extracted folder
 
 ⚠️ **Vigtigt: Dette er en tidlig udviklings-version - test grundigt før brug på vigtige spil!**
+
+This file has been moved to `docs/PORTABLE_README.md` — see the docs folder for full details including folder structure and usage. 
 
 ### 📁 Folder Structure
 ```

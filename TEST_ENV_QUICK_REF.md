@@ -1,4 +1,4 @@
-# Test Environment Quick Reference
+# Test Environment Quick Reference (moved to docs/test_env/)
 
 ## Setup
 ```bash
@@ -71,4 +71,4 @@ mkdir test_env\cache\extracted
 
 ---
 Created: November 13, 2025
-For more info: See `TEST_ENV_SETUP.md` or `test_env/README.md`
+This file has been moved to `docs/test_env/TEST_ENV_QUICK_REF.md`. For more info, see `docs/test_env/TEST_ENV_SETUP.md` or `docs/test_env/README.md`.
