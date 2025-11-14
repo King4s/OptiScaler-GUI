@@ -8,7 +8,7 @@
 
 | Feature             | Status     |
 |---------------------|------------|
-| 📦 Portable Version    | ✅ v0.3.5   |
+| 📦 Portable Version    | ✅ v0.4.0   |
 | 🎮 Steam Auto-Detection | ✅ Full    |
 | 🎮 Epic Games Auto-Detection | ✅ Full    |
 | � GOG Galaxy Auto-Detection | ✅ Full    |
@@ -65,7 +65,7 @@
 
 **Think of it as**: A desktop installer/manager, like how Steam manages game installations.
 
-**Version: 0.3.5** | **Status: Early Development** | **🚀 NEW: Ultra-Compact Portable Version!**
+**Version: 0.4.0** | **Status: Development** | **🚀 Release Candidate: v0.4.0**
 
 ## 🆕 What's New in v0.3.5
 
@@ -78,7 +78,7 @@
 ### 🚀 **Download Options**
 
 #### 🎯 **For End Users (Recommended)**
-**[📥 Download Portable Version v0.3.5](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.3.5)**
+**[📥 Download Portable Version v0.4.0](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.4.0)**
 
 | Package Type | Size | Checksum | Notes |
 |-------------|------|----------|-------|
@@ -195,12 +195,12 @@ These improvements make the auto-detection more robust, safer, and faster for Wi
 
 ### 🎯 **Option 1: Portable Version (Recommended for Users)**
 
-1. **[📥 Download the Portable Version](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.3.5)**
+1. **[📥 Download the Portable Version](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.4.0)**
 2. **Extract** the ZIP file to your desired location
 3. **Run** `OptiScaler-GUI.exe` inside the extracted folder
 4. **Done!** No installation or Python setup required
 
-⚠️ **Note**: This is an early development version (0.3.5) - test thoroughly before using on important games!
+⚠️ **Note**: This is a development release (0.4.0) - test thoroughly before using on important games!
 
 ### 🛠️ **Option 2: Development Setup**
 
@@ -307,7 +307,7 @@ python build.py                     # Creates portable .exe in dist/
 
 ## 📦 Release Information
 
-**Current Version**: 0.3.5 (Development Release)
+**Current Version**: 0.4.0 (Development Release)
 - **Portable Version Available**: Self-contained executable with all dependencies
 - **Size**: ~48 MB (includes Python runtime and all libraries - 66% size reduction!)
 - **Compatibility**: Windows 10/11, no Python installation required
@@ -316,7 +316,7 @@ python build.py                     # Creates portable .exe in dist/
 
 | GUI Version | Compatible OptiScaler Versions | Status |
 |-------------|--------------------------------|--------|
-| **v0.3.5** | v0.7.0 - v0.7.9 | ✅ Current |
+| **v0.4.0** | v0.7.0 - v0.7.9 | ✅ Current |
 | v0.3.0 | v0.7.0 - v0.7.7-pre9 | 🟡 Legacy |
 | v0.2.0 | v0.6.0 - v0.7.0 | 🟡 Legacy |
 | v0.1.0 | v0.5.0 - v0.6.5 | ❌ Deprecated |
@@ -368,7 +368,7 @@ For full release notes and downloads, visit: [GitHub Releases](https://github.co
 
 ## 🛣️ **Project Status & Roadmap**
 
-### **Current Status (v0.3.5)**
+### **Current Status (v0.4.0)**
 - ✅ **Stable Installation**: Reliable OptiScaler installation for most games
 - ✅ **Ultra-Compact Distribution**: 48 MB self-contained executable (66% size reduction)
 - ✅ **Steam Integration**: Automatic game detection from Steam library

@@ -81,7 +81,7 @@ This summary has been moved to `docs/V0_7_9_UPDATE_SUMMARY.md` — please consul
 When releasing next version of OptiScaler-GUI:
 1. Test with v0.7.9 OptiScaler release
 2. Verify DLSS Inputs behavior matches documentation
-3. Update GUI version if needed (currently 0.3.5)
+3. Update GUI version if needed (currently 0.4.0)
 4. Build and test portable executable
 5. Consider mentioning FSR 4.0.2 support in release notes
 

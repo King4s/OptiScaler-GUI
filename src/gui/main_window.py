@@ -43,6 +43,12 @@ class MainWindow(ctk.CTk):
         
         # Check for updates on startup (after UI is ready)
         self.after(1000, self._check_for_updates_on_startup)
+        # Ensure the game list is actually populated on startup; if not, do a fallback rescan.
+        # This avoids cases where the initial scan was skipped due to cached/TTl edge cases or race conditions.
+        ensure_cb = getattr(self, '_ensure_games_loaded', None)
+        if callable(ensure_cb):
+            # Bind the callback at scheduling time to avoid attribute resolution through tk widget
+            self.after(3000, lambda cb=ensure_cb: cb())
     
     def _create_header(self):
         """Create header with navigation"""
@@ -382,6 +388,26 @@ class MainWindow(ctk.CTk):
                         hook()
                     except Exception:
                         pass
+
+        def _ensure_games_loaded(self):
+            """Ensure that after startup the game list is actually populated; do an automatic rescan if not."""
+            try:
+                # Only attempt once; if the user purposely has no games, Rescan won't change that.
+                try:
+                    cached = getattr(self.scanner, 'get_cached_games', None)
+                    cached_games = None
+                    if callable(cached):
+                        cached_games = self.scanner.get_cached_games()
+                except Exception:
+                    cached_games = None
+
+                # If there are no cached games AND the current frame is also the GameListFrame with no children
+                from gui.widgets.game_list_frame import GameListFrame
+                if not cached_games and isinstance(self.current_frame, GameListFrame) and (not self.current_frame.winfo_children()):
+                    debug_log("No games detected after startup - performing fallback rescan")
+                    self.rescan_games()
+            except Exception as e:
+                debug_log(f"_ensure_games_loaded failed: {e}")
     
     def edit_game_settings(self, game_path):
         """Edit settings for a specific game with progress feedback"""

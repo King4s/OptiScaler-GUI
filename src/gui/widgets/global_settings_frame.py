@@ -498,8 +498,14 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
         def _rescan_callback():
             return get_game_libraries(use_powershell=bool(self.powershell_discovery_var.get()))
         libs = _rescan_callback()
-        # Clear content and show library roots frame
+        # Clear content and show library roots frame; schedule destruction to avoid mid-draw deletes
         for widget in self.master.winfo_children():
-            widget.destroy()
+            try:
+                widget.after(0, lambda w=widget: w.destroy())
+            except Exception:
+                try:
+                    widget.destroy()
+                except Exception:
+                    pass
         frame = LibraryRootsFrame(self.master, libraries=libs, on_rescan=_rescan_callback)
         frame.grid(row=0, column=0, sticky='nsew', padx=10, pady=10)

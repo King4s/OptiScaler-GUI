@@ -171,64 +171,21 @@ class GameListFrame(ctk.CTkScrollableFrame):
             game_frame.grid_columnconfigure(0, weight=0) # Image column, no stretching
             game_frame.grid_columnconfigure(1, weight=1) # Info frame column, takes available space
 
-            # Game Image
+            # Game Image - always render a placeholder quickly; image processing happens in background
             image_path = game.image_path
-            if not image_path or (image_path and not Path(image_path).exists()):
-                # Schedule async fetch to avoid blocking UI
-                image_path = None
-            else:
-                # If we have image_path already, ensure the label is updated synchronously
-                pass
-
             # Define the target height for all images
             target_height = 80
+            # For placeholder, create a dynamically sized gray image based on a common aspect ratio
+            default_aspect_ratio = 16 / 9
+            placeholder_width = int(target_height * default_aspect_ratio)
 
-            if game.image_path and Path(game.image_path).exists():
-                try:
-                    img = Image.open(game.image_path)
-                    
-                    original_width, original_height = img.size
-
-                    # Calculate new width to maintain aspect ratio with fixed height
-                    new_width = int(original_width * (target_height / original_height))
-                    new_height = target_height # Height is fixed
-
-                    resampler = getattr(Image, 'Resampling', None)
-                    if resampler is not None:
-                        lanczos = resampler.LANCZOS
-                    else:
-                        lanczos = LANCZOS
-                    img = img.resize((new_width, new_height), lanczos)
-
-                    # Create CTkImage with the *actual* new dimensions of the resized image
-                    ctk_image = ctk.CTkImage(light_image=img, dark_image=img, size=(new_width, new_height))
-                    img_label = ctk.CTkLabel(game_frame, image=ctk_image, text="")
-                    setattr(img_label, '_ctk_image_ref', ctk_image)  # Keep a reference
-                    self._image_label_map[game.path] = img_label
-                    img_label.grid(row=0, column=0, sticky="w")
-                except Exception as e:
-                    # Fallback to placeholder if image loading fails
-                    default_aspect_ratio = 16/9 
-                    placeholder_width = int(target_height * default_aspect_ratio)
-                    placeholder_img = Image.new('RGB', (placeholder_width, target_height), color = 'gray')
-                    ctk_placeholder_image = ctk.CTkImage(light_image=placeholder_img, dark_image=placeholder_img, size=(placeholder_width, target_height))
-                    placeholder_label = ctk.CTkLabel(game_frame, image=ctk_placeholder_image, text=game.name, compound="center", font=("Arial", 10))
-                    setattr(placeholder_label, '_ctk_image_ref', ctk_placeholder_image)  # Keep a reference
-                    self._image_label_map[game.path] = placeholder_label
-                    placeholder_label.grid(row=0, column=0, sticky="w")
-            else:
-                # For placeholder, create a dynamically sized gray image based on a common aspect ratio
-                # Use a common aspect ratio (e.g., 16:9) to determine placeholder width
-                default_aspect_ratio = 16/9 
-                placeholder_width = int(target_height * default_aspect_ratio)
-
-                placeholder_img = Image.new('RGB', (placeholder_width, target_height), color = 'gray')
-                ctk_placeholder_image = ctk.CTkImage(light_image=placeholder_img, dark_image=placeholder_img, size=(placeholder_width, target_height))
-                placeholder_label = ctk.CTkLabel(game_frame, image=ctk_placeholder_image, text=game.name, compound="center", font=("Arial", 10))
-                setattr(placeholder_label, '_ctk_image_ref', ctk_placeholder_image)  # Keep a reference
-                placeholder_label.grid(row=0, column=0, sticky="w")
-                # Store label reference for later update after image fetch
-                self._image_label_map[game.path] = placeholder_label
+            placeholder_img = Image.new('RGB', (placeholder_width, target_height), color='gray')
+            ctk_placeholder_image = ctk.CTkImage(light_image=placeholder_img, dark_image=placeholder_img, size=(placeholder_width, target_height))
+            placeholder_label = ctk.CTkLabel(game_frame, image=ctk_placeholder_image, text=game.name, compound="center", font=("Arial", 10))
+            setattr(placeholder_label, '_ctk_image_ref', ctk_placeholder_image)  # Keep a reference
+            placeholder_label.grid(row=0, column=0, sticky="w")
+            # Store label reference for later update after image processing in background
+            self._image_label_map[game.path] = placeholder_label
     # NOTE: _schedule_fetch_game_images was previously inserted into the middle of the
     # _display_games method by mistake which caused UI construction code to become
     # part of the scheduler. The corrected method below only performs background
@@ -246,8 +203,9 @@ class GameListFrame(ctk.CTkScrollableFrame):
             name_label = ctk.CTkLabel(info_frame, text=game.name, font=("Arial", 14, "bold"))
             name_label.grid(row=0, column=0, sticky="w")
 
-            # Debug: log community verified state for each game displayed
-            debug_log(f"Displaying game: {game.name}, community_verified={getattr(game, 'community_verified', False)}")
+            # Debug: log occasionally to avoid log flooding which may affect performance
+            if i < 5 or i % 10 == 0:
+                debug_log(f"Displaying game: {game.name}, community_verified={getattr(game, 'community_verified', False)}")
 
             # Platform/Manager tag
             if hasattr(game, 'platform') and game.platform:
@@ -294,14 +252,46 @@ class GameListFrame(ctk.CTkScrollableFrame):
             debug_log(f"DEBUG: OptiScaler installed check for {game.name} at {game.path}: {is_installed}")
 
             # Install/Uninstall Button (dynamic based on installation status)
-            if is_installed:
-                action_button = ctk.CTkButton(buttons_frame, text=t("ui.uninstall") + " OptiScaler", 
-                                            fg_color="#d32f2f", hover_color="#b71c1c",
-                                            command=lambda g=game: self._uninstall_optiscaler_for_game(g))
-            else:
-                action_button = ctk.CTkButton(buttons_frame, text=t("ui.install_optiscaler"),
-                                            command=lambda g=game: self._install_optiscaler_for_game(g))
-            action_button.grid(row=0, column=0, padx=5, pady=2, sticky="e")
+            # Create the buttons on a short delay so the UI can render first without blocking
+            def _create_buttons():
+                try:
+                    if is_installed:
+                        action_button = ctk.CTkButton(buttons_frame, text=t("ui.uninstall") + " OptiScaler", 
+                                                    fg_color="#d32f2f", hover_color="#b71c1c",
+                                                    command=lambda g=game: self._uninstall_optiscaler_for_game(g))
+                    else:
+                        action_button = ctk.CTkButton(buttons_frame, text=t("ui.install_optiscaler"),
+                                                    command=lambda g=game: self._install_optiscaler_for_game(g))
+                    action_button.grid(row=0, column=0, padx=5, pady=2, sticky="e")
+                    button_row = 1
+                    # If installed, add update/edit buttons dynamically
+                    if is_installed:
+                        try:
+                            update_info = self._get_update_info()
+                            if update_info.get("available", False):
+                                update_button = ctk.CTkButton(buttons_frame, text=t("ui.update") + " OptiScaler",
+                                                            fg_color="#ff9800", hover_color="#f57c00",
+                                                            command=lambda g=game: self._update_optiscaler_for_game(g))
+                                update_button.grid(row=button_row, column=0, padx=5, pady=2, sticky="e")
+                                button_row += 1
+                        except Exception:
+                            pass
+                        try:
+                            edit_settings_button = ctk.CTkButton(buttons_frame, text=t("ui.edit_settings"),
+                                                               command=lambda g_path=game.path: self.on_edit_settings(g_path))
+                            edit_settings_button.grid(row=button_row, column=0, padx=5, pady=2, sticky="e")
+                            button_row += 1
+                        except Exception:
+                            pass
+                except Exception as e:
+                    debug_log(f"Failed to create action button for {game.name}: {e}")
+
+            # Schedule button creation so initial UI layout is fast
+            try:
+                self.after(20, _create_buttons)
+            except Exception:
+                # Fallback: create synchronously if event loop not available or scheduling fails
+                _create_buttons()
 
             # Check for updates if installed
             update_available = False
@@ -372,8 +362,12 @@ class GameListFrame(ctk.CTkScrollableFrame):
                 debug_log(f"Error fetching image for {game.name}: {e}")
 
         for game in self.games:
-            if not getattr(game, 'image_path', None) or not Path(getattr(game, 'image_path', '')).exists():
+            # Always schedule image load/optimize in background to avoid main-thread workload
+            try:
                 self._executor.submit(fetch_and_update, game)
+            except Exception:
+                # If executor fails, continue without blocking
+                continue
 
     def _install_optiscaler_for_game(self, game):
         """Install OptiScaler for the selected game with enhanced error handling"""
@@ -749,9 +743,15 @@ class GameListFrame(ctk.CTkScrollableFrame):
                 debug_log(f"Failed to update OptiScaler status for {game.name}: {e}")
                 game.optiscaler_installed = False
         
-        # Clear current display
+        # Clear current display; schedule destruction to avoid mid-draw Tcl errors
         for widget in self.winfo_children():
-            widget.destroy()
+            try:
+                self.after(0, lambda w=widget: w.destroy())
+            except Exception:
+                try:
+                    widget.destroy()
+                except Exception:
+                    pass
         # Recreate the display
         self._display_games()
 
