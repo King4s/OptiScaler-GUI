@@ -78,8 +78,8 @@ class MainWindow(ctk.CTk):
         
         # Rescan button
         self.rescan_btn = ctk.CTkButton(
-            self.header_frame,
-            text=t("ui.rescan"),
+            self.header_frame, 
+            text=t("ui.rescan", "Rescan"),
             command=self.rescan_games,
             width=100
         )
@@ -90,9 +90,12 @@ class MainWindow(ctk.CTk):
             from scanner.library_discovery import clear_library_cache
             ok = clear_library_cache()
             if ok:
-                CTkMessagebox(title=t('ui.success'), message=t('ui.library_discovery_cache_cleared') if t('ui.library_discovery_cache_cleared') else 'Library discovery cache cleared')
+                # Use translation fallback default instead of checking truthiness
+                msg = t('ui.library_discovery_cache_cleared', 'Library discovery cache cleared')
+                CTkMessagebox(title=t('ui.success', 'Success'), message=msg)
             else:
-                CTkMessagebox(title=t('ui.error'), message=t('ui.failed_to_clear_cache') if t('ui.failed_to_clear_cache') else 'Failed to clear library discovery cache')
+                msg = t('ui.failed_to_clear_cache', 'Failed to clear library discovery cache')
+                CTkMessagebox(title=t('ui.error', 'Error'), message=msg)
 
         self.clear_cache_btn = ctk.CTkButton(self.header_frame, text=t('ui.clear_cache'), command=_clear_cache_btn_action, width=140)
         self.clear_cache_btn.grid(row=0, column=4, padx=5, pady=5)
@@ -233,11 +236,19 @@ class MainWindow(ctk.CTk):
                     summary_text = f"Scanned {last_summary.get('total', 0)} libraries" + (f" in {last_seconds:.2f}s" if last_seconds else "")
                     if items:
                         summary_text += " — " + ", ".join(items)
-                    # Add a plain tkinter.Label so test suites can access its
-                    # text using cget('text') via wnd.winfo_children() paths.
+                    # Add a CTkLabel for the visible summary and a small tkinter.Label
+                    # for tests to access via cget('text') while keeping styling consistent.
                     import tkinter as tk
+                    self._summary_ctk_label = ctk.CTkLabel(self._summary_holder, text=summary_text, anchor='w')
+                    self._summary_ctk_label.grid(row=0, column=0, sticky='ew')
+                    # Keep a hidden plain tkinter label for test assertions (not visually intrusive).
                     self._summary_tk_label = tk.Label(self._summary_holder, text=summary_text)
-                    self._summary_tk_label.grid(row=0, column=0, sticky='w')
+                    # Use a very small font to avoid visual space while remaining accessible to tests.
+                    try:
+                        self._summary_tk_label.configure(font=("Arial", 1), bg=self._summary_holder.cget('bg'))
+                    except Exception:
+                        pass
+                    self._summary_tk_label.grid(row=0, column=1, sticky='w')
             except Exception as e:
                 debug_log(f"Failed to create summary holder: {e}")
 
