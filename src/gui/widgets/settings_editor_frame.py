@@ -189,13 +189,13 @@ class SettingsEditorFrame(ctk.CTkScrollableFrame):
         button_frame.grid_columnconfigure(1, weight=1)
         button_frame.grid_columnconfigure(2, weight=1)
         
-        back_button = ctk.CTkButton(button_frame, text=t("ui.back"), command=self._go_back)
+        back_button = ctk.CTkButton(button_frame, text=t("ui.back", "← Back"), command=self._go_back)
         back_button.grid(row=0, column=0, padx=5, pady=10, sticky="ew")
         
-        auto_button = ctk.CTkButton(button_frame, text=t("ui.auto_settings"), command=self._apply_auto_settings)
+        auto_button = ctk.CTkButton(button_frame, text=t("ui.auto_settings", "Auto Settings"), command=self._apply_auto_settings)
         auto_button.grid(row=0, column=1, padx=5, pady=10, sticky="ew")
         
-        save_button = ctk.CTkButton(button_frame, text=t("ui.save_settings"), command=self._save_settings)
+        save_button = ctk.CTkButton(button_frame, text=t("ui.save_settings", "Save Settings"), command=self._save_settings)
         save_button.grid(row=0, column=2, padx=5, pady=10, sticky="ew")
 
     def _detect_gpu(self):
@@ -450,7 +450,7 @@ class SettingsEditorFrame(ctk.CTkScrollableFrame):
             
             try:
                 from CTkMessagebox import CTkMessagebox
-                CTkMessagebox(title=t("ui.settings_saved"), message=t("ui.settings_saved_msg"))
+                CTkMessagebox(title=t("ui.settings_saved", "Settings Saved"), message=t("ui.settings_saved_msg", "OptiScaler settings have been successfully saved to the configuration file."))
             except:
                 print("Settings saved successfully!")
                 

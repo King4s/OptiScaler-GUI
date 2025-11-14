@@ -18,7 +18,7 @@ class LogFrame(ctk.CTkScrollableFrame):
     def _setup_ui(self):
         """Setup the log viewer UI"""
         # Title
-        title_label = ctk.CTkLabel(self, text=t("ui.debug_log"), 
+        title_label = ctk.CTkLabel(self, text=t("ui.debug_log", "Debug Log"), 
                                  font=("Arial", 20, "bold"))
         title_label.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="w")
         
@@ -28,13 +28,13 @@ class LogFrame(ctk.CTkScrollableFrame):
         controls_frame.grid_columnconfigure(2, weight=1)
         
         # Clear button
-        clear_btn = ctk.CTkButton(controls_frame, text=t("ui.clear_log"), 
+        clear_btn = ctk.CTkButton(controls_frame, text=t("ui.clear_log", "Clear Log"), 
                                 command=self._clear_log, width=100)
         clear_btn.grid(row=0, column=0, padx=5, pady=5)
         
         # Auto-scroll toggle
         self.auto_scroll_var = ctk.BooleanVar(value=True)
-        auto_scroll_cb = ctk.CTkCheckBox(controls_frame, text=t("ui.auto_scroll"),
+        auto_scroll_cb = ctk.CTkCheckBox(controls_frame, text=t("ui.auto_scroll", "Auto Scroll"),
                                        variable=self.auto_scroll_var)
         auto_scroll_cb.grid(row=0, column=1, padx=10, pady=5)
         
