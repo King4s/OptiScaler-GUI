@@ -143,7 +143,7 @@ class MainWindow(ctk.CTk):
     
     # NOTE: refresh_ui defined further below (this was a short duplicate). Keep single implementation.
     
-    def show_game_list(self):
+    def show_game_list(self, force_refresh: bool = False):
         """Show the game list with progress feedback"""
         try:
             # Clear current content
@@ -158,9 +158,9 @@ class MainWindow(ctk.CTk):
             # scanning function directly to avoid a race where the check below
             # runs before the UI has been populated.
             if getattr(self.after, '__self__', None) is None:
-                self._start_scanning_with_progress()
+                self._start_scanning_with_progress(force_refresh=force_refresh)
             else:
-                self.after(50, self._start_scanning_with_progress)
+                self.after(50, lambda: self._start_scanning_with_progress(force_refresh=force_refresh))
             
         except Exception as e:
             debug_log(f"ERROR: Failed to start game scanning: {e}")
@@ -169,9 +169,9 @@ class MainWindow(ctk.CTk):
     def rescan_games(self):
         """Trigger a full rescan of games (same as show_game_list, but explicit)."""
         # Reuse show_game_list which wraps the scanning pipeline and progress overlay
-        self.show_game_list()
+        self.show_game_list(force_refresh=True)
     
-    def _start_scanning_with_progress(self):
+    def _start_scanning_with_progress(self, force_refresh: bool = False):
         """Start scanning with progress overlay after UI is ready"""
         try:
             # Show progress overlay while scanning
@@ -182,7 +182,7 @@ class MainWindow(ctk.CTk):
             # background thread which relies on Tk event loop behavior.
             if getattr(self.after, '__self__', None) is None:
                 try:
-                    games = self.scanner.scan_games()
+                    games = self.scanner.scan_games(force_refresh=force_refresh)
                     self._display_games(games)
                 except Exception as e:
                     debug_log(f"ERROR: Failed to scan games (sync mode): {e}")
@@ -192,7 +192,7 @@ class MainWindow(ctk.CTk):
                     """Scan games in background thread"""
                     try:
                         # Get games from scanner
-                        games = self.scanner.scan_games()
+                        games = self.scanner.scan_games(force_refresh=force_refresh)
                         
                         # Update UI in main thread
                         self.after(0, lambda: self._display_games(games))

@@ -483,7 +483,7 @@ class GameScanner:
         return games
 
     @timed("game_scan")
-    def scan_games(self):
+    def scan_games(self, force_refresh: bool = False):
         # Perform cache cleanup before scanning
         cache_manager.cleanup_large_cache()
         
@@ -495,7 +495,7 @@ class GameScanner:
         # Add a fast discovery step on Windows that uses PowerShell to find library roots
         try:
             start_lib = time.time()
-            libraries = get_game_libraries(use_powershell=True)
+            libraries = get_game_libraries(use_powershell=True, force_refresh=force_refresh)
             self.last_library_scan_seconds = time.time() - start_lib
             debug_log(f"Library discovery found {len(libraries)} roots in {self.last_library_scan_seconds:.2f}s")
             self.last_library_summary = compute_library_summary(libraries)

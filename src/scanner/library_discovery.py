@@ -38,7 +38,7 @@ def _find_powershell_exe():
     return pwsh
 
 
-def get_game_libraries_from_powershell(timeout: int = 30) -> List[Dict]:
+def get_game_libraries_from_powershell(timeout: int = 30, force_refresh: bool = False) -> List[Dict]:
     """Run the PowerShell PoC to detect game libraries.
 
     Returns: list of {Launcher, Drive, Path, Source}
@@ -52,7 +52,7 @@ def get_game_libraries_from_powershell(timeout: int = 30) -> List[Dict]:
     ps_script = r"Get-InstalledPrograms | Get-DetectedLaunchers | Get-ActiveDrives | Find-GameLibraries | ConvertTo-Json -Depth 4"
     # Try to use cached values if present and valid
     try:
-        if _CACHE_FILE.exists():
+        if not force_refresh and _CACHE_FILE.exists():
             try:
                 with open(_CACHE_FILE, 'r', encoding='utf-8') as f:
                     cached = json.load(f)
@@ -90,13 +90,14 @@ def get_game_libraries_from_powershell(timeout: int = 30) -> List[Dict]:
             # Normalize and deduplicate before returning
             normalized = [normalize_library_entry(x) for x in normalized]
             normalized = deduplicate_libraries(normalized)
-            # Write cache
-            try:
-                _CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-                with open(_CACHE_FILE, 'w', encoding='utf-8') as f:
-                    json.dump({'_timestamp': int(time.time()), 'data': normalized}, f, indent=2)
-            except Exception as e:
-                debug_log(f'Failed to write library discovery cache: {e}')
+            # Write cache (unless in force_refresh mode)
+            if not force_refresh:
+                try:
+                    _CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+                    with open(_CACHE_FILE, 'w', encoding='utf-8') as f:
+                        json.dump({'_timestamp': int(time.time()), 'data': normalized}, f, indent=2)
+                except Exception as e:
+                    debug_log(f'Failed to write library discovery cache: {e}')
             return normalized
         except Exception as e:
             debug_log(f'Failed to parse JSON from PowerShell PoC: {e}')
@@ -106,7 +107,7 @@ def get_game_libraries_from_powershell(timeout: int = 30) -> List[Dict]:
         return []
 
 
-def get_game_libraries(use_powershell=True, timeout=30) -> List[Dict]:
+def get_game_libraries(use_powershell=True, timeout=30, force_refresh: bool = False) -> List[Dict]:
     # If not on Windows, return empty results
     if os.name != 'nt':
         debug_log('Not running on Windows; library discovery fallback only supports Windows at the moment')
@@ -115,20 +116,20 @@ def get_game_libraries(use_powershell=True, timeout=30) -> List[Dict]:
     # If configured to use powershell discovery and available, try it first
     use_ps = bool(get_config_value('use_powershell_discovery', use_powershell)) and use_powershell
     if use_ps and _find_powershell_exe():
-        res = get_game_libraries_from_powershell(timeout=timeout)
+        res = get_game_libraries_from_powershell(timeout=timeout, force_refresh=force_refresh)
         if res:
             return res
 
     # Fallback to pure-Python discovery (registry + drive heuristics)
     debug_log('PowerShell not available or returned no results; running fallback discovery')
     try:
-        return get_game_libraries_from_fallback()
+        return get_game_libraries_from_fallback(force_refresh=force_refresh)
     except Exception as e:
         debug_log(f'Fallback discovery failed: {e}')
         return []
 
 
-def get_game_libraries_from_fallback(steam_root: str | None = None) -> List[Dict]:
+def get_game_libraries_from_fallback(steam_root: str | None = None, force_refresh: bool = False) -> List[Dict]:
     """Fallback discovery: use registry and known drive paths to find game libraries.
     Returns a list of dictionaries matching the keys from the PoC output.
     """
