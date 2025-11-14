@@ -15,6 +15,16 @@
   - Reduces installation complexity and redundant files
 - **Configuration Updated**: Default config reflects latest OptiScaler structure
 
+### 🔎 Library Discovery & Scanning Improvements
+
+- **PowerShell Game Library Detection (Windows)**: Optional PowerShell-based PoC for enumerating launchers and library roots (used by default when available/enabled).
+- **Pure-Python Fallback**: Registry-based fallback (Uninstall keys), WinRT Appx enumeration, psutil/drive heuristics, and VDF support for robust discovery when PowerShell isn't available.
+- **Steam `libraryfolders.vdf` parsing**: Try vdf.loads, then JSON parse, with a KV fallback parser to handle old Valve KeyValue format.
+- **Path normalization & deduplication**: Normalizes paths for case-insensitive deduplication while preserving original path casing in outputs.
+- **Caching (TTL)**: Discovery results cached - configurable TTL under `library_discovery_cache_ttl` (default 86400s = 24 hours).
+- **UI Updates**: 'Rescan' and 'Clear discovery cache' buttons added; summary displays 'Scanned X libraries' with breakdown and last-scan time.
+- **Safety & Exclusions**: Drive exclusion config and shallow scans for registry/Appx enumerations to avoid unsafe deep scans.
+
 #### Files
 - Updated `README.md`: Version compatibility table now includes v0.7.9
 - Updated `.github/copilot-instructions.md`: Added v0.7.9 compatibility notes

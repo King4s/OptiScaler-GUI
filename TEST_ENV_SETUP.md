@@ -81,6 +81,11 @@ mkdir test_env\mock_games\TestGameUE\Content
 echo "Mock UE Game" > test_env\mock_games\TestGameUE\TestGame.exe
 ```
 
+### PowerShell & Test Behavior
+When running tests that involve library discovery on Windows, note:
+- The `use_powershell_discovery` is optional and configurable. If PowerShell is installed and the setting is enabled, the PoC may run during scanning; the test harness frequently mocks or sets `use_powershell_discovery` to `False` or patches `self.after` to a synchronous stub to avoid background-thread races.
+- Tests may replace `self.after` (Tk main-loop scheduling) with a synchronous lambda during UI tests to avoid race conditions; this is intentional and kept in tests to make UI assertions deterministic.
+
 Example: Create a standard game directory
 
 ```bash

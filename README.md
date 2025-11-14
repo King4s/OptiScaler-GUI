@@ -130,6 +130,25 @@
 ### 🎯 Key Features
 
 - **🔍 Automatic Game Detection**: Scans Steam library and detects installed games
+
+#### 🔎 Windows Library Discovery & Scanning Improvements
+We recently added a major improvement to how the GUI detects library roots and installed games on Windows:
+
+- **PowerShell PoC**: When PowerShell (pwsh / powershell) is present and enabled in the GUI settings, the application will run a small PoC pipeline (Get-InstalledPrograms | Get-DetectedLaunchers | Get-ActiveDrives | Find-GameLibraries) to enumerate installed launchers and discover game library folders quickly and safely.
+- **Pure-Python Fallback**: If PowerShell is unavailable or disabled, the GUI falls back to a pure-Python discovery algorithm that probes:
+   - the Windows Uninstall registry keys,
+   - WinRT Appx package install locations (if winrt available),
+   - a drive scan for common library folder names (Steam/Epic/GOG), and
+   - Steam's `libraryfolders.vdf` (parsed via vdf, JSON, or a custom KV fallback parser).
+- **Path Normalization & De-duplication**: Paths returned by multiple sources are normalized and de-duplicated (case-insensitively on Windows) but the original display path is preserved for UI display.
+- **Caching & TTL**: Discovered library roots are cached in `cache/library_discovery.json` for a configurable TTL. This avoids re-enumeration on each run and improves responsiveness.
+- **UI Experience Improvements**:
+   - `Rescan` button: manually refresh discovered libraries.
+   - `Clear discovery cache` button: forces re-discovery regardless of TTL.
+   - Scanning summary label: shows `Scanned X libraries` with a breakdown and scan duration in the UI.
+- **Safety**: Registry and Appx enumerations are shallow-only (no deep recursive scanning) and there is an Excluded drives config option to avoid scanning specified drives.
+
+These improvements make the auto-detection more robust, safer, and faster for Windows users while still offering reliable behavior on systems where PowerShell is not available.
 - **📦 One-Click Installation**: Download and install OptiScaler with a single click
 - **🔧 Intelligent Configuration**: Smart setup for AMD FSR, Intel XeSS, and NVIDIA DLSS
 - **🛡️ Robust Architecture**: Multi-tier fallback systems for maximum compatibility
