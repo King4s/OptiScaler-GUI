@@ -7,10 +7,11 @@ from utils.translation_manager import t
 class LogFrame(ctk.CTkScrollableFrame):
     """Debug log viewer frame"""
     
-    def __init__(self, master, **kwargs):
+    def __init__(self, master, on_back=None, **kwargs):
         super().__init__(master, **kwargs)
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
+        self.on_back = on_back
         
         self._setup_ui()
         self._start_log_monitoring()
@@ -31,6 +32,10 @@ class LogFrame(ctk.CTkScrollableFrame):
         clear_btn = ctk.CTkButton(controls_frame, text=t("ui.clear_log", "Clear Log"), 
                                 command=self._clear_log, width=100)
         clear_btn.grid(row=0, column=0, padx=5, pady=5)
+        # Back button when provided (e.g., open from Settings to return back)
+        if callable(self.on_back):
+            back_btn = ctk.CTkButton(controls_frame, text=t("ui.back", "Back"), command=self.on_back, width=80)
+            back_btn.grid(row=0, column=3, padx=5, pady=5, sticky="e")
         
         # Auto-scroll toggle
         self.auto_scroll_var = ctk.BooleanVar(value=True)

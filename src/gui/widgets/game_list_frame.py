@@ -238,7 +238,8 @@ class GameListFrame(ctk.CTkScrollableFrame):
 
             # Game Name and Path
             info_frame = ctk.CTkFrame(game_frame)
-            info_frame.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+            # Add padding to avoid tags and content hugging the edges
+            info_frame.grid(row=0, column=1, padx=(10, 15), pady=5, sticky="ew")
             info_frame.grid_columnconfigure(0, weight=1)
 
             # Game name
@@ -252,19 +253,19 @@ class GameListFrame(ctk.CTkScrollableFrame):
             if hasattr(game, 'platform') and game.platform:
                 tag_label = ctk.CTkLabel(info_frame, text=game.platform, font=("Arial", 10, "italic"),
                                          fg_color="#444", text_color="#fff", corner_radius=6, padx=6, pady=2)
-                tag_label.grid(row=0, column=1, padx=8, sticky="w")
+                tag_label.grid(row=0, column=1, padx=(10, 0), sticky="w")
 
             # Community-verified tag or anti-cheat warning
             # Community verified games get a green badge
             if getattr(game, 'community_verified', False):
                 verified_label = ctk.CTkLabel(info_frame, text=t('ui.community_verified', 'Verified'), font=("Arial", 10),
                                              fg_color="#2e7d32", text_color="#fff", corner_radius=6, padx=6, pady=2)
-                verified_label.grid(row=0, column=2, padx=8, sticky="w")
+                verified_label.grid(row=0, column=2, padx=(10, 0), sticky="w")
             elif getattr(game, 'anti_cheat_list', None):
                 ac_text = ", ".join(game.anti_cheat_list)
                 ac_label = ctk.CTkLabel(info_frame, text=f"{t('ui.anti_cheat', 'Anti-cheat')}: {ac_text}", font=("Arial", 10),
                                        fg_color="#ffa000", text_color="#000", corner_radius=6, padx=6, pady=2)
-                ac_label.grid(row=0, column=2, padx=8, sticky="w")
+                ac_label.grid(row=0, column=2, padx=(10, 0), sticky="w")
 
             # Engine badge - show type and whether it's unsupported
             engine = getattr(game, 'engine', None)
@@ -272,12 +273,12 @@ class GameListFrame(ctk.CTkScrollableFrame):
             if engine and not engine_supported:
                 engine_label = ctk.CTkLabel(info_frame, text=f"{engine} ({t('ui.engine_unsupported')})", font=("Arial", 10),
                                              fg_color="#d32f2f", text_color="#fff", corner_radius=6, padx=6, pady=2)
-                engine_label.grid(row=0, column=3, padx=8, sticky="w")
+                engine_label.grid(row=0, column=3, padx=(10, 0), sticky="w")
             elif engine:
                 # If engine is known and supported, show a subtle tag
                 engine_label = ctk.CTkLabel(info_frame, text=f"{engine}", font=("Arial", 10),
                                              fg_color="#666", text_color="#fff", corner_radius=6, padx=6, pady=2)
-                engine_label.grid(row=0, column=3, padx=8, sticky="w")
+                engine_label.grid(row=0, column=3, padx=(10, 0), sticky="w")
 
             # Game path
             path_label = ctk.CTkLabel(info_frame, text=game.path, font=("Arial", 10))

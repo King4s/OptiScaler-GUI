@@ -183,6 +183,9 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
         ttl_entry.bind('<FocusOut>', _on_ttl_change)
         ttl_entry.bind('<Return>', _on_ttl_change)
 
+        # NOTE: The library summary UI option was removed. Discovery logging is
+        # still available through the Log viewer and the scanner's last_library_summary.
+
         # Engine support toggles
         engine_label = ctk.CTkLabel(app_frame, text='Engine Support')
         engine_label.grid(row=9, column=0, padx=15, pady=5, sticky='w')
@@ -363,7 +366,12 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
         """Open the debug log viewer using the main window if available."""
         if self.main_window and hasattr(self.main_window, 'show_log'):
             try:
-                self.main_window.show_log()
+                # If possible, provide a callback to return to Settings
+                try:
+                    self.main_window.show_log(on_back=self.main_window.show_settings)
+                except TypeError:
+                    # Fallback for older callers that do not accept on_back
+                    self.main_window.show_log()
             except Exception as e:
                 debug_log(f"ERROR: Failed to open log window: {e}")
     
@@ -413,6 +421,8 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
             debug_log(f"Filter: show supported only = {value}")
         except Exception as e:
             debug_log(f"Failed to set filter_show_supported_only: {e}")
+
+    # Previously there was a _on_show_summary_toggle handler for the deleted option
     
     def _get_cache_info(self):
         """Get cache directory information"""
@@ -452,6 +462,12 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
                 CTkMessagebox(title=t("ui.success"), message=t("ui.cache_cleared"))
                 # Refresh cache info
                 self._create_cache_section()
+                # Also clear scanner cached game results if available to ensure next view triggers a rescan
+                try:
+                    if self.main_window and hasattr(self.main_window, 'scanner') and hasattr(self.main_window.scanner, 'clear_cached_games'):
+                        self.main_window.scanner.clear_cached_games()
+                except Exception:
+                    pass
             except Exception as e:
                 CTkMessagebox(title=t("ui.error"), message=f"{t('ui.failed_to_clear_cache')}: {e}")
     

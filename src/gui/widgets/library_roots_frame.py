@@ -107,9 +107,8 @@ class LibraryRootsFrame(ctk.CTkScrollableFrame):
 
         # Disable the rescan button while scanning
         self._rescan_btn.configure(state='disabled')
+        # Start background rescan thread (exception handling happens inside the background function)
         threading.Thread(target=_background_rescan, daemon=True).start()
-        except Exception as e:
-            debug_log(f"Library root rescan failed: {e}")
 
     def _create_entries(self):
         self._entries = []

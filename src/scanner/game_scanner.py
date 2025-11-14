@@ -55,6 +55,8 @@ class GameScanner:
         # Summary and timing info for last library discovery
         self.last_library_summary = None
         self.last_library_scan_seconds = None
+        # Cached results from the last scan (to avoid unnecessary rescans)
+        self._cached_games = None
 
         # Common non-game folder names to exclude
         self.exclude_folders = [
@@ -484,6 +486,13 @@ class GameScanner:
 
     @timed("game_scan")
     def scan_games(self, force_refresh: bool = False):
+        # Return cached games if available and a forced refresh was not requested
+        try:
+            if not force_refresh and self._cached_games is not None:
+                debug_log(f"Using cached game list ({len(self._cached_games)} games)")
+                return list(self._cached_games)
+        except Exception:
+            pass
         # Perform cache cleanup before scanning
         cache_manager.cleanup_large_cache()
         
@@ -575,7 +584,24 @@ class GameScanner:
                 unique_games[unique_id] = game
         
         debug_log(f"Scan complete: Found {len(unique_games)} unique games")
-        return list(unique_games.values())
+        result = list(unique_games.values())
+        # Cache scan result for subsequent calls
+        try:
+            self._cached_games = list(result)
+        except Exception:
+            self._cached_games = None
+        return result
+
+    def clear_cached_games(self):
+        """Clear cached game scan results (used when forcing UI refresh or cache invalidation)."""
+        try:
+            self._cached_games = None
+        except Exception:
+            pass
+
+    def get_cached_games(self):
+        """Return the cached games list or None if not cached."""
+        return list(self._cached_games) if self._cached_games is not None else None
 
     def _scan_steam_games(self):
         """Enhanced Steam game scanning with Path objects and improved error handling"""
