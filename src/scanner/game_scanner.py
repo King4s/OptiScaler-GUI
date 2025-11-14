@@ -8,6 +8,7 @@ import json
 import time
 from pathlib import Path
 from utils.config import config
+from scanner.library_discovery import get_game_libraries, compute_library_summary
 from utils.cache_manager import cache_manager
 from utils.performance import timed
 from utils.debug import debug_log
@@ -51,6 +52,9 @@ class GameScanner:
         self.steam_app_list = self._get_steam_app_list() # Load Steam app list on init
         # session for requests to enable keep-alive and connection pooling
         self._requests_session = requests.Session()
+        # Summary and timing info for last library discovery
+        self.last_library_summary = None
+        self.last_library_scan_seconds = None
 
         # Common non-game folder names to exclude
         self.exclude_folders = [
@@ -74,6 +78,14 @@ class GameScanner:
             Path.home() / "AppData/Local/Steam",
         ]
         found_paths = []
+        # Attempt registry detection (fallback)
+        try:
+            from scanner.library_discovery import _find_steam_install_from_registry
+            reg_path = _find_steam_install_from_registry()
+            if reg_path:
+                potential_paths.insert(0, Path(reg_path))
+        except Exception:
+            pass
         for path in potential_paths:
             if path.exists() and path.is_dir():
                 found_paths.append(str(path))
@@ -181,11 +193,21 @@ class GameScanner:
             # Godot detection: .import/gui or project file
             if any(game_path.glob('*.godot')) or (game_path / '.import').exists():
                 return 'Godot'
-            # Prism3D detection: prefer checking top-level names to avoid deep recursion
+            # Prism3D detection: check top-level exes, dlls and known SCS/EU/ATS patterns
             try:
+                # Check .exe names
                 for p in game_path.glob('*.exe'):
                     name = p.name.lower()
-                    if 'prism' in name or ('euro' in name and 'truck' in name) or 'ats' in name:
+                    if 'prism' in name or ('euro' in name and 'truck' in name) or 'ats' in name or 'eurotruck' in name.replace(' ', ''):
+                        return 'Prism3D'
+                # Check top-level dlls
+                for d in game_path.glob('*.dll'):
+                    dname = d.name.lower()
+                    if 'prism' in dname or 'prism3d' in dname or 'scs' in dname:
+                        return 'Prism3D'
+                # Check for common SCS files or engine config names in top-level
+                for cfg in ('prismengine.ini', 'engine.ini', 'scs_game.ini', 'scs_game.txt'):
+                    if (game_path / cfg).exists():
                         return 'Prism3D'
             except Exception:
                 pass
@@ -470,15 +492,77 @@ class GameScanner:
         all_games.extend(self._scan_epic_games())
         all_games.extend(self._scan_gog_games())
         all_games.extend(self._scan_xbox_games())
-        # Add Windows Registry and Appx/UWP package listings to capture store-installed games
+        # Add a fast discovery step on Windows that uses PowerShell to find library roots
         try:
-            all_games.extend(self._scan_installed_programs())
+            start_lib = time.time()
+            libraries = get_game_libraries(use_powershell=True)
+            self.last_library_scan_seconds = time.time() - start_lib
+            debug_log(f"Library discovery found {len(libraries)} roots in {self.last_library_scan_seconds:.2f}s")
+            self.last_library_summary = compute_library_summary(libraries)
+            from utils.config import get_config_value
+            excluded = get_config_value('excluded_drives', '') or ''
+            excluded_list = [e.strip().upper() for e in str(excluded).split(',') if e.strip()]
+            for lib in libraries:
+                try:
+                    launcher = lib.get('Launcher')
+                    lib_path = lib.get('Path')
+                    if not lib_path:
+                        continue
+                    drive_letter = (lib.get('Drive') or lib_path[0]).upper().strip() if lib.get('Drive') or lib_path else None
+                    if drive_letter and drive_letter.replace(':','').upper() in excluded_list:
+                        debug_log(f"Skipping library root on excluded drive: {lib_path}")
+                        continue
+                    p = Path(lib_path)
+                    if launcher == 'Steam' and (p.exists() and p.is_dir()):
+                        # Steam library - normally steamapps/common
+                        common = p
+                        library_path = common.parent
+                        try:
+                            st_games = self._scan_steam_common_folder(common, library_path)
+                            all_games.extend(st_games)
+                        except Exception as e:
+                            debug_log(f"Failed scanning Steam library {common}: {e}")
+                    elif launcher == 'Epic' and p.exists() and p.is_dir():
+                        # Adapt the Epic scanning: process directories under the root
+                        try:
+                            for gf in p.iterdir():
+                                if not gf.is_dir():
+                                    continue
+                                if self._is_game_folder(gf):
+                                    image_path = self.fetch_game_image(gf.name)
+                                    optiscaler_installed = self._detect_optiscaler(gf)
+                                    safety = self.analyze_game_safety(Game(gf.name, str(gf)))
+                                    all_games.append(Game(name=gf.name, path=str(gf), image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Epic'))
+                        except Exception as e:
+                            debug_log(f"Failed scanning Epic root {p}: {e}")
+                    elif launcher == 'GOG' and p.exists() and p.is_dir():
+                        try:
+                            for gf in p.iterdir():
+                                if not gf.is_dir():
+                                    continue
+                                if self._is_game_folder(gf):
+                                    image_path = self.fetch_game_image(gf.name)
+                                    optiscaler_installed = self._detect_optiscaler(gf)
+                                    safety = self.analyze_game_safety(Game(gf.name, str(gf)))
+                                    all_games.append(Game(name=gf.name, path=str(gf), image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='GOG'))
+                        except Exception as e:
+                            debug_log(f"Failed scanning GOG root {p}: {e}")
+                    elif launcher == 'Xbox' and p.exists() and p.is_dir():
+                        try:
+                            for gf in p.iterdir():
+                                if not gf.is_dir():
+                                    continue
+                                if self._is_game_folder(gf):
+                                    image_path = self.fetch_game_image(gf.name)
+                                    optiscaler_installed = self._detect_optiscaler(gf)
+                                    safety = self.analyze_game_safety(Game(gf.name, str(gf)))
+                                    all_games.append(Game(name=gf.name, path=str(gf), image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Xbox'))
+                        except Exception as e:
+                            debug_log(f"Failed scanning Xbox root {p}: {e}")
+                except Exception as e:
+                    debug_log(f"Failed processing library entry {lib}: {e}")
         except Exception as e:
-            debug_log(f"Failed to scan installed programs/registry: {e}")
-        try:
-            all_games.extend(self._scan_appx_packages())
-        except Exception as e:
-            debug_log(f"Failed to scan Appx/UWP packages: {e}")
+            debug_log(f"Library root discovery failed: {e}")
 
         # Deduplicate games
         unique_games = {}

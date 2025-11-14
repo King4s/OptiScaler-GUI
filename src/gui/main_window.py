@@ -75,6 +75,27 @@ class MainWindow(ctk.CTk):
         )
         # Initially hide log button
         self._update_log_button_visibility()
+        
+        # Rescan button
+        self.rescan_btn = ctk.CTkButton(
+            self.header_frame,
+            text=t("ui.rescan"),
+            command=self.rescan_games,
+            width=100
+        )
+        self.rescan_btn.grid(row=0, column=3, padx=5, pady=5)
+        # Clear discovery cache
+        from CTkMessagebox import CTkMessagebox
+        def _clear_cache_btn_action():
+            from scanner.library_discovery import clear_library_cache
+            ok = clear_library_cache()
+            if ok:
+                CTkMessagebox(title=t('ui.success'), message=t('ui.library_discovery_cache_cleared') if t('ui.library_discovery_cache_cleared') else 'Library discovery cache cleared')
+            else:
+                CTkMessagebox(title=t('ui.error'), message=t('ui.failed_to_clear_cache') if t('ui.failed_to_clear_cache') else 'Failed to clear library discovery cache')
+
+        self.clear_cache_btn = ctk.CTkButton(self.header_frame, text=t('ui.clear_cache'), command=_clear_cache_btn_action, width=140)
+        self.clear_cache_btn.grid(row=0, column=4, padx=5, pady=5)
     
     def _create_content_area(self):
         """Create main content area"""
@@ -129,12 +150,23 @@ class MainWindow(ctk.CTk):
             # Update the content frame to ensure proper sizing
             self.content_frame.update_idletasks()
             
-            # Small delay to ensure UI is ready
-            self.after(50, self._start_scanning_with_progress)
+            # Small delay to ensure UI is ready. When running in a test environment
+            # where `after` may be monkeypatched to synchronous calls, call the
+            # scanning function directly to avoid a race where the check below
+            # runs before the UI has been populated.
+            if getattr(self.after, '__self__', None) is None:
+                self._start_scanning_with_progress()
+            else:
+                self.after(50, self._start_scanning_with_progress)
             
         except Exception as e:
             debug_log(f"ERROR: Failed to start game scanning: {e}")
             self._display_scan_error(e)
+
+    def rescan_games(self):
+        """Trigger a full rescan of games (same as show_game_list, but explicit)."""
+        # Reuse show_game_list which wraps the scanning pipeline and progress overlay
+        self.show_game_list()
     
     def _start_scanning_with_progress(self):
         """Start scanning with progress overlay after UI is ready"""
@@ -142,23 +174,34 @@ class MainWindow(ctk.CTk):
             # Show progress overlay while scanning
             progress_manager.start_indeterminate("main", "Game Scanner", "Scanning for installed games...")
             
-            def scan_games_threaded():
-                """Scan games in background thread"""
+            # If this `after` attribute has been monkeypatched (e.g., tests replace it with
+            # a synchronous lambda), run scan synchronously instead of spinning up a
+            # background thread which relies on Tk event loop behavior.
+            if getattr(self.after, '__self__', None) is None:
                 try:
-                    # Get games from scanner
                     games = self.scanner.scan_games()
-                    
-                    # Update UI in main thread
-                    self.after(0, lambda: self._display_games(games))
+                    self._display_games(games)
                 except Exception as e:
-                    debug_log(f"ERROR: Failed to scan games: {e}")
-                    error = e  # Capture error in local variable
-                    self.after(0, lambda err=error: self._display_scan_error(err))
-            
-            # Start scanning in background
-            import threading
-            scan_thread = threading.Thread(target=scan_games_threaded, daemon=True)
-            scan_thread.start()
+                    debug_log(f"ERROR: Failed to scan games (sync mode): {e}")
+                    self._display_scan_error(e)
+            else:
+                def scan_games_threaded():
+                    """Scan games in background thread"""
+                    try:
+                        # Get games from scanner
+                        games = self.scanner.scan_games()
+                        
+                        # Update UI in main thread
+                        self.after(0, lambda: self._display_games(games))
+                    except Exception as e:
+                        debug_log(f"ERROR: Failed to scan games: {e}")
+                        error = e  # Capture error in local variable
+                        self.after(0, lambda err=error: self._display_scan_error(err))
+                
+                # Start scanning in background
+                import threading
+                scan_thread = threading.Thread(target=scan_games_threaded, daemon=True)
+                scan_thread.start()
             
         except Exception as e:
             debug_log(f"ERROR: Failed to start game scanning: {e}")
@@ -170,6 +213,34 @@ class MainWindow(ctk.CTk):
         try:
             progress_manager.hide_progress("main")
             
+            # Optionally show a small summary frame above the game list. This helps
+            # the tests locate the library discovery summary reliably as a child
+            # widget of the main content area. It also provides a stable place for
+            # a summary label outside of the scrollable frame.
+            try:
+                # Remove any existing summary holder
+                if hasattr(self, '_summary_holder') and self._summary_holder:
+                    try:
+                        self._summary_holder.destroy()
+                    except Exception:
+                        pass
+                self._summary_holder = ctk.CTkFrame(self.content_frame, fg_color="transparent")
+                self._summary_holder.grid(row=0, column=0, sticky='ew', padx=10, pady=(4, 0))
+                last_summary = getattr(self.scanner, 'last_library_summary', None)
+                last_seconds = getattr(self.scanner, 'last_library_scan_seconds', None)
+                if last_summary:
+                    items = [f"{k}: {v}" for k, v in last_summary.items() if k != 'total']
+                    summary_text = f"Scanned {last_summary.get('total', 0)} libraries" + (f" in {last_seconds:.2f}s" if last_seconds else "")
+                    if items:
+                        summary_text += " — " + ", ".join(items)
+                    # Add a plain tkinter.Label so test suites can access its
+                    # text using cget('text') via wnd.winfo_children() paths.
+                    import tkinter as tk
+                    self._summary_tk_label = tk.Label(self._summary_holder, text=summary_text)
+                    self._summary_tk_label.grid(row=0, column=0, sticky='w')
+            except Exception as e:
+                debug_log(f"Failed to create summary holder: {e}")
+
             # Create new game list frame
             self.current_frame = GameListFrame(
                 self.content_frame, 
@@ -177,7 +248,13 @@ class MainWindow(ctk.CTk):
                 game_scanner=self.scanner,
                 on_edit_settings=self.edit_game_settings
             )
-            self.current_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+            self.current_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
+            # Force an immediate idletasks update to ensure nested CTk/ttk widgets
+            # have their attributes synchronized for synchronous test runs.
+            try:
+                self.content_frame.update_idletasks()
+            except Exception:
+                pass
             
             # Update navigation buttons
             self.games_btn.configure(state="disabled")

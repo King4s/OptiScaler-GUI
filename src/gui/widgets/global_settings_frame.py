@@ -146,6 +146,77 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
                 debug_log(f"Invalid max_workers value: {e}")
         workers_entry.bind('<FocusOut>', _on_workers_change)
         workers_entry.bind('<Return>', _on_workers_change)
+
+        # PowerShell discovery toggle
+        self.powershell_discovery_var = ctk.BooleanVar(value=bool(get_config_value('use_powershell_discovery', True)))
+        powershell_label = ctk.CTkLabel(app_frame, text='PowerShell Library Discovery')
+        powershell_label.grid(row=6, column=0, padx=15, pady=5, sticky='w')
+        powershell_switch = ctk.CTkSwitch(app_frame, text='Use PowerShell for library discovery (Windows only)', variable=self.powershell_discovery_var, command=self._on_powershell_discovery_toggle)
+        powershell_switch.grid(row=6, column=1, padx=15, pady=(5, 15), sticky='w')
+
+        # Button to view discovered library roots (opens a new frame)
+        view_roots_btn = ctk.CTkButton(app_frame, text='View detected library roots', command=self._view_library_roots)
+        view_roots_btn.grid(row=7, column=1, padx=15, pady=(5, 15), sticky='w')
+
+        # Library discovery cache TTL
+        ttl_label = ctk.CTkLabel(app_frame, text='Library discovery cache TTL (seconds)')
+        ttl_label.grid(row=8, column=0, padx=15, pady=5, sticky='w')
+        from utils.config import config as app_config
+        self.library_cache_ttl_var = ctk.IntVar(value=get_config_value('library_discovery_cache_ttl', getattr(app_config, 'library_discovery_cache_ttl', 86400)))
+        ttl_entry = ctk.CTkEntry(app_frame, textvariable=self.library_cache_ttl_var, width=80)
+        ttl_entry.grid(row=8, column=1, padx=15, pady=(5, 15), sticky='w')
+
+        def _on_ttl_change(event=None):
+            try:
+                value = int(self.library_cache_ttl_var.get())
+                set_config_value('library_discovery_cache_ttl', int(value))
+                debug_log(f"Set library discovery cache TTL to {value}s")
+            except Exception as e:
+                debug_log(f"Invalid TTL value: {e}")
+        ttl_entry.bind('<FocusOut>', _on_ttl_change)
+        ttl_entry.bind('<Return>', _on_ttl_change)
+
+        # Engine support toggles
+        engine_label = ctk.CTkLabel(app_frame, text='Engine Support')
+        engine_label.grid(row=9, column=0, padx=15, pady=5, sticky='w')
+        from utils.compatibility_checker import compatibility_checker
+        # Keep an internal map of vars so we can read next
+        self.engine_vars = {}
+        known_engines = ['Unreal', 'Unity', 'Godot', 'Prism3D']
+        for idx, engine in enumerate(known_engines, start=10):
+            var = ctk.BooleanVar(value=compatibility_checker.is_engine_supported(engine))
+            self.engine_vars[engine] = var
+            eng_switch = ctk.CTkSwitch(app_frame, text=engine, variable=var, command=lambda e=engine, v=var: self._on_engine_toggle(e, v))
+            eng_switch.grid(row=idx, column=1, padx=15, pady=(2, 8), sticky='w')
+
+        # Filters
+        filter_title = ctk.CTkLabel(app_frame, text='Game List Filters')
+        filter_title.grid(row=14, column=0, padx=15, pady=5, sticky='w')
+        self.filter_verified_var = ctk.BooleanVar(value=bool(get_config_value('filter_show_verified_only', False)))
+        filter_verified_switch = ctk.CTkSwitch(app_frame, text='Show only community-verified games', variable=self.filter_verified_var, command=self._on_filter_verified_toggle)
+        filter_verified_switch.grid(row=14, column=1, padx=15, pady=(5, 15), sticky='w')
+        self.filter_supported_var = ctk.BooleanVar(value=bool(get_config_value('filter_show_supported_only', False)))
+        filter_supported_switch = ctk.CTkSwitch(app_frame, text='Show only supported engine games', variable=self.filter_supported_var, command=self._on_filter_supported_toggle)
+        filter_supported_switch.grid(row=15, column=1, padx=15, pady=(5, 15), sticky='w')
+
+        # Excluded drives (comma-separated letters) - optional
+        exclude_label = ctk.CTkLabel(app_frame, text='Exclude Drives (comma-separated, e.g., D,E)')
+        exclude_label.grid(row=16, column=0, padx=15, pady=5, sticky='w')
+        self.excluded_drives_var = ctk.StringVar(value=get_config_value('excluded_drives', ''))
+        exclude_entry = ctk.CTkEntry(app_frame, textvariable=self.excluded_drives_var)
+        exclude_entry.grid(row=16, column=1, padx=15, pady=(5, 15), sticky='w')
+
+        def _on_excluded_drives_change(event=None):
+            try:
+                s = self.excluded_drives_var.get() or ''
+                # Normalize to uppercase letters separated by commas
+                parts = [p.strip().upper() for p in s.split(',') if p.strip()]
+                set_config_value('excluded_drives', ','.join(parts))
+                debug_log(f"Set excluded drives to: {parts}")
+            except Exception as e:
+                debug_log(f"Failed to set excluded drives: {e}")
+        exclude_entry.bind('<FocusOut>', _on_excluded_drives_change)
+        exclude_entry.bind('<Return>', _on_excluded_drives_change)
     
     def _create_cache_section(self):
         """Create cache management section"""
@@ -174,6 +245,11 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
                                   text=t("ui.open_cache_folder"),
                                   command=self._open_cache_folder)
         open_button.grid(row=2, column=1, padx=15, pady=(5, 15), sticky="w")
+        # Clear discovery cache button
+        clear_lib_cache_button = ctk.CTkButton(cache_frame,
+                               text='Clear library discovery cache',
+                               command=self._clear_library_discovery_cache)
+        clear_lib_cache_button.grid(row=3, column=0, padx=15, pady=(5, 15), sticky='w')
     
     def _create_about_section(self):
         """Create about section"""
@@ -278,6 +354,39 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
         archive_extractor.set_prefer_system_7z(prefer_value)
         set_config_value('prefer_system_7z', prefer_value)
         debug_log(f"Prefer system 7z set to: {prefer_value}")
+
+    def _on_powershell_discovery_toggle(self):
+        """Handle toggle for using PowerShell library discovery"""
+        val = bool(self.powershell_discovery_var.get())
+        set_config_value('use_powershell_discovery', val)
+        debug_log(f"PowerShell library discovery toggled to: {val}")
+
+    def _on_engine_toggle(self, engine, var):
+        from utils.compatibility_checker import compatibility_checker
+        val = bool(var.get())
+        if val:
+            compatibility_checker.supported_engines.add(engine)
+        else:
+            compatibility_checker.supported_engines.discard(engine)
+        # persist the updated list into cache via compatibility checker
+        compatibility_checker._save_compatibility_data()
+        debug_log(f"Engine support for {engine} toggled to {val}")
+
+    def _on_filter_verified_toggle(self):
+        try:
+            value = bool(self.filter_verified_var.get())
+            set_config_value('filter_show_verified_only', value)
+            debug_log(f"Filter: show verified only = {value}")
+        except Exception as e:
+            debug_log(f"Failed to set filter_show_verified_only: {e}")
+
+    def _on_filter_supported_toggle(self):
+        try:
+            value = bool(self.filter_supported_var.get())
+            set_config_value('filter_show_supported_only', value)
+            debug_log(f"Filter: show supported only = {value}")
+        except Exception as e:
+            debug_log(f"Failed to set filter_show_supported_only: {e}")
     
     def _get_cache_info(self):
         """Get cache directory information"""
@@ -329,3 +438,26 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
         else:
             from CTkMessagebox import CTkMessagebox
             CTkMessagebox(title=t("ui.error"), message=t("ui.cache_folder_not_found"))
+
+    def _clear_library_discovery_cache(self):
+        """Clear the library discovery cache file"""
+        from scanner.library_discovery import clear_library_cache
+        from CTkMessagebox import CTkMessagebox
+        ok = clear_library_cache()
+        if ok:
+            CTkMessagebox(title=t('ui.success'), message='Library discovery cache cleared')
+        else:
+            CTkMessagebox(title=t('ui.error'), message='Failed to clear library discovery cache')
+
+    def _view_library_roots(self):
+        # Import lazily to avoid circular imports
+        from scanner.library_discovery import get_game_libraries
+        from gui.widgets.library_roots_frame import LibraryRootsFrame
+        def _rescan_callback():
+            return get_game_libraries(use_powershell=bool(self.powershell_discovery_var.get()))
+        libs = _rescan_callback()
+        # Clear content and show library roots frame
+        for widget in self.master.winfo_children():
+            widget.destroy()
+        frame = LibraryRootsFrame(self.master, libraries=libs, on_rescan=_rescan_callback)
+        frame.grid(row=0, column=0, sticky='nsew', padx=10, pady=10)

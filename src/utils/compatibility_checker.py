@@ -58,6 +58,10 @@ class OptiScalerCompatibilityChecker:
                     data = json.load(f)
                     self.known_issues = data.get("known_issues", {})
                     self.version_compatibility = data.get("version_compatibility", {})
+                    # Supported engines can be persisted so the user can mark them
+                    se = data.get('supported_engines')
+                    if se and isinstance(se, list):
+                        self.supported_engines = set(se)
         except Exception as e:
             debug_log(f"Failed to load compatibility data: {e}")
             self.known_issues = {}
@@ -69,6 +73,7 @@ class OptiScalerCompatibilityChecker:
             data = {
                 "known_issues": self.known_issues,
                 "version_compatibility": self.version_compatibility,
+                "supported_engines": list(self.supported_engines),
                 "last_updated": datetime.now().isoformat()
             }
             with open(self.compatibility_cache, 'w') as f:

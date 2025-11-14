@@ -35,6 +35,9 @@ class Config:
         # Cache settings
         self.steam_app_list_cache_days = 7
         self.max_cache_size_mb = 500
+        # Library discovery cache TTL in seconds (default 24 hours)
+        # Set default; _settings will be updated after loading the config file
+        self.library_discovery_cache_ttl = 86400
         
         # Performance settings
         self.max_scan_depth = 3
@@ -53,6 +56,11 @@ class Config:
         default_workers = min(8, cpu_count * 4)
         # allow persisted override from config.json
         self.max_workers = int(self._settings.get('max_workers', default_workers))
+        # Apply persisted library discovery TTL if provided
+        try:
+            self.library_discovery_cache_ttl = int(self._settings.get('library_discovery_cache_ttl', self.library_discovery_cache_ttl))
+        except Exception:
+            pass
 
     def _load_settings_file(self):
         """Load settings from JSON file; return dict or empty dict on error"""
@@ -106,6 +114,12 @@ def set_config_value(key, value):
     """Set configuration value and persist to JSON settings file"""
     config._settings[key] = value
     try:
+        # Update object attributes if config provides a known field
+        if key == 'library_discovery_cache_ttl':
+            try:
+                config.library_discovery_cache_ttl = int(value)
+            except Exception:
+                pass
         config._save_settings_file(config._settings)
     except Exception:
         return False
