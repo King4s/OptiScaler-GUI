@@ -1,7 +1,6 @@
-# Test Environment Implementation - Complete Summary
+# Test Environment Implementation - Complete Summary (moved to docs/test_env/)
 
-**Date**: November 13, 2025  
-**Status**: ✅ Complete and Ready to Use
+This file has been moved to `docs/test_env/TEST_ENV_IMPLEMENTATION.md` - please refer to the docs directory for the latest content.
 
 ## What Was Created
 
@@ -68,7 +67,7 @@ setup_test_env.bat
 - Troubleshooting section
 - CI/CD integration notes
 
-#### `TEST_ENV_SETUP.md` (In root)
+#### `docs/test_env/TEST_ENV_SETUP.md` (Moved to `docs/test_env`)
 - Quick start guide
 - Setup instructions
 - Common testing patterns with code examples
@@ -168,8 +167,8 @@ mkdir test_env\cache\extracted
 | `.gitignore` | Added `test_env/` exclusion (1 line) |
 | **New**: `setup_test_env.ps1` | PowerShell setup script (3926 bytes) |
 | **New**: `setup_test_env.bat` | Batch setup script (2781 bytes) |
-| **New**: `TEST_ENV_SETUP.md` | Full setup guide (6025 bytes) |
-| **New**: `TEST_ENV_QUICK_REF.md` | Quick reference (1807 bytes) |
+| **New**: `docs/test_env/TEST_ENV_SETUP.md` | Full setup guide (6025 bytes) |
+| **New**: `docs/test_env/TEST_ENV_QUICK_REF.md` | Quick reference (1807 bytes) |
 | **New**: `test_env/README.md` | In-directory documentation |
 | **New**: `test_env/fixtures/OptiScaler.ini.sample` | Sample config |
 | **New**: `test_env/fixtures/archives/` | Archive directory |
@@ -207,7 +206,7 @@ The test environment can be integrated into CI/CD:
 4. No cache carries over between runs
 5. Can be uploaded as artifacts
 
-Example CI setup provided in `TEST_ENV_SETUP.md`.
+Example CI setup provided in `docs/test_env/TEST_ENV_SETUP.md`.
 
 ## Next Steps
 
@@ -221,7 +220,7 @@ Example CI setup provided in `TEST_ENV_SETUP.md`.
 ## Quick Start Checklist
 
 - [ ] Run `.\setup_test_env.ps1`
-- [ ] Read `TEST_ENV_SETUP.md` for details
+- [ ] Read `docs/test_env/TEST_ENV_SETUP.md` for details
 - [ ] Create first mock game directory
 - [ ] Copy test archives to `test_env/fixtures/archives/`
 - [ ] Run a test with test environment
@@ -232,8 +231,8 @@ Example CI setup provided in `TEST_ENV_SETUP.md`.
 | Document | Purpose |
 |----------|---------|
 | `.gitignore` | Excludes test_env from git |
-| `TEST_ENV_QUICK_REF.md` | One-page reference (START HERE) |
-| `TEST_ENV_SETUP.md` | Complete setup guide |
+| `docs/test_env/TEST_ENV_QUICK_REF.md` | One-page reference (START HERE) |
+| `docs/test_env/TEST_ENV_SETUP.md` | Complete setup guide |
 | `test_env/README.md` | Detailed test environment docs |
 | `setup_test_env.ps1` | PowerShell setup |
 | `setup_test_env.bat` | Batch setup |

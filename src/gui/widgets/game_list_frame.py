@@ -128,62 +128,11 @@ class GameListFrame(ctk.CTkScrollableFrame):
         self._cache_timestamp = None
 
         self._display_games()
-        # Show recent library discovery summary if available
-        try:
-            last_summary = getattr(self.game_scanner, 'last_library_summary', None)
-            last_seconds = getattr(self.game_scanner, 'last_library_scan_seconds', None)
-            if last_summary:
-                items = [f"{k}: {v}" for k, v in last_summary.items() if k != 'total']
-                summary_text = f"Scanned {last_summary.get('total', 0)} libraries" + (f" in {last_seconds:.2f}s" if last_seconds else "")
-                if items:
-                    summary_text += " — " + ", ".join(items)
-                # Ensure there is no leading/trailing whitespace so tests and UI checks
-                # that rely on text.startswith('Scanned') work reliably.
-                summary_text = summary_text.strip()
-                self.summary_lbl = ctk.CTkLabel(self, text=summary_text, font=("Arial", 12), fg_color="transparent")
-                self.summary_lbl.grid(row=0, column=0, sticky='w', padx=8, pady=(4, 8))
-                # Force immediate update so that underlying tkinter Label text is
-                # populated and accessible via `cget('text')` by test harnesses and
-                # immediate checks in the UI testing environment.
-                try:
-                    self.summary_lbl.configure(text=summary_text)
-                    # In some CTk implementations, `cget('text')` may read from
-                    # a different internal attribute; set internal caches as a
-                    # fallback to ensure it returns the expected value.
-                    try:
-                        setattr(self.summary_lbl, '_text', summary_text)
-                    except Exception:
-                        pass
-                    self.summary_lbl.update_idletasks()
-                    # Force a full frame update to ensure CTk internals propagate
-                    # text changes to the underlying tk widgets before returning.
-                    try:
-                        self.update_idletasks()
-                    except Exception:
-                        pass
-                except Exception:
-                    # Avoid breaking on test environments where CTk internals differ
-                    pass
-                # Add a hidden tkinter.Label as a fallback for test harnesses
-                # which may inspect widget children and expect a plain
-                # tkinter.Label to expose text via cget('text'). The label
-                # is hidden immediately and is used only for test discovery.
-                try:
-                    tk_label = tk.Label(self, text=summary_text)
-                    tk_label.grid(row=0, column=0)
-                    # Place the fallback tkinter label behind the CTkLabel so it
-                    # doesn't duplicate visible text in the UI, but remains a direct
-                    # child so test harnesses that inspect direct widget children
-                    # can find the expected text via cget('text').
-                    try:
-                        tk_label.lower()
-                    except Exception:
-                        pass
-                    self._summary_lbl_tk = tk_label
-                except Exception:
-                    pass
-        except Exception:
-            pass
+        # Note: The summary is displayed by `MainWindow` in a dedicated
+        # summary holder above the game list. Keeping a separate summary in
+        # GameListFrame caused visual duplication. If tests require a plain
+        # tkinter child label to find the summary, the MainWindow holder
+        # exposes one already. Therefore remove the local summary label.
         # Schedule background image fetching after UI rendered
         self._schedule_fetch_game_images()
 
@@ -222,64 +171,21 @@ class GameListFrame(ctk.CTkScrollableFrame):
             game_frame.grid_columnconfigure(0, weight=0) # Image column, no stretching
             game_frame.grid_columnconfigure(1, weight=1) # Info frame column, takes available space
 
-            # Game Image
+            # Game Image - always render a placeholder quickly; image processing happens in background
             image_path = game.image_path
-            if not image_path or (image_path and not Path(image_path).exists()):
-                # Schedule async fetch to avoid blocking UI
-                image_path = None
-            else:
-                # If we have image_path already, ensure the label is updated synchronously
-                pass
-
             # Define the target height for all images
             target_height = 80
+            # For placeholder, create a dynamically sized gray image based on a common aspect ratio
+            default_aspect_ratio = 16 / 9
+            placeholder_width = int(target_height * default_aspect_ratio)
 
-            if game.image_path and Path(game.image_path).exists():
-                try:
-                    img = Image.open(game.image_path)
-                    
-                    original_width, original_height = img.size
-
-                    # Calculate new width to maintain aspect ratio with fixed height
-                    new_width = int(original_width * (target_height / original_height))
-                    new_height = target_height # Height is fixed
-
-                    resampler = getattr(Image, 'Resampling', None)
-                    if resampler is not None:
-                        lanczos = resampler.LANCZOS
-                    else:
-                        lanczos = LANCZOS
-                    img = img.resize((new_width, new_height), lanczos)
-
-                    # Create CTkImage with the *actual* new dimensions of the resized image
-                    ctk_image = ctk.CTkImage(light_image=img, dark_image=img, size=(new_width, new_height))
-                    img_label = ctk.CTkLabel(game_frame, image=ctk_image, text="")
-                    setattr(img_label, '_ctk_image_ref', ctk_image)  # Keep a reference
-                    self._image_label_map[game.path] = img_label
-                    img_label.grid(row=0, column=0, sticky="w")
-                except Exception as e:
-                    # Fallback to placeholder if image loading fails
-                    default_aspect_ratio = 16/9 
-                    placeholder_width = int(target_height * default_aspect_ratio)
-                    placeholder_img = Image.new('RGB', (placeholder_width, target_height), color = 'gray')
-                    ctk_placeholder_image = ctk.CTkImage(light_image=placeholder_img, dark_image=placeholder_img, size=(placeholder_width, target_height))
-                    placeholder_label = ctk.CTkLabel(game_frame, image=ctk_placeholder_image, text=game.name, compound="center", font=("Arial", 10))
-                    setattr(placeholder_label, '_ctk_image_ref', ctk_placeholder_image)  # Keep a reference
-                    self._image_label_map[game.path] = placeholder_label
-                    placeholder_label.grid(row=0, column=0, sticky="w")
-            else:
-                # For placeholder, create a dynamically sized gray image based on a common aspect ratio
-                # Use a common aspect ratio (e.g., 16:9) to determine placeholder width
-                default_aspect_ratio = 16/9 
-                placeholder_width = int(target_height * default_aspect_ratio)
-
-                placeholder_img = Image.new('RGB', (placeholder_width, target_height), color = 'gray')
-                ctk_placeholder_image = ctk.CTkImage(light_image=placeholder_img, dark_image=placeholder_img, size=(placeholder_width, target_height))
-                placeholder_label = ctk.CTkLabel(game_frame, image=ctk_placeholder_image, text=game.name, compound="center", font=("Arial", 10))
-                setattr(placeholder_label, '_ctk_image_ref', ctk_placeholder_image)  # Keep a reference
-                placeholder_label.grid(row=0, column=0, sticky="w")
-                # Store label reference for later update after image fetch
-                self._image_label_map[game.path] = placeholder_label
+            placeholder_img = Image.new('RGB', (placeholder_width, target_height), color='gray')
+            ctk_placeholder_image = ctk.CTkImage(light_image=placeholder_img, dark_image=placeholder_img, size=(placeholder_width, target_height))
+            placeholder_label = ctk.CTkLabel(game_frame, image=ctk_placeholder_image, text=game.name, compound="center", font=("Arial", 10))
+            setattr(placeholder_label, '_ctk_image_ref', ctk_placeholder_image)  # Keep a reference
+            placeholder_label.grid(row=0, column=0, sticky="w")
+            # Store label reference for later update after image processing in background
+            self._image_label_map[game.path] = placeholder_label
     # NOTE: _schedule_fetch_game_images was previously inserted into the middle of the
     # _display_games method by mistake which caused UI construction code to become
     # part of the scheduler. The corrected method below only performs background
@@ -289,33 +195,35 @@ class GameListFrame(ctk.CTkScrollableFrame):
 
             # Game Name and Path
             info_frame = ctk.CTkFrame(game_frame)
-            info_frame.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+            # Add padding to avoid tags and content hugging the edges
+            info_frame.grid(row=0, column=1, padx=(10, 15), pady=5, sticky="ew")
             info_frame.grid_columnconfigure(0, weight=1)
 
             # Game name
             name_label = ctk.CTkLabel(info_frame, text=game.name, font=("Arial", 14, "bold"))
             name_label.grid(row=0, column=0, sticky="w")
 
-            # Debug: log community verified state for each game displayed
-            debug_log(f"Displaying game: {game.name}, community_verified={getattr(game, 'community_verified', False)}")
+            # Debug: log occasionally to avoid log flooding which may affect performance
+            if i < 5 or i % 10 == 0:
+                debug_log(f"Displaying game: {game.name}, community_verified={getattr(game, 'community_verified', False)}")
 
             # Platform/Manager tag
             if hasattr(game, 'platform') and game.platform:
                 tag_label = ctk.CTkLabel(info_frame, text=game.platform, font=("Arial", 10, "italic"),
                                          fg_color="#444", text_color="#fff", corner_radius=6, padx=6, pady=2)
-                tag_label.grid(row=0, column=1, padx=8, sticky="w")
+                tag_label.grid(row=0, column=1, padx=(10, 0), sticky="w")
 
             # Community-verified tag or anti-cheat warning
             # Community verified games get a green badge
             if getattr(game, 'community_verified', False):
-                verified_label = ctk.CTkLabel(info_frame, text=t('ui.community_verified') if t('ui.community_verified') else "Verified", font=("Arial", 10),
+                verified_label = ctk.CTkLabel(info_frame, text=t('ui.community_verified', 'Verified'), font=("Arial", 10),
                                              fg_color="#2e7d32", text_color="#fff", corner_radius=6, padx=6, pady=2)
-                verified_label.grid(row=0, column=2, padx=8, sticky="w")
+                verified_label.grid(row=0, column=2, padx=(10, 0), sticky="w")
             elif getattr(game, 'anti_cheat_list', None):
                 ac_text = ", ".join(game.anti_cheat_list)
-                ac_label = ctk.CTkLabel(info_frame, text=f"{t('ui.anti_cheat') if t('ui.anti_cheat') else 'Anti-cheat'}: {ac_text}", font=("Arial", 10),
+                ac_label = ctk.CTkLabel(info_frame, text=f"{t('ui.anti_cheat', 'Anti-cheat')}: {ac_text}", font=("Arial", 10),
                                        fg_color="#ffa000", text_color="#000", corner_radius=6, padx=6, pady=2)
-                ac_label.grid(row=0, column=2, padx=8, sticky="w")
+                ac_label.grid(row=0, column=2, padx=(10, 0), sticky="w")
 
             # Engine badge - show type and whether it's unsupported
             engine = getattr(game, 'engine', None)
@@ -323,12 +231,12 @@ class GameListFrame(ctk.CTkScrollableFrame):
             if engine and not engine_supported:
                 engine_label = ctk.CTkLabel(info_frame, text=f"{engine} ({t('ui.engine_unsupported')})", font=("Arial", 10),
                                              fg_color="#d32f2f", text_color="#fff", corner_radius=6, padx=6, pady=2)
-                engine_label.grid(row=0, column=3, padx=8, sticky="w")
+                engine_label.grid(row=0, column=3, padx=(10, 0), sticky="w")
             elif engine:
                 # If engine is known and supported, show a subtle tag
                 engine_label = ctk.CTkLabel(info_frame, text=f"{engine}", font=("Arial", 10),
                                              fg_color="#666", text_color="#fff", corner_radius=6, padx=6, pady=2)
-                engine_label.grid(row=0, column=3, padx=8, sticky="w")
+                engine_label.grid(row=0, column=3, padx=(10, 0), sticky="w")
 
             # Game path
             path_label = ctk.CTkLabel(info_frame, text=game.path, font=("Arial", 10))
@@ -344,14 +252,46 @@ class GameListFrame(ctk.CTkScrollableFrame):
             debug_log(f"DEBUG: OptiScaler installed check for {game.name} at {game.path}: {is_installed}")
 
             # Install/Uninstall Button (dynamic based on installation status)
-            if is_installed:
-                action_button = ctk.CTkButton(buttons_frame, text=t("ui.uninstall") + " OptiScaler", 
-                                            fg_color="#d32f2f", hover_color="#b71c1c",
-                                            command=lambda g=game: self._uninstall_optiscaler_for_game(g))
-            else:
-                action_button = ctk.CTkButton(buttons_frame, text=t("ui.install_optiscaler"),
-                                            command=lambda g=game: self._install_optiscaler_for_game(g))
-            action_button.grid(row=0, column=0, padx=5, pady=2, sticky="e")
+            # Create the buttons on a short delay so the UI can render first without blocking
+            def _create_buttons():
+                try:
+                    if is_installed:
+                        action_button = ctk.CTkButton(buttons_frame, text=t("ui.uninstall") + " OptiScaler", 
+                                                    fg_color="#d32f2f", hover_color="#b71c1c",
+                                                    command=lambda g=game: self._uninstall_optiscaler_for_game(g))
+                    else:
+                        action_button = ctk.CTkButton(buttons_frame, text=t("ui.install_optiscaler"),
+                                                    command=lambda g=game: self._install_optiscaler_for_game(g))
+                    action_button.grid(row=0, column=0, padx=5, pady=2, sticky="e")
+                    button_row = 1
+                    # If installed, add update/edit buttons dynamically
+                    if is_installed:
+                        try:
+                            update_info = self._get_update_info()
+                            if update_info.get("available", False):
+                                update_button = ctk.CTkButton(buttons_frame, text=t("ui.update") + " OptiScaler",
+                                                            fg_color="#ff9800", hover_color="#f57c00",
+                                                            command=lambda g=game: self._update_optiscaler_for_game(g))
+                                update_button.grid(row=button_row, column=0, padx=5, pady=2, sticky="e")
+                                button_row += 1
+                        except Exception:
+                            pass
+                        try:
+                            edit_settings_button = ctk.CTkButton(buttons_frame, text=t("ui.edit_settings"),
+                                                               command=lambda g_path=game.path: self.on_edit_settings(g_path))
+                            edit_settings_button.grid(row=button_row, column=0, padx=5, pady=2, sticky="e")
+                            button_row += 1
+                        except Exception:
+                            pass
+                except Exception as e:
+                    debug_log(f"Failed to create action button for {game.name}: {e}")
+
+            # Schedule button creation so initial UI layout is fast
+            try:
+                self.after(20, _create_buttons)
+            except Exception:
+                # Fallback: create synchronously if event loop not available or scheduling fails
+                _create_buttons()
 
             # Check for updates if installed
             update_available = False
@@ -422,8 +362,12 @@ class GameListFrame(ctk.CTkScrollableFrame):
                 debug_log(f"Error fetching image for {game.name}: {e}")
 
         for game in self.games:
-            if not getattr(game, 'image_path', None) or not Path(getattr(game, 'image_path', '')).exists():
+            # Always schedule image load/optimize in background to avoid main-thread workload
+            try:
                 self._executor.submit(fetch_and_update, game)
+            except Exception:
+                # If executor fails, continue without blocking
+                continue
 
     def _install_optiscaler_for_game(self, game):
         """Install OptiScaler for the selected game with enhanced error handling"""
@@ -440,7 +384,7 @@ class GameListFrame(ctk.CTkScrollableFrame):
             ac_text = ', '.join(anti_cheat_list)
             res = CTkMessagebox(
                 title=t('ui.anti_cheat_warning_title'),
-                message=t('ui.anti_cheat_warning_message').format(ac=ac_text) if t('ui.anti_cheat_warning_message') else f"Anti-cheat detected: {ac_text}",
+                message=t('ui.anti_cheat_warning_message', 'Anti-cheat detected: {ac}').format(ac=ac_text),
                 icon='warning',
                 option_1=t('ui.cancel'),
                 option_2=t('ui.continue')
@@ -452,7 +396,7 @@ class GameListFrame(ctk.CTkScrollableFrame):
         if (engine == 'Unknown' or not compatibility_checker.is_engine_supported(engine)) and not community_verified:
             res2 = CTkMessagebox(
                 title=t('ui.engine_unknown_warning_title'),
-                message=t('ui.engine_unknown_warning_message') if t('ui.engine_unknown_warning_message') else "Unknown engine. Proceed?",
+                message=t('ui.engine_unknown_warning_message', 'Unknown engine. Proceed?'),
                 icon='warning',
                 option_1=t('ui.cancel'),
                 option_2=t('ui.continue')
@@ -799,9 +743,15 @@ class GameListFrame(ctk.CTkScrollableFrame):
                 debug_log(f"Failed to update OptiScaler status for {game.name}: {e}")
                 game.optiscaler_installed = False
         
-        # Clear current display
+        # Clear current display; schedule destruction to avoid mid-draw Tcl errors
         for widget in self.winfo_children():
-            widget.destroy()
+            try:
+                self.after(0, lambda w=widget: w.destroy())
+            except Exception:
+                try:
+                    widget.destroy()
+                except Exception:
+                    pass
         # Recreate the display
         self._display_games()
 

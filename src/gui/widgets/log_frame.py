@@ -7,10 +7,11 @@ from utils.translation_manager import t
 class LogFrame(ctk.CTkScrollableFrame):
     """Debug log viewer frame"""
     
-    def __init__(self, master, **kwargs):
+    def __init__(self, master, on_back=None, **kwargs):
         super().__init__(master, **kwargs)
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
+        self.on_back = on_back
         
         self._setup_ui()
         self._start_log_monitoring()
@@ -18,7 +19,7 @@ class LogFrame(ctk.CTkScrollableFrame):
     def _setup_ui(self):
         """Setup the log viewer UI"""
         # Title
-        title_label = ctk.CTkLabel(self, text=t("ui.debug_log"), 
+        title_label = ctk.CTkLabel(self, text=t("ui.debug_log", "Debug Log"), 
                                  font=("Arial", 20, "bold"))
         title_label.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="w")
         
@@ -28,13 +29,17 @@ class LogFrame(ctk.CTkScrollableFrame):
         controls_frame.grid_columnconfigure(2, weight=1)
         
         # Clear button
-        clear_btn = ctk.CTkButton(controls_frame, text=t("ui.clear_log"), 
+        clear_btn = ctk.CTkButton(controls_frame, text=t("ui.clear_log", "Clear Log"), 
                                 command=self._clear_log, width=100)
         clear_btn.grid(row=0, column=0, padx=5, pady=5)
+        # Back button when provided (e.g., open from Settings to return back)
+        if callable(self.on_back):
+            back_btn = ctk.CTkButton(controls_frame, text=t("ui.back", "Back"), command=self.on_back, width=80)
+            back_btn.grid(row=0, column=3, padx=5, pady=5, sticky="e")
         
         # Auto-scroll toggle
         self.auto_scroll_var = ctk.BooleanVar(value=True)
-        auto_scroll_cb = ctk.CTkCheckBox(controls_frame, text=t("ui.auto_scroll"),
+        auto_scroll_cb = ctk.CTkCheckBox(controls_frame, text=t("ui.auto_scroll", "Auto Scroll"),
                                        variable=self.auto_scroll_var)
         auto_scroll_cb.grid(row=0, column=1, padx=10, pady=5)
         

@@ -8,7 +8,7 @@
 
 | Feature             | Status     |
 |---------------------|------------|
-| 📦 Portable Version    | ✅ v0.3.5   |
+| 📦 Portable Version    | ✅ v0.3.6   |
 | 🎮 Steam Auto-Detection | ✅ Full    |
 | 🎮 Epic Games Auto-Detection | ✅ Full    |
 | � GOG Galaxy Auto-Detection | ✅ Full    |
@@ -65,7 +65,7 @@
 
 **Think of it as**: A desktop installer/manager, like how Steam manages game installations.
 
-**Version: 0.3.5** | **Status: Early Development** | **🚀 NEW: Ultra-Compact Portable Version!**
+**Version: 0.3.6** | **Status: Release** | **🚀 Release: v0.3.6**
 
 ## 🆕 What's New in v0.3.5
 
@@ -78,7 +78,7 @@
 ### 🚀 **Download Options**
 
 #### 🎯 **For End Users (Recommended)**
-**[📥 Download Portable Version v0.3.5](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.3.5)**
+**[📥 Download Portable Version v0.3.6](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.3.6)**
 
 | Package Type | Size | Checksum | Notes |
 |-------------|------|----------|-------|
@@ -130,6 +130,25 @@
 ### 🎯 Key Features
 
 - **🔍 Automatic Game Detection**: Scans Steam library and detects installed games
+
+#### 🔎 Windows Library Discovery & Scanning Improvements
+We recently added a major improvement to how the GUI detects library roots and installed games on Windows:
+
+- **PowerShell PoC**: When PowerShell (pwsh / powershell) is present and enabled in the GUI settings, the application will run a small PoC pipeline (Get-InstalledPrograms | Get-DetectedLaunchers | Get-ActiveDrives | Find-GameLibraries) to enumerate installed launchers and discover game library folders quickly and safely.
+- **Pure-Python Fallback**: If PowerShell is unavailable or disabled, the GUI falls back to a pure-Python discovery algorithm that probes:
+   - the Windows Uninstall registry keys,
+   - WinRT Appx package install locations (if winrt available),
+   - a drive scan for common library folder names (Steam/Epic/GOG), and
+   - Steam's `libraryfolders.vdf` (parsed via vdf, JSON, or a custom KV fallback parser).
+- **Path Normalization & De-duplication**: Paths returned by multiple sources are normalized and de-duplicated (case-insensitively on Windows) but the original display path is preserved for UI display.
+- **Caching & TTL**: Discovered library roots are cached in `cache/library_discovery.json` for a configurable TTL. This avoids re-enumeration on each run and improves responsiveness.
+- **UI Experience Improvements**:
+   - `Rescan` button: manually refresh discovered libraries.
+   - `Clear discovery cache` button: forces re-discovery regardless of TTL.
+   - Scanning summary label: shows `Scanned X libraries` with a breakdown and scan duration in the UI.
+- **Safety**: Registry and Appx enumerations are shallow-only (no deep recursive scanning) and there is an Excluded drives config option to avoid scanning specified drives.
+
+These improvements make the auto-detection more robust, safer, and faster for Windows users while still offering reliable behavior on systems where PowerShell is not available.
 - **📦 One-Click Installation**: Download and install OptiScaler with a single click
 - **🔧 Intelligent Configuration**: Smart setup for AMD FSR, Intel XeSS, and NVIDIA DLSS
 - **🛡️ Robust Architecture**: Multi-tier fallback systems for maximum compatibility
@@ -176,12 +195,12 @@
 
 ### 🎯 **Option 1: Portable Version (Recommended for Users)**
 
-1. **[📥 Download the Portable Version](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.3.5)**
+1. **[📥 Download the Portable Version](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.3.6)**
 2. **Extract** the ZIP file to your desired location
 3. **Run** `OptiScaler-GUI.exe` inside the extracted folder
 4. **Done!** No installation or Python setup required
 
-⚠️ **Note**: This is an early development version (0.3.5) - test thoroughly before using on important games!
+⚠️ **Note**: This is a stable release (0.3.6) - test thoroughly before using on important games!
 
 ### 🛠️ **Option 2: Development Setup**
 
@@ -288,7 +307,7 @@ python build.py                     # Creates portable .exe in dist/
 
 ## 📦 Release Information
 
-**Current Version**: 0.3.5 (Development Release)
+**Current Version**: 0.3.6 (Release)
 - **Portable Version Available**: Self-contained executable with all dependencies
 - **Size**: ~48 MB (includes Python runtime and all libraries - 66% size reduction!)
 - **Compatibility**: Windows 10/11, no Python installation required
@@ -297,7 +316,7 @@ python build.py                     # Creates portable .exe in dist/
 
 | GUI Version | Compatible OptiScaler Versions | Status |
 |-------------|--------------------------------|--------|
-| **v0.3.5** | v0.7.0 - v0.7.9 | ✅ Current |
+| **v0.3.6** | v0.7.0 - v0.7.9 | ✅ Current |
 | v0.3.0 | v0.7.0 - v0.7.7-pre9 | 🟡 Legacy |
 | v0.2.0 | v0.6.0 - v0.7.0 | 🟡 Legacy |
 | v0.1.0 | v0.5.0 - v0.6.5 | ❌ Deprecated |
@@ -349,7 +368,7 @@ For full release notes and downloads, visit: [GitHub Releases](https://github.co
 
 ## 🛣️ **Project Status & Roadmap**
 
-### **Current Status (v0.3.5)**
+### **Current Status (v0.3.6)**
 - ✅ **Stable Installation**: Reliable OptiScaler installation for most games
 - ✅ **Ultra-Compact Distribution**: 48 MB self-contained executable (66% size reduction)
 - ✅ **Steam Integration**: Automatic game detection from Steam library

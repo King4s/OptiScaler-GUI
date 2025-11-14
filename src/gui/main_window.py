@@ -6,6 +6,7 @@ from scanner.game_scanner import GameScanner
 from gui.widgets.game_list_frame import GameListFrame
 from gui.widgets.global_settings_frame import GlobalSettingsFrame
 from utils.translation_manager import t
+from utils.config import get_config_value
 from utils.debug import set_debug_enabled, is_debug_enabled, debug_log
 from utils.progress import ProgressManager, progress_manager
 from utils.update_manager import update_manager
@@ -36,11 +37,18 @@ class MainWindow(ctk.CTk):
         self._create_footer()
         self._create_progress_overlay()
         
-        # Show default view
-        self.show_game_list()
+        # Show default view; force a startup rescan to ensure the UI is populated
+        # (this ensures a consistent initial load even if scanner cache is empty)
+        self.show_game_list(force_refresh=True)
         
         # Check for updates on startup (after UI is ready)
         self.after(1000, self._check_for_updates_on_startup)
+        # Ensure the game list is actually populated on startup; if not, do a fallback rescan.
+        # This avoids cases where the initial scan was skipped due to cached/TTl edge cases or race conditions.
+        ensure_cb = getattr(self, '_ensure_games_loaded', None)
+        if callable(ensure_cb):
+            # Bind the callback at scheduling time to avoid attribute resolution through tk widget
+            self.after(3000, lambda cb=ensure_cb: cb())
     
     def _create_header(self):
         """Create header with navigation"""
@@ -66,43 +74,51 @@ class MainWindow(ctk.CTk):
         )
         self.settings_btn.grid(row=0, column=1, padx=5, pady=5)
         
-        # Log tab (initially hidden)
-        self.log_btn = ctk.CTkButton(
-            self.header_frame,
-            text=t("ui.log_tab"),
-            command=self.show_log,
-            width=100
-        )
-        # Initially hide log button
-        self._update_log_button_visibility()
+        # NOTE: The Log button was previously in the header and made the UI noisy.
+        # Move the log viewer access into Settings (GlobalSettingsFrame) to avoid
+        # showing debug UI in the header by default.
         
         # Rescan button
         self.rescan_btn = ctk.CTkButton(
-            self.header_frame,
-            text=t("ui.rescan"),
+            self.header_frame, 
+            text=t("ui.rescan", "Rescan"),
             command=self.rescan_games,
             width=100
         )
         self.rescan_btn.grid(row=0, column=3, padx=5, pady=5)
-        # Clear discovery cache
-        from CTkMessagebox import CTkMessagebox
-        def _clear_cache_btn_action():
-            from scanner.library_discovery import clear_library_cache
-            ok = clear_library_cache()
-            if ok:
-                CTkMessagebox(title=t('ui.success'), message=t('ui.library_discovery_cache_cleared') if t('ui.library_discovery_cache_cleared') else 'Library discovery cache cleared')
-            else:
-                CTkMessagebox(title=t('ui.error'), message=t('ui.failed_to_clear_cache') if t('ui.failed_to_clear_cache') else 'Failed to clear library discovery cache')
+        # Library discovery cache clearing is available in Settings
 
-        self.clear_cache_btn = ctk.CTkButton(self.header_frame, text=t('ui.clear_cache'), command=_clear_cache_btn_action, width=140)
-        self.clear_cache_btn.grid(row=0, column=4, padx=5, pady=5)
+        # NOTE: Cache clearing is available in Settings (GlobalSettingsFrame) via
+        # a Clear Cache button and Clear library discovery cache button, so we
+        # no longer expose a Clear Cache button here in the header.
+
+        # Debug indicator (small label). Its visibility toggles depending on
+        # the current debug state; clicking opens Settings for quick access.
+        # Use a single colored dot to save space; green for enabled
+        self.debug_indicator = ctk.CTkLabel(self.header_frame, text="●", font=("Arial", 12, "bold"), text_color="#2ecc71")
+        # Start hidden if debug is off
+        try:
+            if is_debug_enabled():
+                self.debug_indicator.grid(row=0, column=4, padx=(5, 8), pady=5)
+            else:
+                self.debug_indicator.grid_remove()
+        except Exception:
+            # If grid operations fail in headless test environments, ignore
+            pass
+        # Clicking the indicator opens Settings for quick access
+        try:
+            self.debug_indicator.bind('<Button-1>', lambda e: self.show_settings())
+        except Exception:
+            pass
     
     def _create_content_area(self):
         """Create main content area"""
         self.content_frame = ctk.CTkFrame(self)
         self.content_frame.grid(row=1, column=0, padx=5, pady=(0, 5), sticky="nsew")
         self.content_frame.grid_columnconfigure(0, weight=1)
-        self.content_frame.grid_rowconfigure(0, weight=1)
+        # Reserve row 0 for optional summary (weight=0) and let row 1 take the rest
+        self.content_frame.grid_rowconfigure(0, weight=0)
+        self.content_frame.grid_rowconfigure(1, weight=1)
     
     def _create_footer(self):
         """Create footer - no longer needed for progress"""
@@ -116,36 +132,63 @@ class MainWindow(ctk.CTk):
         # Register with progress manager
         progress_manager.register_progress_overlay("main", self.progress_overlay)
     
-    def _update_log_button_visibility(self):
-        """Update log button visibility based on debug mode"""
-        if is_debug_enabled():
-            self.log_btn.grid(row=0, column=2, padx=5, pady=5)
-        else:
-            self.log_btn.grid_remove()
+    # NOTE: Log button moved into Settings (GlobalSettingsFrame); header no
+    # longer directly exposes the debug log view. The visibility toggles and
+    # access are managed via Settings UI to avoid cluttering the header.
     
-    def show_log(self):
+    def show_log(self, on_back=None):
         """Show the debug log window"""
         try:
-            # Clear current content
+            # Clear current content (schedule destruction to avoid deleting widgets while they redraw)
             for widget in self.content_frame.winfo_children():
-                widget.destroy()
+                try:
+                    self.after(0, lambda w=widget: w.destroy())
+                except Exception:
+                    try:
+                        widget.destroy()
+                    except Exception:
+                        pass
             
-            # Create log frame
+            # Create log frame (allow optional back callback)
             from gui.widgets.log_frame import LogFrame
-            self.current_frame = LogFrame(self.content_frame)
+            self.current_frame = LogFrame(self.content_frame, on_back=on_back)
             self.current_frame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
             
         except Exception as e:
             debug_log(f"ERROR: Failed to show log: {e}")
+
+    def _update_debug_indicator(self):
+        """Update header debug indicator visibility based on runtime state"""
+        try:
+            if hasattr(self, 'debug_indicator'):
+                if is_debug_enabled():
+                    # show it
+                    try:
+                        self.debug_indicator.grid(row=0, column=4, padx=(5, 8), pady=5)
+                    except Exception:
+                        pass
+                else:
+                    try:
+                        self.debug_indicator.grid_remove()
+                    except Exception:
+                        pass
+        except Exception as e:
+            debug_log(f"ERROR: Failed to update debug indicator: {e}")
     
     # NOTE: refresh_ui defined further below (this was a short duplicate). Keep single implementation.
     
-    def show_game_list(self):
+    def show_game_list(self, force_refresh: bool = False):
         """Show the game list with progress feedback"""
         try:
-            # Clear current content
+            # Clear current content (schedule destruction to avoid deleting widgets while they redraw)
             for widget in self.content_frame.winfo_children():
-                widget.destroy()
+                try:
+                    self.after(0, lambda w=widget: w.destroy())
+                except Exception:
+                    try:
+                        widget.destroy()
+                    except Exception:
+                        pass
             
             # Update the content frame to ensure proper sizing
             self.content_frame.update_idletasks()
@@ -154,10 +197,24 @@ class MainWindow(ctk.CTk):
             # where `after` may be monkeypatched to synchronous calls, call the
             # scanning function directly to avoid a race where the check below
             # runs before the UI has been populated.
+            # If we already have cached scan results, and we're not forcing a refresh, show them
+            try:
+                cached = getattr(self.scanner, 'get_cached_games', None)
+                if callable(cached) and not force_refresh:
+                        cached_games = self.scanner.get_cached_games()
+                        if cached_games:
+                            # Display games from cache immediately without a rescan
+                            debug_log(f"Using cached games to display ({len(cached_games)})")
+                            self._display_games(cached_games)
+                        return
+            except Exception:
+                # If anything goes wrong checking cache, fall back to scanning
+                pass
+
             if getattr(self.after, '__self__', None) is None:
-                self._start_scanning_with_progress()
+                self._start_scanning_with_progress(force_refresh=force_refresh)
             else:
-                self.after(50, self._start_scanning_with_progress)
+                self.after(50, lambda: self._start_scanning_with_progress(force_refresh=force_refresh))
             
         except Exception as e:
             debug_log(f"ERROR: Failed to start game scanning: {e}")
@@ -166,9 +223,9 @@ class MainWindow(ctk.CTk):
     def rescan_games(self):
         """Trigger a full rescan of games (same as show_game_list, but explicit)."""
         # Reuse show_game_list which wraps the scanning pipeline and progress overlay
-        self.show_game_list()
+        self.show_game_list(force_refresh=True)
     
-    def _start_scanning_with_progress(self):
+    def _start_scanning_with_progress(self, force_refresh: bool = False):
         """Start scanning with progress overlay after UI is ready"""
         try:
             # Show progress overlay while scanning
@@ -179,7 +236,7 @@ class MainWindow(ctk.CTk):
             # background thread which relies on Tk event loop behavior.
             if getattr(self.after, '__self__', None) is None:
                 try:
-                    games = self.scanner.scan_games()
+                    games = self.scanner.scan_games(force_refresh=force_refresh)
                     self._display_games(games)
                 except Exception as e:
                     debug_log(f"ERROR: Failed to scan games (sync mode): {e}")
@@ -189,7 +246,7 @@ class MainWindow(ctk.CTk):
                     """Scan games in background thread"""
                     try:
                         # Get games from scanner
-                        games = self.scanner.scan_games()
+                        games = self.scanner.scan_games(force_refresh=force_refresh)
                         
                         # Update UI in main thread
                         self.after(0, lambda: self._display_games(games))
@@ -212,43 +269,48 @@ class MainWindow(ctk.CTk):
         """Display the games list after scanning completes"""
         try:
             progress_manager.hide_progress("main")
-            
-            # Optionally show a small summary frame above the game list. This helps
-            # the tests locate the library discovery summary reliably as a child
-            # widget of the main content area. It also provides a stable place for
-            # a summary label outside of the scrollable frame.
+
+            # SUMMARY REMOVED: The visible summary label was removed from the UI
+            # as requested. Discovery information is still logged to debug when
+            # enabled and stored in scanner.last_library_summary for programmatic
+            # access and testing. We preserve cleanup for any existing summary
+            # holder attribute and ensure layout remains correct.
             try:
-                # Remove any existing summary holder
-                if hasattr(self, '_summary_holder') and self._summary_holder:
+                if hasattr(self, '_summary_holder'):
                     try:
-                        self._summary_holder.destroy()
+                        # Safely destroy if it was created by earlier versions
+                        if getattr(self, '_summary_holder'):
+                            self._summary_holder.destroy()
                     except Exception:
                         pass
-                self._summary_holder = ctk.CTkFrame(self.content_frame, fg_color="transparent")
-                self._summary_holder.grid(row=0, column=0, sticky='ew', padx=10, pady=(4, 0))
-                last_summary = getattr(self.scanner, 'last_library_summary', None)
-                last_seconds = getattr(self.scanner, 'last_library_scan_seconds', None)
-                if last_summary:
-                    items = [f"{k}: {v}" for k, v in last_summary.items() if k != 'total']
-                    summary_text = f"Scanned {last_summary.get('total', 0)} libraries" + (f" in {last_seconds:.2f}s" if last_seconds else "")
-                    if items:
-                        summary_text += " — " + ", ".join(items)
-                    # Add a plain tkinter.Label so test suites can access its
-                    # text using cget('text') via wnd.winfo_children() paths.
-                    import tkinter as tk
-                    self._summary_tk_label = tk.Label(self._summary_holder, text=summary_text)
-                    self._summary_tk_label.grid(row=0, column=0, sticky='w')
-            except Exception as e:
-                debug_log(f"Failed to create summary holder: {e}")
+                    try:
+                        delattr(self, '_summary_holder')
+                    except Exception:
+                        pass
+            except Exception:
+                pass
 
             # Create new game list frame
             self.current_frame = GameListFrame(
-                self.content_frame, 
+                self.content_frame,
                 games=games,
                 game_scanner=self.scanner,
                 on_edit_settings=self.edit_game_settings
             )
-            self.current_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
+            # Always place the game list in the main row (row 0). Summary is
+            # removed and not shown, so games should take primary vertical space.
+            target_row = 0
+            self.current_frame.grid(row=target_row, column=0, sticky="nsew", padx=10, pady=10)
+            # Ensure the row with the game list takes the vertical weight
+            try:
+                if target_row == 0:
+                    self.content_frame.grid_rowconfigure(0, weight=1)
+                    self.content_frame.grid_rowconfigure(1, weight=0)
+                else:
+                    self.content_frame.grid_rowconfigure(0, weight=0)
+                    self.content_frame.grid_rowconfigure(1, weight=1)
+            except Exception:
+                pass
             # Force an immediate idletasks update to ensure nested CTk/ttk widgets
             # have their attributes synchronized for synchronous test runs.
             try:
@@ -280,9 +342,15 @@ class MainWindow(ctk.CTk):
     def show_settings(self):
         """Show the settings"""
         try:
-            # Clear current content
+            # Clear current content (schedule destruction to avoid deleting widgets while they redraw)
             for widget in self.content_frame.winfo_children():
-                widget.destroy()
+                try:
+                    self.after(0, lambda w=widget: w.destroy())
+                except Exception:
+                    try:
+                        widget.destroy()
+                    except Exception:
+                        pass
             
             # Create settings frame with refresh callback and main window reference
             self.current_frame = GlobalSettingsFrame(self.content_frame, 
@@ -303,14 +371,10 @@ class MainWindow(ctk.CTk):
         self.games_btn.configure(text=t("ui.games_tab"))
         self.settings_btn.configure(text=t("ui.settings_tab"))
         
-        # Update log button visibility based on debug mode
-        self._update_log_button_visibility()
+        # Log viewer is accessible from the Settings UI; do not update header log button here.
         
-        # Update log button text if visible
-        if is_debug_enabled():
-            self.log_btn.configure(text=t("ui.log_tab"))
-        
-        # Refresh current frame
+        # Update debug indicator and refresh current frame
+        self._update_debug_indicator()
         if hasattr(self, 'current_frame') and self.current_frame:
             if isinstance(self.current_frame, GameListFrame):
                 self.show_game_list()
@@ -324,6 +388,26 @@ class MainWindow(ctk.CTk):
                         hook()
                     except Exception:
                         pass
+
+        def _ensure_games_loaded(self):
+            """Ensure that after startup the game list is actually populated; do an automatic rescan if not."""
+            try:
+                # Only attempt once; if the user purposely has no games, Rescan won't change that.
+                try:
+                    cached = getattr(self.scanner, 'get_cached_games', None)
+                    cached_games = None
+                    if callable(cached):
+                        cached_games = self.scanner.get_cached_games()
+                except Exception:
+                    cached_games = None
+
+                # If there are no cached games AND the current frame is also the GameListFrame with no children
+                from gui.widgets.game_list_frame import GameListFrame
+                if not cached_games and isinstance(self.current_frame, GameListFrame) and (not self.current_frame.winfo_children()):
+                    debug_log("No games detected after startup - performing fallback rescan")
+                    self.rescan_games()
+            except Exception as e:
+                debug_log(f"_ensure_games_loaded failed: {e}")
     
     def edit_game_settings(self, game_path):
         """Edit settings for a specific game with progress feedback"""

@@ -38,7 +38,7 @@ def _find_powershell_exe():
     return pwsh
 
 
-def get_game_libraries_from_powershell(timeout: int = 30) -> List[Dict]:
+def get_game_libraries_from_powershell(timeout: int = 30, force_refresh: bool = False) -> List[Dict]:
     """Run the PowerShell PoC to detect game libraries.
 
     Returns: list of {Launcher, Drive, Path, Source}
@@ -52,7 +52,7 @@ def get_game_libraries_from_powershell(timeout: int = 30) -> List[Dict]:
     ps_script = r"Get-InstalledPrograms | Get-DetectedLaunchers | Get-ActiveDrives | Find-GameLibraries | ConvertTo-Json -Depth 4"
     # Try to use cached values if present and valid
     try:
-        if _CACHE_FILE.exists():
+        if not force_refresh and _CACHE_FILE.exists():
             try:
                 with open(_CACHE_FILE, 'r', encoding='utf-8') as f:
                     cached = json.load(f)
@@ -90,13 +90,14 @@ def get_game_libraries_from_powershell(timeout: int = 30) -> List[Dict]:
             # Normalize and deduplicate before returning
             normalized = [normalize_library_entry(x) for x in normalized]
             normalized = deduplicate_libraries(normalized)
-            # Write cache
-            try:
-                _CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-                with open(_CACHE_FILE, 'w', encoding='utf-8') as f:
-                    json.dump({'_timestamp': int(time.time()), 'data': normalized}, f, indent=2)
-            except Exception as e:
-                debug_log(f'Failed to write library discovery cache: {e}')
+            # Write cache (unless in force_refresh mode)
+            if not force_refresh:
+                try:
+                    _CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+                    with open(_CACHE_FILE, 'w', encoding='utf-8') as f:
+                        json.dump({'_timestamp': int(time.time()), 'data': normalized}, f, indent=2)
+                except Exception as e:
+                    debug_log(f'Failed to write library discovery cache: {e}')
             return normalized
         except Exception as e:
             debug_log(f'Failed to parse JSON from PowerShell PoC: {e}')
@@ -106,7 +107,7 @@ def get_game_libraries_from_powershell(timeout: int = 30) -> List[Dict]:
         return []
 
 
-def get_game_libraries(use_powershell=True, timeout=30) -> List[Dict]:
+def get_game_libraries(use_powershell=True, timeout=30, force_refresh: bool = False) -> List[Dict]:
     # If not on Windows, return empty results
     if os.name != 'nt':
         debug_log('Not running on Windows; library discovery fallback only supports Windows at the moment')
@@ -115,20 +116,20 @@ def get_game_libraries(use_powershell=True, timeout=30) -> List[Dict]:
     # If configured to use powershell discovery and available, try it first
     use_ps = bool(get_config_value('use_powershell_discovery', use_powershell)) and use_powershell
     if use_ps and _find_powershell_exe():
-        res = get_game_libraries_from_powershell(timeout=timeout)
+        res = get_game_libraries_from_powershell(timeout=timeout, force_refresh=force_refresh)
         if res:
             return res
 
     # Fallback to pure-Python discovery (registry + drive heuristics)
     debug_log('PowerShell not available or returned no results; running fallback discovery')
     try:
-        return get_game_libraries_from_fallback()
+        return get_game_libraries_from_fallback(force_refresh=force_refresh)
     except Exception as e:
         debug_log(f'Fallback discovery failed: {e}')
         return []
 
 
-def get_game_libraries_from_fallback() -> List[Dict]:
+def get_game_libraries_from_fallback(steam_root: str | None = None, force_refresh: bool = False) -> List[Dict]:
     """Fallback discovery: use registry and known drive paths to find game libraries.
     Returns a list of dictionaries matching the keys from the PoC output.
     """
@@ -144,7 +145,7 @@ def get_game_libraries_from_fallback() -> List[Dict]:
             if any(x in lower for x in ('steam', 'epic games', 'gog', 'steamapps', 'program files', 'games')):
                 path = str(Path(install).resolve())
                 drive = Path(path).drive
-                results.append({'Launcher': entry.get('DisplayName', 'Unknown'), 'Drive': drive, 'Path': path, 'Source': 'RegistryFallback'})
+                results.append({'Launcher': entry.get('DisplayName', 'Unknown'), 'Drive': drive, 'Path': path.strip(), 'Source': 'RegistryFallback'})
     except Exception as e:
         debug_log(f'Error enumerating registry: {e}')
 
@@ -172,7 +173,7 @@ def get_game_libraries_from_fallback() -> List[Dict]:
 
     # Try to detect Steam install path from registry and include its libraries
     try:
-        steam_install = _find_steam_install_from_registry()
+        steam_install = steam_root or _find_steam_install_from_registry()
         if steam_install:
             steamapps = Path(steam_install) / 'steamapps'
             if steamapps.exists():
@@ -185,7 +186,7 @@ def get_game_libraries_from_fallback() -> List[Dict]:
 
     # Include any additional Steam libraries from libraryfolders.vdf if found
     try:
-        results = _include_steam_vdf_libraries(results)
+        results = _include_steam_vdf_libraries(results, steam_root=steam_root)
     except Exception as e:
         debug_log(f'Failed to include Steam VDF libraries: {e}')
 
@@ -333,10 +334,10 @@ def _parse_steam_libraryfolders_vdf(vdf_file_path: str) -> List[str]:
                 if isinstance(val, dict):
                     path = val.get('path') or val.get('Path') or val.get('path')
                     if path:
-                        results.append(str(Path(path)))
+                        results.append(str(Path(str(path).strip())))
                 elif isinstance(val, str):
                     # The new format sometimes stores just the path as string value
-                    results.append(str(Path(val)))
+                    results.append(str(Path(str(val).strip())))
     except Exception as e:
         debug_log(f'Failed to parse libraryfolders.vdf: {e}')
     return results
@@ -365,10 +366,10 @@ def _parse_steam_libraryfolders_vdf_kv(content: str) -> List[str]:
                 # find first quote after 'path'
                 parts = line.split('"')
                 if len(parts) >= 3:
-                    val = parts[-2]
+                    val = parts[-2].strip()
                 else:
                     # maybe space-separated
-                    val = line.split()[-1].strip('"')
+                    val = line.split()[-1].strip('"').strip()
                 if val:
                     results.append(str(Path(val)))
             except Exception:
@@ -377,7 +378,7 @@ def _parse_steam_libraryfolders_vdf_kv(content: str) -> List[str]:
 
 
 
-def _include_steam_vdf_libraries(results: list):
+def _include_steam_vdf_libraries(results: list, steam_root: str | None = None):
     """Inspect any detected Steam install folder steam/steamapps/libraryfolders.vdf and add discovered library 'steamapps/common' entries."""
     try:
         # Look through results or detect common Steam paths
@@ -396,9 +397,9 @@ def _include_steam_vdf_libraries(results: list):
             except Exception:
                 continue
 
-        # Also search for steam installs from registry
+        # Also search for steam installs from registry (unless caller provided steam_root)
         try:
-            steam_install = _find_steam_install_from_registry()
+            steam_install = steam_root or _find_steam_install_from_registry()
             if steam_install:
                 paths_to_check.append(str(Path(steam_install) / 'steamapps' / 'common'))
         except Exception:
@@ -440,7 +441,9 @@ def _include_steam_vdf_libraries(results: list):
                 if vdf_file.exists():
                     libs = _parse_steam_libraryfolders_vdf(str(vdf_file))
                     for lib in libs:
-                        lib_p = Path(lib)
+                        lib = str(lib).strip()
+                        # Use resolve(strict=False) to normalize any escaped operators or relative paths
+                        lib_p = Path(lib).resolve(strict=False)
                         # If 'lib' already contains 'steamapps', avoid duplicating
                         if lib_p.name.lower() == 'steamapps':
                             steamapps_lib = lib_p

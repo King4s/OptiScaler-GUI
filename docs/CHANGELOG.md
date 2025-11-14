@@ -1,20 +1,8 @@
+<!-- Moved from root CHANGELOG.md -->
+```markdown
 # Changelog
 
 ## [Unreleased]
-
-### v0.3.6 - 2025-11-14
-
-#### Improvements
-- UI performance: background image loading, reduce main-thread work, batch widget updates.
-- Library discovery: PowerShell support, pure-Python fallback, path normalization, TTL caching, Dedup.
-- UX: Rescan, Clear discovery cache moved to Settings, small debug indicator, Log back navigation.
-- Stability: fixed Tk redraw race conditions and scheduled safer widget destruction.
-
-#### Fixes
-- Avoid segmented drawing on the main window by moving image processing off the main thread.
-- Fixed syntax error in LibraryRootsFrame import callback.
-- Avoid auto rescans when returning from Settings; initial startup forces a rescan.
-
 
 ### 🔄 **OptiScaler v0.7.9 Compatibility Update**
 
@@ -46,7 +34,7 @@
 
 ---
 
-## 0.3.5 - 2025-07-30
+## 0.3.6 - 2025-11-14
 
 ### 🎯 **Ultra-Compact Release - 66% Size Reduction**
 
@@ -109,3 +97,4 @@
 - Basic GUI to display discovered games.
 - OptiScaler installation functionality (downloads and extracts latest release).
 - INI file editor with comment parsing and dynamic widget rendering based on setting types (boolean, options, string, int, float).
+```

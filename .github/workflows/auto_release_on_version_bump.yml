@@ -1,0 +1,74 @@
+name: Auto Release on Version Bump
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+  checks: write
+
+jobs:
+  create-release-on-version-bump:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if version file changed in push
+        id: check_change
+        run: |
+          set -e
+          git fetch --depth=1 origin $GITHUB_REF
+          CHANGED=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -E "^src/__version__.py$" || true)
+          echo "changed=$CHANGED" >> $GITHUB_OUTPUT
+          if [ -z "$CHANGED" ]; then
+            echo "version_changed=false" >> $GITHUB_OUTPUT
+            exit 0
+          else
+            echo "version_changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Read version string
+        id: read_version
+        if: steps.check_change.outputs.version_changed == 'true'
+        run: |
+          python - <<'PY'
+          import re, json
+          s = open('src/__version__.py','r',encoding='utf-8').read()
+          m = re.search(r"__version__\s*=\s*\"([0-9]+\.[0-9]+\.[0-9]+)\"", s)
+          if not m:
+              print('::error::Failed to parse version')
+              raise SystemExit(1)
+          version = m.group(1)
+          print(f"version={version}")
+          from pathlib import Path
+          Path('version_tmp.txt').write_text(version)
+          PY
+          VERSION=$(cat version_tmp.txt)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create Tag
+        if: steps.check_change.outputs.version_changed == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          VERSION=${{ steps.read_version.outputs.version }}
+          echo "Tagging v$VERSION"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a v$VERSION -m "Release v$VERSION"
+          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}
+          git push origin --tags
+
+      - name: Create GitHub Release
+        if: steps.check_change.outputs.version_changed == 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.read_version.outputs.version }}
+          name: "v${{ steps.read_version.outputs.version }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

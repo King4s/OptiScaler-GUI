@@ -87,14 +87,21 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
         debug_label = ctk.CTkLabel(app_frame, text=t("ui.debug_mode"))
         debug_label.grid(row=1, column=0, padx=15, pady=5, sticky="w")
         
+        from utils.config import get_config_value
         self.debug_var = ctk.BooleanVar()
+        # Persisted debug setting takes precedence; otherwise use current runtime state
         from utils.debug import is_debug_enabled
-        self.debug_var.set(is_debug_enabled())
+        persisted_debug = bool(get_config_value('debug', is_debug_enabled()))
+        self.debug_var.set(persisted_debug)
         debug_switch = ctk.CTkSwitch(app_frame, 
                                    text=t("ui.enable_debug"),
                                    variable=self.debug_var,
                                    command=self._on_debug_toggle)
         debug_switch.grid(row=1, column=1, padx=15, pady=5, sticky="w")
+        # Add a button inside Settings to open the debug Log frame; disabled when not in debug mode.
+        self.view_log_btn = ctk.CTkButton(app_frame, text=t("ui.view_log", "View Log"), command=self._open_log)
+        self.view_log_btn.grid(row=1, column=2, padx=15, pady=5, sticky="w")
+        self.view_log_btn.configure(state='normal' if self.debug_var.get() else 'disabled')
         
         # Auto-update checking
         update_label = ctk.CTkLabel(app_frame, text=t("ui.auto_update_check"))
@@ -176,6 +183,9 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
         ttl_entry.bind('<FocusOut>', _on_ttl_change)
         ttl_entry.bind('<Return>', _on_ttl_change)
 
+        # NOTE: The library summary UI option was removed. Discovery logging is
+        # still available through the Log viewer and the scanner's last_library_summary.
+
         # Engine support toggles
         engine_label = ctk.CTkLabel(app_frame, text='Engine Support')
         engine_label.grid(row=9, column=0, padx=15, pady=5, sticky='w')
@@ -247,8 +257,8 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
         open_button.grid(row=2, column=1, padx=15, pady=(5, 15), sticky="w")
         # Clear discovery cache button
         clear_lib_cache_button = ctk.CTkButton(cache_frame,
-                               text='Clear library discovery cache',
-                               command=self._clear_library_discovery_cache)
+                       text=t('ui.clear_library_discovery_cache', 'Clear library discovery cache'),
+                       command=self._clear_library_discovery_cache)
         clear_lib_cache_button.grid(row=3, column=0, padx=15, pady=(5, 15), sticky='w')
     
     def _create_about_section(self):
@@ -335,11 +345,35 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
         """Handle debug mode toggle"""
         from utils.debug import set_debug_enabled
         set_debug_enabled(self.debug_var.get())
+        # Persist debug setting across restarts
+        try:
+            from utils.config import set_config_value
+            set_config_value('debug', bool(self.debug_var.get()))
+        except Exception:
+            pass
         debug_log(f"Debug mode {'enabled' if self.debug_var.get() else 'disabled'} from settings")
         
         # Update main window UI (show/hide log tab)
         if self.main_window and hasattr(self.main_window, 'refresh_ui'):
             self.main_window.refresh_ui()
+        # Enable/disable the view log button accordingly
+        try:
+            self.view_log_btn.configure(state='normal' if self.debug_var.get() else 'disabled')
+        except Exception:
+            pass
+
+    def _open_log(self):
+        """Open the debug log viewer using the main window if available."""
+        if self.main_window and hasattr(self.main_window, 'show_log'):
+            try:
+                # If possible, provide a callback to return to Settings
+                try:
+                    self.main_window.show_log(on_back=self.main_window.show_settings)
+                except TypeError:
+                    # Fallback for older callers that do not accept on_back
+                    self.main_window.show_log()
+            except Exception as e:
+                debug_log(f"ERROR: Failed to open log window: {e}")
     
     def _on_theme_change(self, theme):
         """Handle theme change"""
@@ -387,6 +421,8 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
             debug_log(f"Filter: show supported only = {value}")
         except Exception as e:
             debug_log(f"Failed to set filter_show_supported_only: {e}")
+
+    # Previously there was a _on_show_summary_toggle handler for the deleted option
     
     def _get_cache_info(self):
         """Get cache directory information"""
@@ -426,6 +462,12 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
                 CTkMessagebox(title=t("ui.success"), message=t("ui.cache_cleared"))
                 # Refresh cache info
                 self._create_cache_section()
+                # Also clear scanner cached game results if available to ensure next view triggers a rescan
+                try:
+                    if self.main_window and hasattr(self.main_window, 'scanner') and hasattr(self.main_window.scanner, 'clear_cached_games'):
+                        self.main_window.scanner.clear_cached_games()
+                except Exception:
+                    pass
             except Exception as e:
                 CTkMessagebox(title=t("ui.error"), message=f"{t('ui.failed_to_clear_cache')}: {e}")
     
@@ -445,9 +487,9 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
         from CTkMessagebox import CTkMessagebox
         ok = clear_library_cache()
         if ok:
-            CTkMessagebox(title=t('ui.success'), message='Library discovery cache cleared')
+            CTkMessagebox(title=t('ui.success', 'Success'), message=t('ui.library_discovery_cache_cleared', 'Library discovery cache cleared'))
         else:
-            CTkMessagebox(title=t('ui.error'), message='Failed to clear library discovery cache')
+            CTkMessagebox(title=t('ui.error', 'Error'), message=t('ui.failed_to_clear_cache', 'Failed to clear library discovery cache'))
 
     def _view_library_roots(self):
         # Import lazily to avoid circular imports
@@ -456,8 +498,14 @@ class GlobalSettingsFrame(ctk.CTkScrollableFrame):
         def _rescan_callback():
             return get_game_libraries(use_powershell=bool(self.powershell_discovery_var.get()))
         libs = _rescan_callback()
-        # Clear content and show library roots frame
+        # Clear content and show library roots frame; schedule destruction to avoid mid-draw deletes
         for widget in self.master.winfo_children():
-            widget.destroy()
+            try:
+                widget.after(0, lambda w=widget: w.destroy())
+            except Exception:
+                try:
+                    widget.destroy()
+                except Exception:
+                    pass
         frame = LibraryRootsFrame(self.master, libraries=libs, on_rescan=_rescan_callback)
         frame.grid(row=0, column=0, sticky='nsew', padx=10, pady=10)
