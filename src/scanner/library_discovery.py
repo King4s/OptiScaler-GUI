@@ -128,7 +128,7 @@ def get_game_libraries(use_powershell=True, timeout=30) -> List[Dict]:
         return []
 
 
-def get_game_libraries_from_fallback() -> List[Dict]:
+def get_game_libraries_from_fallback(steam_root: str | None = None) -> List[Dict]:
     """Fallback discovery: use registry and known drive paths to find game libraries.
     Returns a list of dictionaries matching the keys from the PoC output.
     """
@@ -172,7 +172,7 @@ def get_game_libraries_from_fallback() -> List[Dict]:
 
     # Try to detect Steam install path from registry and include its libraries
     try:
-        steam_install = _find_steam_install_from_registry()
+        steam_install = steam_root or _find_steam_install_from_registry()
         if steam_install:
             steamapps = Path(steam_install) / 'steamapps'
             if steamapps.exists():
@@ -185,7 +185,7 @@ def get_game_libraries_from_fallback() -> List[Dict]:
 
     # Include any additional Steam libraries from libraryfolders.vdf if found
     try:
-        results = _include_steam_vdf_libraries(results)
+        results = _include_steam_vdf_libraries(results, steam_root=steam_root)
     except Exception as e:
         debug_log(f'Failed to include Steam VDF libraries: {e}')
 
@@ -377,7 +377,7 @@ def _parse_steam_libraryfolders_vdf_kv(content: str) -> List[str]:
 
 
 
-def _include_steam_vdf_libraries(results: list):
+def _include_steam_vdf_libraries(results: list, steam_root: str | None = None):
     """Inspect any detected Steam install folder steam/steamapps/libraryfolders.vdf and add discovered library 'steamapps/common' entries."""
     try:
         # Look through results or detect common Steam paths
@@ -396,9 +396,9 @@ def _include_steam_vdf_libraries(results: list):
             except Exception:
                 continue
 
-        # Also search for steam installs from registry
+        # Also search for steam installs from registry (unless caller provided steam_root)
         try:
-            steam_install = _find_steam_install_from_registry()
+            steam_install = steam_root or _find_steam_install_from_registry()
             if steam_install:
                 paths_to_check.append(str(Path(steam_install) / 'steamapps' / 'common'))
         except Exception:
