@@ -658,7 +658,7 @@ class GameScanner:
                 image_path = self.fetch_game_image(name, appid)
                 optiscaler_installed = self._detect_optiscaler(game_path)
                 safety = self.analyze_game_safety(Game(name, str(game_path), appid=appid))
-                return Game(name=name, path=str(game_path), appid=appid, image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True))
+                return Game(name=name, path=str(game_path), appid=appid, image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Steam')
             
         except Exception as e:
             debug_log(f"Error parsing ACF file {acf_file}: {e}")
