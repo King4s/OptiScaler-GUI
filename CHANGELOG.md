@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-### v0.4.0 - 2025-11-14
+### v0.3.6 - 2025-11-14
 
 #### Improvements
 - UI performance: background image loading, reduce main-thread work, batch widget updates.

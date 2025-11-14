@@ -91,5 +91,5 @@ from PIL import Image, ImageTk
 ---
 
 **Status**: 📝 Planning fase  
-**Target**: v0.4.0 - "Speed & Beauty Update"  
+**Target**: v0.3.6 - "Speed & Beauty Update"  
 **Estimeret tid**: 2-3 udviklingssessioner

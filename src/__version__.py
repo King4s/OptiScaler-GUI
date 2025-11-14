@@ -2,11 +2,11 @@
 Version information for OptiScaler-GUI
 """
 
-__version__ = "0.4.0"
-__version_info__ = (0, 4, 0)
+__version__ = "0.3.6"
+__version_info__ = (0, 3, 6)
 
 # Version history:
-# 0.4.0 - Library discovery improvements, UI perf & release prep
+# 0.3.6 - Library discovery improvements, UI perf & release prep
 #       - PowerShell + fallback discovery, caching/TTL
 #       - Improved UI performance (background image loading)
 #       - Fixed redraw race conditions and improved rescan behavior

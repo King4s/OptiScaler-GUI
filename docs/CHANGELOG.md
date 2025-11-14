@@ -34,7 +34,7 @@
 
 ---
 
-## 0.4.0 - 2025-11-14
+## 0.3.6 - 2025-11-14
 
 ### 🎯 **Ultra-Compact Release - 66% Size Reduction**
 

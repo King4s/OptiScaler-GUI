@@ -21,8 +21,8 @@ py -3 build.py
 
 ```pwsh
 git add -A
-git commit -m "chore(release): v0.4.0"
-git tag -a v0.4.0 -m "Release v0.4.0"
+git commit -m "chore(release): v0.3.6"
+git tag -a v0.3.6 -m "Release v0.3.6"
 git push origin HEAD --tags
 ```
 

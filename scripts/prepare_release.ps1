@@ -1,7 +1,7 @@
 # PowerShell release helper script
-# Usage: Open a PowerShell prompt at repository root and run: ./scripts/prepare_release.ps1 -Version 0.4.0
+# Usage: Open a PowerShell prompt at repository root and run: ./scripts/prepare_release.ps1 -Version 0.3.6
 param(
-    [string]$Version = "0.4.0"
+    [string]$Version = "0.3.6"
 )
 
 Write-Host "Running tests..."
