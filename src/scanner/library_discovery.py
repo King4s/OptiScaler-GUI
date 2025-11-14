@@ -145,7 +145,7 @@ def get_game_libraries_from_fallback(steam_root: str | None = None, force_refres
             if any(x in lower for x in ('steam', 'epic games', 'gog', 'steamapps', 'program files', 'games')):
                 path = str(Path(install).resolve())
                 drive = Path(path).drive
-                results.append({'Launcher': entry.get('DisplayName', 'Unknown'), 'Drive': drive, 'Path': path, 'Source': 'RegistryFallback'})
+                results.append({'Launcher': entry.get('DisplayName', 'Unknown'), 'Drive': drive, 'Path': path.strip(), 'Source': 'RegistryFallback'})
     except Exception as e:
         debug_log(f'Error enumerating registry: {e}')
 
@@ -334,10 +334,10 @@ def _parse_steam_libraryfolders_vdf(vdf_file_path: str) -> List[str]:
                 if isinstance(val, dict):
                     path = val.get('path') or val.get('Path') or val.get('path')
                     if path:
-                        results.append(str(Path(path)))
+                        results.append(str(Path(str(path).strip())))
                 elif isinstance(val, str):
                     # The new format sometimes stores just the path as string value
-                    results.append(str(Path(val)))
+                    results.append(str(Path(str(val).strip())))
     except Exception as e:
         debug_log(f'Failed to parse libraryfolders.vdf: {e}')
     return results
@@ -366,10 +366,10 @@ def _parse_steam_libraryfolders_vdf_kv(content: str) -> List[str]:
                 # find first quote after 'path'
                 parts = line.split('"')
                 if len(parts) >= 3:
-                    val = parts[-2]
+                    val = parts[-2].strip()
                 else:
                     # maybe space-separated
-                    val = line.split()[-1].strip('"')
+                    val = line.split()[-1].strip('"').strip()
                 if val:
                     results.append(str(Path(val)))
             except Exception:
@@ -441,7 +441,9 @@ def _include_steam_vdf_libraries(results: list, steam_root: str | None = None):
                 if vdf_file.exists():
                     libs = _parse_steam_libraryfolders_vdf(str(vdf_file))
                     for lib in libs:
-                        lib_p = Path(lib)
+                        lib = str(lib).strip()
+                        # Use resolve(strict=False) to normalize any escaped operators or relative paths
+                        lib_p = Path(lib).resolve(strict=False)
                         # If 'lib' already contains 'steamapps', avoid duplicating
                         if lib_p.name.lower() == 'steamapps':
                             steamapps_lib = lib_p
