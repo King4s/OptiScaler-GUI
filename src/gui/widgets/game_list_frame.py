@@ -212,7 +212,8 @@ class GameListFrame(ctk.CTkScrollableFrame):
 
             placeholder_img = self._create_placeholder_pil_image(placeholder_width, target_height, text=None)
             ctk_placeholder_image = ctk.CTkImage(light_image=placeholder_img, dark_image=placeholder_img, size=(placeholder_width, target_height))
-            placeholder_label = ctk.CTkLabel(game_frame, image=ctk_placeholder_image, text=game.name, compound="center", font=("Arial", 10))
+            # Do NOT overlay text on the image area - game name is shown in the info frame instead
+            placeholder_label = ctk.CTkLabel(game_frame, image=ctk_placeholder_image)
             setattr(placeholder_label, '_ctk_image_ref', ctk_placeholder_image)  # Keep a reference
             placeholder_label.grid(row=0, column=0, sticky="w")
             # Store label reference for later update after image processing in background
@@ -424,7 +425,7 @@ class GameListFrame(ctk.CTkScrollableFrame):
                                 lanczos = LANCZOS
                             img = img.resize((new_width, target_height), lanczos)
                             ctk_image = ctk.CTkImage(light_image=img, dark_image=img, size=(new_width, target_height))
-                            img_label.configure(image=ctk_image)
+                            img_label.configure(image=ctk_image, text='')
                             setattr(img_label, '_ctk_image_ref', ctk_image)
                         except Exception as e:
                             debug_log(f"Failed to update game image for {game.path}: {e}")
@@ -434,7 +435,7 @@ class GameListFrame(ctk.CTkScrollableFrame):
                                 if img_label:
                                     placeholder_img = self._create_placeholder_pil_image(int(target_height * (16/9)), target_height)
                                     ctk_placeholder = ctk.CTkImage(light_image=placeholder_img, dark_image=placeholder_img, size=(int(target_height * (16/9)), target_height))
-                                    img_label.configure(image=ctk_placeholder)
+                                    img_label.configure(image=ctk_placeholder, text='')
                                     setattr(img_label, '_ctk_image_ref', ctk_placeholder)
                             except Exception:
                                 pass
@@ -449,7 +450,7 @@ class GameListFrame(ctk.CTkScrollableFrame):
                         if img_label:
                             placeholder_img = self._create_placeholder_pil_image(int(target_height * (16/9)), target_height)
                             ctk_placeholder = ctk.CTkImage(light_image=placeholder_img, dark_image=placeholder_img, size=(int(target_height * (16/9)), target_height))
-                            img_label.configure(image=ctk_placeholder)
+                            img_label.configure(image=ctk_placeholder, text='')
                             setattr(img_label, '_ctk_image_ref', ctk_placeholder)
                     except Exception:
                         pass

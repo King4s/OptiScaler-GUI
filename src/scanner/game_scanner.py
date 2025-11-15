@@ -964,17 +964,24 @@ class GameScanner:
             
             # Create a more memory-efficient lookup dictionary
             apps = {}
+            # Additionally store a normalized name -> appid mapping for fuzzy lookup
+            normalized_apps = {}
             for app in app_list_data['applist']['apps']:
                 # Only store apps with meaningful names (filter out DLCs, tools, etc.)
                 name = app['name'].strip().lower()
                 if len(name) > 2 and not name.startswith(('dlc', 'demo', 'beta', 'test')):
                     apps[name] = str(app['appid'])
+                    # Normalized mapping (strip punctuation and extra spaces)
+                    norm_name = re.sub(r'[^a-z0-9\s]', ' ', name).strip()
+                    norm_name = re.sub(r'\s+', ' ', norm_name)
+                    normalized_apps[norm_name] = str(app['appid'])
             
             # Save to cache with Path object
             app_list_cache_path.parent.mkdir(parents=True, exist_ok=True)
             with open(app_list_cache_path, 'w', encoding='utf-8') as f:
                 json.dump(apps, f, separators=(',', ':'))  # Compact JSON
             
+            self._normalized_steam_app_map = normalized_apps
             debug_log(f"Cached {len(apps)} Steam apps")
             return apps
             
@@ -984,5 +991,38 @@ class GameScanner:
 
     def _get_appid_from_name(self, game_name):
         """Get Steam AppID from game name with fallback handling"""
-        normalized_game_name = game_name.lower()
-        return self.steam_app_list.get(normalized_game_name)
+        # Exact case-insensitive match
+        normalized_game_name = (game_name or '').lower().strip()
+        if not normalized_game_name:
+            return None
+        if normalized_game_name in self.steam_app_list:
+            debug_log(f"Found appid via exact match for '{game_name}'")
+            return self.steam_app_list.get(normalized_game_name)
+
+        # Normalize by removing punctuation and collapsing spaces
+        norm = re.sub(r'[^a-z0-9\s]', ' ', normalized_game_name)
+        norm = re.sub(r'\s+', ' ', norm).strip()
+        if hasattr(self, '_normalized_steam_app_map') and norm in self._normalized_steam_app_map:
+            debug_log(f"Found appid via normalized match for '{game_name}' -> '{norm}'")
+            return self._normalized_steam_app_map.get(norm)
+
+        # Fallback: try partial matching by token containment
+        tokens = set(norm.split())
+        if not tokens:
+            return None
+        best_match = None
+        best_score = 0
+        for name_key, appid in (self.steam_app_list.items() if self.steam_app_list else []):
+            key_norm = re.sub(r'[^a-z0-9\s]', ' ', name_key).strip()
+            key_tokens = set(key_norm.split())
+            if not key_tokens:
+                continue
+            score = len(tokens & key_tokens)
+            if score > best_score:
+                best_score = score
+                best_match = appid
+        if best_score > 0:
+            debug_log(f"Found appid via partial match for '{game_name}' -> '{best_match}' (score {best_score})")
+            return best_match
+        debug_log(f"No Steam AppID found for '{game_name}'")
+        return None
