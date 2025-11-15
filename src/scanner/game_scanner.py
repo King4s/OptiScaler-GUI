@@ -23,7 +23,8 @@ class Game:
         self.optiscaler_installed = optiscaler_installed  # Track OptiScaler installation status
         self.engine = engine
         self.engine_supported = engine_supported
-        self.platform = platform
+        # Default to 'Local' when result not tied to a known launcher to ensure the UI shows a tag
+        self.platform = platform if platform is not None else 'Local'
         self.anti_cheat_list = anti_cheat_list or []
         self.community_verified = community_verified
 
@@ -655,10 +656,11 @@ class GameScanner:
 
             game_path = steamapps_path / "common" / installdir
             if game_path.exists() and self._is_game_folder(game_path):
-                image_path = self.fetch_game_image(name, appid)
-                optiscaler_installed = self._detect_optiscaler(game_path)
-                safety = self.analyze_game_safety(Game(name, str(game_path), appid=appid))
-                return Game(name=name, path=str(game_path), appid=appid, image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True))
+                    image_path = self.fetch_game_image(name, appid)
+                    optiscaler_installed = self._detect_optiscaler(game_path)
+                    safety = self.analyze_game_safety(Game(name, str(game_path), appid=appid))
+                    # Ensure platform is set so UI shows the correct launcher tag
+                    return Game(name=name, path=str(game_path), appid=appid, image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Steam')
             
         except Exception as e:
             debug_log(f"Error parsing ACF file {acf_file}: {e}")
@@ -894,7 +896,8 @@ class GameScanner:
         if not appid:
             appid = self._get_appid_from_name(game_name)
             if not appid:
-                # If still no appid, return placeholder
+                # If still no appid, return placeholder and log for diagnostics
+                debug_log(f"No Steam AppID for '{game_name}'; using placeholder image")
                 return str(self.no_image_path)
 
         # Check if image already exists in cache
@@ -927,6 +930,7 @@ class GameScanner:
             # Save with Path object
             image_path = cache_dir / f"{safe_name}.jpg"
             image.save(image_path, 'JPEG', quality=config.image_quality, optimize=True)
+            debug_log(f"Fetched and cached Steam image for {game_name} (AppID: {appid}) -> {image_path}")
             return str(image_path)
             
         except (requests.RequestException, OSError, Image.UnidentifiedImageError) as e:

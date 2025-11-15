@@ -143,6 +143,7 @@ block_cipher = None
 datas = [
     ('assets', 'assets'),
     ('cache', 'cache'),
+    ('src', 'src'),
     ('src/translations', 'src/translations'),
 ]
 

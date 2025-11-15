@@ -1,5 +1,5 @@
 import customtkinter as ctk
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 # Determine correct LANCZOS constant across Pillow versions without static attribute
 LANCZOS = getattr(getattr(Image, 'Resampling', Image), 'LANCZOS', None)
 if LANCZOS is None:
@@ -103,7 +103,38 @@ else:
                 self.optiscaler_manager = None
         robust_wrapper = FallbackRobustWrapper()
 
+def create_placeholder_pil_image(width, height, text=None):
+    """Module-level helper to create a simple placeholder PIL image (testable)
+    This function is intentionally module-level so tests can call it directly.
+    """
+    try:
+        img = Image.new('RGB', (width, height), color='#444444')
+        if text:
+            draw = ImageDraw.Draw(img)
+            try:
+                font = ImageFont.truetype("arial.ttf", size=max(10, int(height / 6)))
+            except Exception:
+                font = ImageFont.load_default()
+            try:
+                bbox = draw.textbbox((0, 0), text, font=font)
+                text_w = bbox[2] - bbox[0]
+                text_h = bbox[3] - bbox[1]
+            except Exception:
+                # Fallback: approximate text size based on character count and font size
+                text_w = len(text) * max(6, int(height / 8))
+                text_h = max(12, int(height / 6))
+            text_x = (width - text_w) / 2
+            text_y = (height - text_h) / 2
+            draw.text((text_x, text_y), text, fill=(255, 255, 255), font=font)
+        return img
+    except Exception:
+        try:
+            return Image.new('RGB', (width, height), color='gray')
+        except Exception:
+            return Image.new('RGB', (1, 1), color='gray')
+
 class GameListFrame(ctk.CTkScrollableFrame):
+
     def __init__(self, master, games, game_scanner, on_edit_settings, **kwargs):
         super().__init__(master, **kwargs)
         self.grid_columnconfigure(0, weight=1)
@@ -175,17 +206,47 @@ class GameListFrame(ctk.CTkScrollableFrame):
             image_path = game.image_path
             # Define the target height for all images
             target_height = 80
-            # For placeholder, create a dynamically sized gray image based on a common aspect ratio
+            # For placeholder, create a dynamically sized PIL image based on aspect ratio
             default_aspect_ratio = 16 / 9
             placeholder_width = int(target_height * default_aspect_ratio)
 
-            placeholder_img = Image.new('RGB', (placeholder_width, target_height), color='gray')
+            placeholder_img = self._create_placeholder_pil_image(placeholder_width, target_height, text=None)
             ctk_placeholder_image = ctk.CTkImage(light_image=placeholder_img, dark_image=placeholder_img, size=(placeholder_width, target_height))
             placeholder_label = ctk.CTkLabel(game_frame, image=ctk_placeholder_image, text=game.name, compound="center", font=("Arial", 10))
             setattr(placeholder_label, '_ctk_image_ref', ctk_placeholder_image)  # Keep a reference
             placeholder_label.grid(row=0, column=0, sticky="w")
             # Store label reference for later update after image processing in background
             self._image_label_map[game.path] = placeholder_label
+    def _create_placeholder_pil_image(self, width, height, text=None):
+        """Create a simple placeholder PIL image of the requested size with optional centered text.
+        This is used as the fallback when a game image is missing or failed to load."""
+        try:
+            img = Image.new('RGB', (width, height), color='#444444')
+            if text:
+                draw = ImageDraw.Draw(img)
+                try:
+                    # Try to use a reasonably sized truetype font if available
+                    font = ImageFont.truetype("arial.ttf", size=max(10, int(height / 6)))
+                except Exception:
+                    font = ImageFont.load_default()
+                try:
+                    bbox = draw.textbbox((0, 0), text, font=font)
+                    text_w = bbox[2] - bbox[0]
+                    text_h = bbox[3] - bbox[1]
+                except Exception:
+                    # Fallback: approximate text size based on character count and font size
+                    text_w = len(text) * max(6, int(height / 8))
+                    text_h = max(12, int(height / 6))
+                text_x = (width - text_w) / 2
+                text_y = (height - text_h) / 2
+                draw.text((text_x, text_y), text, fill=(255, 255, 255), font=font)
+            return img
+        except Exception:
+            # As a last resort, return a single-pixel image scaled to the requested size
+            try:
+                return Image.new('RGB', (width, height), color='gray')
+            except Exception:
+                return Image.new('RGB', (1, 1), color='gray')
     # NOTE: _schedule_fetch_game_images was previously inserted into the middle of the
     # _display_games method by mistake which caused UI construction code to become
     # part of the scheduler. The corrected method below only performs background
@@ -336,6 +397,12 @@ class GameListFrame(ctk.CTkScrollableFrame):
                 image_path = self.game_scanner.fetch_game_image(game.name, game.appid)
                 if image_path:
                     game.image_path = image_path
+                    # If the game scanner returned the configured placeholder, log for diagnostics
+                    try:
+                        if image_path == str(self.game_scanner.no_image_path):
+                            debug_log(f"No image available for {game.name}; using configured placeholder.")
+                    except Exception:
+                        pass
 
                     def _update():
                         img_label = self._image_label_map.get(game.path)
@@ -344,7 +411,12 @@ class GameListFrame(ctk.CTkScrollableFrame):
                         try:
                             img = Image.open(image_path)
                             original_width, original_height = img.size
+                            # protect against dividing by zero or unexpected sizes
+                            if not original_height or not original_width:
+                                raise ValueError("Invalid image dimensions")
                             new_width = int(original_width * (target_height / original_height))
+                            if new_width <= 0:
+                                new_width = target_height
                             resampler = getattr(Image, 'Resampling', None)
                             if resampler is not None:
                                 lanczos = resampler.LANCZOS
@@ -356,10 +428,35 @@ class GameListFrame(ctk.CTkScrollableFrame):
                             setattr(img_label, '_ctk_image_ref', ctk_image)
                         except Exception as e:
                             debug_log(f"Failed to update game image for {game.path}: {e}")
+                            # On failure, keep fallback placeholder but ensure it's sized correctly
+                            try:
+                                img_label = self._image_label_map.get(game.path)
+                                if img_label:
+                                    placeholder_img = self._create_placeholder_pil_image(int(target_height * (16/9)), target_height)
+                                    ctk_placeholder = ctk.CTkImage(light_image=placeholder_img, dark_image=placeholder_img, size=(int(target_height * (16/9)), target_height))
+                                    img_label.configure(image=ctk_placeholder)
+                                    setattr(img_label, '_ctk_image_ref', ctk_placeholder)
+                            except Exception:
+                                pass
 
                     self.after(0, _update)
             except Exception as e:
                 debug_log(f"Error fetching image for {game.name}: {e}")
+                # If fetching fails, ensure we set a consistent placeholder image on the UI
+                def _set_placeholder():
+                    try:
+                        img_label = self._image_label_map.get(game.path)
+                        if img_label:
+                            placeholder_img = self._create_placeholder_pil_image(int(target_height * (16/9)), target_height)
+                            ctk_placeholder = ctk.CTkImage(light_image=placeholder_img, dark_image=placeholder_img, size=(int(target_height * (16/9)), target_height))
+                            img_label.configure(image=ctk_placeholder)
+                            setattr(img_label, '_ctk_image_ref', ctk_placeholder)
+                    except Exception:
+                        pass
+                try:
+                    self.after(0, _set_placeholder)
+                except Exception:
+                    _set_placeholder()
 
         for game in self.games:
             # Always schedule image load/optimize in background to avoid main-thread workload
@@ -754,6 +851,11 @@ class GameListFrame(ctk.CTkScrollableFrame):
                     pass
         # Recreate the display
         self._display_games()
+        # Schedule image fetch/update for the recreated display
+        try:
+            self._schedule_fetch_game_images()
+        except Exception:
+            pass
 
     def _open_game_folder(self, path):
         import subprocess

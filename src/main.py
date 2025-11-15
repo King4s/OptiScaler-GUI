@@ -6,6 +6,9 @@ A user-friendly GUI for managing OptiScaler installations
 
 import sys
 import os
+import threading
+import traceback
+from utils.logging_utils import log_exception, log_message
 from pathlib import Path
 from __version__ import __version__
 
@@ -34,6 +37,32 @@ def setup_environment():
 def main():
     """Main application entry point"""
     try:
+        # Install a global excepthook to capture uncaught exceptions and write crash logs
+        def _handle_uncaught_exceptions(exc_type, exc_value, exc_traceback):
+            # Write the traceback to a log
+            try:
+                filename = log_exception((exc_type, exc_value, exc_traceback))
+                if filename:
+                    log_message(f"Unhandled exception written to {filename}")
+            except Exception:
+                pass
+            # Fallback: call default excepthook
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+
+        sys.excepthook = _handle_uncaught_exceptions
+
+        # Threading hook (Python 3.8+)
+        try:
+            def _threading_excepthook(args):
+                # args has .exc_type, .exc_value, .exc_traceback
+                try:
+                    log_exception((args.exc_type, args.exc_value, args.exc_traceback))
+                except Exception:
+                    pass
+            threading.excepthook = _threading_excepthook
+        except Exception:
+            # Older Python may not support threading.excepthook
+            pass
         # Setup paths and environment
         setup_environment()
         
@@ -126,20 +155,24 @@ def main():
         import tkinter as tk
         from tkinter import messagebox
         
+        # Log the exception
+        log_exception()
         root = tk.Tk()
         root.withdraw()
-        messagebox.showerror("Import Error", 
-                           f"Failed to import required modules: {e}\n\n"
-                           f"Please ensure all dependencies are installed:\n"
-                           f"pip install -r requirements.txt")
+        messagebox.showerror("Import Error",
+                   f"Failed to import required modules: {e}\n\n"
+                   f"Please ensure all dependencies are installed:\n"
+                   f"pip install -r requirements.txt")
         sys.exit(1)
     except Exception as e:
+        # Log the exception
+        log_exception()
         import tkinter as tk
         from tkinter import messagebox
         
         root = tk.Tk()
         root.withdraw()
-        messagebox.showerror("Application Error", 
+        messagebox.showerror("Application Error",
                            f"OptiScaler-GUI failed to start: {e}")
         sys.exit(1)
 
