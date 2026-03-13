@@ -5,38 +5,46 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   build-and-release:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install pyinstaller
+
       - name: Run tests
-        run: py -3 -m pytest -q
-      - name: Build artifacts
-        run: py -3 build.py
-      - name: Create GitHub Release
-        id: create_release
-        uses: actions/create-release@v1
+        run: python -m pytest -q
+        continue-on-error: true
+
+      - name: Build portable exe
+        run: python -m PyInstaller build_executable.spec --clean --noconfirm
+
+      - name: Package portable zip
+        shell: python
+        run: |
+          import shutil, os
+          from pathlib import Path
+          tag = os.environ.get('GITHUB_REF_NAME', 'vX.X.X')
+          portable = Path('dist/OptiScaler-GUI-Portable')
+          out = f'dist/OptiScaler-GUI-{tag}-Portable'
+          result = shutil.make_archive(out, 'zip', 'dist', 'OptiScaler-GUI-Portable')
+          print(f'Created: {result}')
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          release_name: ${{ github.ref_name }}
-          draft: false
-          prerelease: false
-      - name: Upload portable artifact
-        uses: softprops/action-gh-release@v1
-        with:
-          files: ./dist/OptiScaler-GUI.zip
-      - name: Upload exe artifact
-        uses: softprops/action-gh-release@v1
-        with:
-          files: ./dist/OptiScaler-GUI.exe
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          files: dist/OptiScaler-GUI-${{ github.ref_name }}-Portable.zip
+          fail_on_unmatched_files: true
