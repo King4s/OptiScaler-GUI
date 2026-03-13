@@ -2,10 +2,11 @@
 Version information for OptiScaler-GUI
 """
 
-__version__ = "0.4.0"
-__version_info__ = (0, 4, 0)
+__version__ = "0.4.1"
+__version_info__ = (0, 4, 1)
 
 # Version history:
+# 0.4.1 - Remove excessive debug logging left from image investigation
 # 0.4.0 - Multi-platform detection overhaul & image fix
 #       - Fixed structural UI bug: game info/buttons were unreachable dead code
 #       - Fixed frozen exe asset paths (sys._MEIPASS for read-only assets)
