@@ -316,8 +316,6 @@ class GameScanner:
             anti_cheat_list = self._detect_anti_cheat(gp)
             community_verified = self._is_community_verified(game.name, str(game.appid or ''))
             engine_supported = compatibility_checker.is_engine_supported(engine)
-            # Debug: log safety detection results
-            debug_log(f"Game safety for {game.name} at {game.path}: engine={engine}, anti_cheat={anti_cheat_list}, community_verified={community_verified}")
             return {
                 'engine': engine,
                 'anti_cheat_list': anti_cheat_list,
@@ -1355,13 +1353,11 @@ class GameScanner:
         for candidate in variants:
             # 1. Exact match
             if candidate in self.steam_app_list:
-                debug_log(f"Found appid via exact match for '{game_name}' (variant '{candidate}')")
                 return self.steam_app_list[candidate]
 
             # 2. Normalized (punctuation-stripped) match
             norm = re.sub(r'\s+', ' ', re.sub(r'[^a-z0-9\s]', ' ', candidate)).strip()
             if hasattr(self, '_normalized_steam_app_map') and norm in self._normalized_steam_app_map:
-                debug_log(f"Found appid via normalized match for '{game_name}' -> '{norm}'")
                 return self._normalized_steam_app_map[norm]
 
             # 3. Token-subset match: all query tokens must appear in the Steam name
@@ -1382,7 +1378,6 @@ class GameScanner:
                     best_score = score
                     best_match = appid
             if best_match:
-                debug_log(f"Found appid via token-subset for '{game_name}' (variant '{candidate}')")
                 return best_match
 
         # 4. Last resort: difflib fuzzy match on the original normalized name

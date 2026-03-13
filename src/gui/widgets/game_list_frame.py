@@ -227,11 +227,6 @@ class GameListFrame(ctk.CTkScrollableFrame):
             info_frame.grid(row=0, column=1, padx=(10, 15), pady=5, sticky="ew")
             info_frame.grid_columnconfigure(0, weight=1)
 
-            if i < 5 or i % 10 == 0:
-                debug_log(f"Displaying game [{i}]: {game.name}, "
-                          f"community_verified={getattr(game, 'community_verified', False)}, "
-                          f"optiscaler_installed={getattr(game, 'optiscaler_installed', False)}")
-
             name_label = ctk.CTkLabel(info_frame, text=game.name, font=("Arial", 14, "bold"))
             name_label.grid(row=0, column=0, sticky="w")
 
@@ -273,7 +268,6 @@ class GameListFrame(ctk.CTkScrollableFrame):
             buttons_frame.grid_columnconfigure(0, weight=1)
 
             is_installed = getattr(game, 'optiscaler_installed', False)
-            debug_log(f"OptiScaler installed for {game.name}: {is_installed}")
 
             button_row = 0
             if is_installed:
