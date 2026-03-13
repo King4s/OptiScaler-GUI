@@ -1,0 +1,6 @@
+# This file tracks the last upstream OptiScaler release seen by the
+# check-optiscaler-release workflow.  Do not edit manually.
+# Format: a single release tag string, e.g.  v0.7.9
+# The workflow compares the GitHub API's latest tag against this value
+# and opens an issue when they differ.
+unknown

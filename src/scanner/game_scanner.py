@@ -1,4 +1,5 @@
 import os
+import threading
 import vdf
 import requests
 from PIL import Image
@@ -50,9 +51,15 @@ class GameScanner:
         except Exception as e:
             debug_log(f"Failed to load community-verified game list: {e}")
         self.no_image_path = config.no_image_path
-        self.steam_app_list = self._get_steam_app_list() # Load Steam app list on init
         # session for requests to enable keep-alive and connection pooling
         self._requests_session = requests.Session()
+        # Callback invoked after the background Steam app list load completes.
+        # Set by game_list_frame to schedule a thumbnail retry pass.
+        self.on_app_list_ready = None
+        # Build app list from local manifests immediately (fast, no network needed)
+        self.steam_app_list = self._build_local_steam_app_list()
+        # Kick off a background download of the full SteamSpy catalogue
+        threading.Thread(target=self._load_steamspy_app_list_async, daemon=True).start()
         # Summary and timing info for last library discovery
         self.last_library_summary = None
         self.last_library_scan_seconds = None
@@ -539,10 +546,14 @@ class GameScanner:
                                 if not gf.is_dir():
                                     continue
                                 if self._is_game_folder(gf):
-                                    image_path = self.fetch_game_image(gf.name)
+                                    game_name = self._read_epic_game_name(gf)
+                                    if not game_name:
+                                        raw = gf.name.replace("_", " ").replace("-", " ")
+                                        game_name = self._split_camel_case(raw).title()
+                                    image_path = self.fetch_game_image(game_name)
                                     optiscaler_installed = self._detect_optiscaler(gf)
-                                    safety = self.analyze_game_safety(Game(gf.name, str(gf)))
-                                    all_games.append(Game(name=gf.name, path=str(gf), image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Epic'))
+                                    safety = self.analyze_game_safety(Game(game_name, str(gf)))
+                                    all_games.append(Game(name=game_name, path=str(gf), image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Epic'))
                         except Exception as e:
                             debug_log(f"Failed scanning Epic root {p}: {e}")
                     elif launcher == 'GOG' and p.exists() and p.is_dir():
@@ -551,22 +562,50 @@ class GameScanner:
                                 if not gf.is_dir():
                                     continue
                                 if self._is_game_folder(gf):
-                                    image_path = self.fetch_game_image(gf.name)
+                                    # Use GOG metadata for proper name
+                                    game_name = gf.name.replace("_", " ").replace("-", " ").title()
+                                    info_files = list(gf.glob("goggame-*.info"))
+                                    if info_files:
+                                        try:
+                                            with open(info_files[0], 'r', encoding='utf-8') as _f:
+                                                _gi = json.load(_f)
+                                            game_name = _gi.get("gameTitle", game_name)
+                                        except Exception:
+                                            pass
+                                    image_path = self.fetch_game_image(game_name)
                                     optiscaler_installed = self._detect_optiscaler(gf)
-                                    safety = self.analyze_game_safety(Game(gf.name, str(gf)))
-                                    all_games.append(Game(name=gf.name, path=str(gf), image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='GOG'))
+                                    safety = self.analyze_game_safety(Game(game_name, str(gf)))
+                                    all_games.append(Game(name=game_name, path=str(gf), image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='GOG'))
                         except Exception as e:
                             debug_log(f"Failed scanning GOG root {p}: {e}")
                     elif launcher == 'Xbox' and p.exists() and p.is_dir():
                         try:
+                            is_xbx = p.name.lower() == 'xboxgames'
+                            is_wapps = p.name.lower() == 'windowsapps'
                             for gf in p.iterdir():
                                 if not gf.is_dir():
                                     continue
-                                if self._is_game_folder(gf):
-                                    image_path = self.fetch_game_image(gf.name)
-                                    optiscaler_installed = self._detect_optiscaler(gf)
-                                    safety = self.analyze_game_safety(Game(gf.name, str(gf)))
-                                    all_games.append(Game(name=gf.name, path=str(gf), image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Xbox'))
+                                if is_xbx:
+                                    is_game = self._is_game_folder(gf) or self._is_xbox_game_folder(gf)
+                                    if not is_game:
+                                        continue
+                                    game_name = gf.name.replace("_", " ").replace("-", " ").title()
+                                elif is_wapps:
+                                    if not self._is_appx_game_candidate(gf.name):
+                                        continue
+                                    if not self._is_game_folder(gf):
+                                        continue
+                                    game_name = self._parse_appx_package_name(gf.name).title()
+                                    if not game_name or len(game_name) < 2:
+                                        continue
+                                else:
+                                    if not self._is_game_folder(gf):
+                                        continue
+                                    game_name = gf.name.replace("_", " ").replace("-", " ").title()
+                                image_path = self.fetch_game_image(game_name)
+                                optiscaler_installed = self._detect_optiscaler(gf)
+                                safety = self.analyze_game_safety(Game(game_name, str(gf)))
+                                all_games.append(Game(name=game_name, path=str(gf), image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Xbox'))
                         except Exception as e:
                             debug_log(f"Failed scanning Xbox root {p}: {e}")
                 except Exception as e:
@@ -574,15 +613,39 @@ class GameScanner:
         except Exception as e:
             debug_log(f"Library root discovery failed: {e}")
 
-        # Deduplicate games
+        # Filter out launchers and pure demo entries
+        _launcher_keywords = ('launcher', 'redistributable', 'directx', 'vcredist',
+                               'dotnet', 'steamworks common')
+        all_games = [
+            g for g in all_games
+            if not any(kw in g.name.lower() for kw in _launcher_keywords)
+        ]
+
+        # Deduplicate: prefer the entry that already has an image.
+        # Primary key: (name, path). Secondary: (name, platform) so the same
+        # game detected from both C:\XboxGames and WindowsApps isn't shown twice.
         unique_games = {}
+        name_platform_seen = {}
         for game in all_games:
-            # Use a normalized name and path for deduplication
             normalized_name = game.name.lower().strip()
             normalized_path = os.path.normpath(game.path).lower()
-            unique_id = (normalized_name, normalized_path)
-            if unique_id not in unique_games:
-                unique_games[unique_id] = game
+            path_key = (normalized_name, normalized_path)
+            plat_key = (normalized_name, (game.platform or '').lower())
+
+            if path_key in unique_games:
+                # Keep whichever entry has a real image
+                existing = unique_games[path_key]
+                no_img = str(self.no_image_path)
+                if (not existing.image_path or existing.image_path == no_img) and game.image_path and game.image_path != no_img:
+                    unique_games[path_key] = game
+                continue
+
+            if plat_key in name_platform_seen:
+                # Same name+platform from a different path — skip the duplicate
+                continue
+
+            unique_games[path_key] = game
+            name_platform_seen[plat_key] = True
         
         debug_log(f"Scan complete: Found {len(unique_games)} unique games")
         result = list(unique_games.values())
@@ -772,7 +835,12 @@ class GameScanner:
                         has_egstore = (game_folder / ".egstore").exists()
                         has_manifest = any(f.suffix == ".mancfg" for f in game_folder.glob("*.mancfg"))
                         if has_egstore or has_manifest:
-                            game_name = game_folder.name.replace("_", " ").replace("-", " ").title()
+                            # First try to read the actual game title from Epic metadata
+                            game_name = self._read_epic_game_name(game_folder)
+                            if not game_name:
+                                # Fallback: split CamelCase folder name then title-case it
+                                raw = game_folder.name.replace("_", " ").replace("-", " ")
+                                game_name = self._split_camel_case(raw).title()
                             image_path = self.fetch_game_image(game_name)
                             optiscaler_installed = self._detect_optiscaler(game_folder)
                             safety = self.analyze_game_safety(Game(game_name, str(game_folder)))
@@ -850,6 +918,26 @@ class GameScanner:
                 
         return gog_games
 
+    # Xbox streaming/packaging file extensions that identify a Game Pass title in C:\XboxGames
+    _XBOX_GAME_EXTENSIONS = {'.xsp', '.smd', '.xct', '.xvi'}
+
+    def _is_xbox_game_folder(self, game_folder: Path) -> bool:
+        """Return True if the folder looks like an Xbox Game Pass title.
+        Xbox games in C:\\XboxGames store packaging files (.xsp, .smd, .xct, .xvi)
+        and/or a gamelaunchhelper.exe at the top level, not traditional game binaries."""
+        try:
+            for item in game_folder.iterdir():
+                if item.suffix.lower() in self._XBOX_GAME_EXTENSIONS:
+                    return True
+                if item.name.lower() == 'gamelaunchhelper.exe':
+                    return True
+                # Some Xbox games have a Content subfolder with actual game data
+                if item.name.lower() == 'content' and item.is_dir():
+                    return True
+        except (PermissionError, OSError):
+            pass
+        return False
+
     @timed("scan_xbox_games")
     def _scan_xbox_games(self):
         """Scan Xbox Games installations with Path objects"""
@@ -859,15 +947,41 @@ class GameScanner:
                 xbox_path = Path(xbox_path_str)
                 if not xbox_path.exists():
                     continue
-                    
+
                 import concurrent.futures, os
                 max_workers = getattr(config, 'max_workers', min(8, (os.cpu_count() or 1) * 4))
+                is_xboxgames_root = xbox_path.name.lower() == 'xboxgames'
+                is_windowsapps = xbox_path.name.lower() == 'windowsapps'
 
-                def process_xbox_folder(game_folder):
+                def process_xbox_folder(game_folder, _is_xbx=is_xboxgames_root, _is_wapps=is_windowsapps):
                     try:
-                        if not game_folder.is_dir() or not self._is_game_folder(str(game_folder)):
+                        if not game_folder.is_dir():
                             return None
-                        game_name = game_folder.name.replace("_", " ").replace("-", " ").title()
+
+                        if _is_xbx:
+                            # C:\XboxGames — accept folders that pass standard check OR Xbox packaging check
+                            is_game = self._is_game_folder(str(game_folder)) or self._is_xbox_game_folder(game_folder)
+                            if not is_game:
+                                return None
+                            game_name = game_folder.name.replace("_", " ").replace("-", " ").title()
+                        elif _is_wapps:
+                            # C:\Program Files\WindowsApps — Appx package folder names
+                            folder_name = game_folder.name
+                            # Skip known non-game packages quickly
+                            if not self._is_appx_game_candidate(folder_name):
+                                return None
+                            # Require at least a standard game folder check
+                            if not self._is_game_folder(str(game_folder)):
+                                return None
+                            # Parse readable name from Publisher.AppName_Version_Arch_Hash
+                            game_name = self._parse_appx_package_name(folder_name).title()
+                            if not game_name or len(game_name) < 2:
+                                return None
+                        else:
+                            if not self._is_game_folder(str(game_folder)):
+                                return None
+                            game_name = game_folder.name.replace("_", " ").replace("-", " ").title()
+
                         image_path = self.fetch_game_image(game_name)
                         optiscaler_installed = self._detect_optiscaler(game_folder)
                         safety = self.analyze_game_safety(Game(game_name, str(game_folder)))
@@ -882,11 +996,11 @@ class GameScanner:
                         game = future.result()
                         if game:
                             xbox_games.append(game)
-                    
+
             except (OSError, PermissionError) as e:
                 debug_log(f"Error scanning Xbox Games path {xbox_path}: {e}")
                 continue
-                
+
         return xbox_games
 
     @timed("image_fetch")
@@ -900,129 +1014,390 @@ class GameScanner:
                 debug_log(f"No Steam AppID for '{game_name}'; using placeholder image")
                 return str(self.no_image_path)
 
-        # Check if image already exists in cache
-        safe_name = re.sub(r'[<>:"/\\|?*]', '_', game_name)  # Remove invalid filename chars
+        # Check if image already exists in cache.
+        # Prefer appid-keyed file (accurate) then fall back to name-keyed file (legacy).
         cache_dir = Path(self.game_cache_dir)
-        
-        for ext in ['png', 'jpg', 'jpeg', 'webp']:
-            cached_path = cache_dir / f"{safe_name}.{ext}"
-            if cached_path.exists():
-                return str(cached_path)
+        cache_stems = [f"appid_{appid}"] if appid else []
+        safe_name = re.sub(r'[<>:"/\\|?*]', '_', game_name)
+        cache_stems.append(safe_name)
+
+        for stem in cache_stems:
+            for ext in ['jpg', 'png', 'jpeg', 'webp']:
+                cached_path = cache_dir / f"{stem}.{ext}"
+                if cached_path.exists():
+                    return str(cached_path)
+
+        def _download_and_cache_image(url, label):
+            """Download image from url, resize, save to cache. Returns path string or None."""
+            try:
+                resp = self._requests_session.get(url, stream=True, timeout=config.image_download_timeout)
+                resp.raise_for_status()
+                image = Image.open(BytesIO(resp.content))
+                image.thumbnail(config.max_image_size, Image.Resampling.LANCZOS)
+                if image.mode in ('RGBA', 'LA', 'P'):
+                    rgb_image = Image.new('RGB', image.size, (255, 255, 255))
+                    rgb_image.paste(image, mask=image.split()[-1] if image.mode == 'RGBA' else None)
+                    image = rgb_image
+                out_path = cache_dir / f"appid_{appid}.jpg"
+                image.save(out_path, 'JPEG', quality=config.image_quality, optimize=True)
+                debug_log(f"Fetched Steam image for {game_name} (AppID: {appid}) via {label} -> {out_path}")
+                return str(out_path)
+            except Exception as e:
+                debug_log(f"Image download failed ({label}) for {game_name} (AppID: {appid}): {e}")
+                return None
 
         try:
-            # Try Steam CDN for Steam games
+            # Primary: Steam CDN Akamai header.jpg
             steam_image_url = f"https://cdn.akamai.steamstatic.com/steam/apps/{appid}/header.jpg"
             response = self._requests_session.get(steam_image_url, stream=True, timeout=config.image_download_timeout)
-            response.raise_for_status()
-            
-            # Load and optimize image
-            image = Image.open(BytesIO(response.content))
-            
-            # Resize image to standard dimensions for consistency and memory savings
-            image.thumbnail(config.max_image_size, Image.Resampling.LANCZOS)
-            
-            # Convert to RGB if necessary (for JPEG saving)
-            if image.mode in ('RGBA', 'LA', 'P'):
-                rgb_image = Image.new('RGB', image.size, (255, 255, 255))
-                rgb_image.paste(image, mask=image.split()[-1] if image.mode == 'RGBA' else None)
-                image = rgb_image
-            
-            # Save with Path object
-            image_path = cache_dir / f"{safe_name}.jpg"
-            image.save(image_path, 'JPEG', quality=config.image_quality, optimize=True)
-            debug_log(f"Fetched and cached Steam image for {game_name} (AppID: {appid}) -> {image_path}")
-            return str(image_path)
-            
+            if response.status_code == 200:
+                image = Image.open(BytesIO(response.content))
+                image.thumbnail(config.max_image_size, Image.Resampling.LANCZOS)
+                if image.mode in ('RGBA', 'LA', 'P'):
+                    rgb_image = Image.new('RGB', image.size, (255, 255, 255))
+                    rgb_image.paste(image, mask=image.split()[-1] if image.mode == 'RGBA' else None)
+                    image = rgb_image
+                image_path = cache_dir / f"appid_{appid}.jpg"
+                image.save(image_path, 'JPEG', quality=config.image_quality, optimize=True)
+                debug_log(f"Fetched Steam image for {game_name} (AppID: {appid}) via CDN -> {image_path}")
+                return str(image_path)
+
+            # Fallback: Steam Store API — gets the actual hosted image URL for demos/DLC/edge cases
+            debug_log(f"CDN returned {response.status_code} for {game_name} (AppID: {appid}), trying Store API")
+            store_url = f"https://store.steampowered.com/api/appdetails?appids={appid}&filters=basic"
+            store_resp = self._requests_session.get(store_url, timeout=config.image_download_timeout)
+            if store_resp.status_code == 200:
+                store_data = store_resp.json()
+                app_info = store_data.get(str(appid), {})
+                if app_info.get('success'):
+                    header_image = app_info.get('data', {}).get('header_image')
+                    if header_image:
+                        result = _download_and_cache_image(header_image, "Store API header_image")
+                        if result:
+                            return result
+                    # Also try capsule_image if header_image not found/failed
+                    capsule_image = app_info.get('data', {}).get('capsule_image')
+                    if capsule_image:
+                        result = _download_and_cache_image(capsule_image, "Store API capsule_image")
+                        if result:
+                            return result
+
         except (requests.RequestException, OSError, Image.UnidentifiedImageError) as e:
             debug_log(f"Error fetching Steam image for {game_name} (AppID: {appid}): {e}")
 
         # Return placeholder if no image found
         return str(self.no_image_path)
 
-    def _get_steam_app_list(self):
-        """Get Steam app list with Path objects and improved caching"""
+    def _build_local_steam_app_list(self):
+        """Build a name→AppID map from locally installed Steam manifest files.
+        This is instant (no network), covers all games the user has installed on Steam,
+        and is used immediately on startup while the full SteamSpy list downloads."""
+        # Check disk cache first (populated by the SteamSpy background loader)
         app_list_cache_path = Path(config.steam_app_list_cache_path)
-        
-        # Check if cached list exists and is recent
         if app_list_cache_path.exists():
             cache_age_days = (time.time() - app_list_cache_path.stat().st_mtime) / (24 * 60 * 60)
             if cache_age_days < config.steam_app_list_cache_days:
                 try:
                     with open(app_list_cache_path, 'r', encoding='utf-8') as f:
-                        debug_log(f"Using cached Steam app list (age: {cache_age_days:.1f} days)")
-                        return json.load(f)
-                except (json.JSONDecodeError, UnicodeDecodeError) as e:
-                    debug_log(f"Error reading cached Steam app list: {e}")
+                        apps = json.load(f)
+                    self._normalized_steam_app_map = {
+                        re.sub(r'\s+', ' ', re.sub(r'[^a-z0-9\s]', ' ', name)).strip(): appid
+                        for name, appid in apps.items()
+                    }
+                    debug_log(f"Loaded {len(apps)} Steam apps from disk cache")
+                    return apps
+                except Exception as e:
+                    debug_log(f"Cache read error, falling back to local manifests: {e}")
 
-        # Fetch new list if cache is old or missing
-        debug_log("Fetching fresh Steam app list from API...")
+        apps = {}
+        normalized_apps = {}
+        steam_dirs = []
+
+        # Collect all Steam library paths from libraryfolders.vdf
+        for steam_path in self.steam_paths:
+            lf = Path(steam_path) / 'steamapps' / 'libraryfolders.vdf'
+            if lf.exists():
+                try:
+                    data = vdf.load(open(lf, encoding='utf-8', errors='replace'))
+                    for v in data.get('libraryfolders', {}).values():
+                        if isinstance(v, dict) and 'path' in v:
+                            steam_dirs.append(str(Path(v['path']) / 'steamapps'))
+                except Exception:
+                    pass
+            steam_dirs.append(str(Path(steam_path) / 'steamapps'))
+
+        for sdir in steam_dirs:
+            sd = Path(sdir)
+            if not sd.exists():
+                continue
+            for mf in sd.glob('appmanifest_*.acf'):
+                try:
+                    data = vdf.load(open(mf, encoding='utf-8', errors='replace'))
+                    state = data.get('AppState', {})
+                    name = (state.get('name') or '').strip()
+                    appid = str(state.get('appid') or '')
+                    if name and appid:
+                        key = name.lower()
+                        apps[key] = appid
+                        norm = re.sub(r'\s+', ' ', re.sub(r'[^a-z0-9\s]', ' ', key)).strip()
+                        normalized_apps[norm] = appid
+                except Exception:
+                    pass
+
+        self._normalized_steam_app_map = normalized_apps
+        debug_log(f"Built local Steam app list from manifests: {len(apps)} games")
+        return apps
+
+    def _load_steamspy_app_list_async(self):
+        """Background thread: download the SteamSpy catalogue page by page and
+        merge it into steam_app_list.  Persists to disk so subsequent launches
+        are instant.  Calls self.on_app_list_ready() when done so the UI can
+        schedule a thumbnail retry for games that had no image."""
+        app_list_cache_path = Path(config.steam_app_list_cache_path)
+        # Skip download if cache is fresh
+        if app_list_cache_path.exists():
+            cache_age_days = (time.time() - app_list_cache_path.stat().st_mtime) / (24 * 60 * 60)
+            if cache_age_days < config.steam_app_list_cache_days:
+                debug_log("SteamSpy cache is fresh, skipping download")
+                return
+
+        debug_log("Downloading SteamSpy app catalogue in background...")
+        apps = dict(self.steam_app_list)  # start from the local manifests
+        normalized_apps = dict(getattr(self, '_normalized_steam_app_map', {}))
+
         try:
-            response = requests.get("https://api.steampowered.com/ISteamApps/GetAppList/v2/", 
-                                  timeout=30, stream=True)
-            response.raise_for_status()
-            app_list_data = response.json()
-            
-            # Create a more memory-efficient lookup dictionary
-            apps = {}
-            # Additionally store a normalized name -> appid mapping for fuzzy lookup
-            normalized_apps = {}
-            for app in app_list_data['applist']['apps']:
-                # Only store apps with meaningful names (filter out DLCs, tools, etc.)
-                name = app['name'].strip().lower()
-                if len(name) > 2 and not name.startswith(('dlc', 'demo', 'beta', 'test')):
-                    apps[name] = str(app['appid'])
-                    # Normalized mapping (strip punctuation and extra spaces)
-                    norm_name = re.sub(r'[^a-z0-9\s]', ' ', name).strip()
-                    norm_name = re.sub(r'\s+', ' ', norm_name)
-                    normalized_apps[norm_name] = str(app['appid'])
-            
-            # Save to cache with Path object
+            page = 0
+            while True:
+                url = f"https://steamspy.com/api.php?request=all&page={page}"
+                try:
+                    resp = requests.get(url, timeout=15)
+                    resp.raise_for_status()
+                    data = resp.json()
+                except Exception as e:
+                    debug_log(f"SteamSpy page {page} failed: {e}")
+                    break
+                if not data:
+                    break
+                for appid_str, info in data.items():
+                    name = (info.get('name') or '').strip()
+                    if not name or len(name) < 2:
+                        continue
+                    if re.match(r'^(dlc|demo|beta|test)\b', name.lower()):
+                        continue
+                    key = name.lower()
+                    apps[key] = appid_str
+                    norm = re.sub(r'\s+', ' ', re.sub(r'[^a-z0-9\s]', ' ', key)).strip()
+                    normalized_apps[norm] = appid_str
+                debug_log(f"SteamSpy page {page}: {len(data)} entries, total {len(apps)}")
+                page += 1
+                if page > 50:  # safety cap — 50 000 games is ample
+                    break
+                time.sleep(0.5)  # be polite to the API
+
+        except Exception as e:
+            debug_log(f"SteamSpy download aborted: {e}")
+
+        # Persist to disk
+        try:
             app_list_cache_path.parent.mkdir(parents=True, exist_ok=True)
             with open(app_list_cache_path, 'w', encoding='utf-8') as f:
-                json.dump(apps, f, separators=(',', ':'))  # Compact JSON
-            
-            self._normalized_steam_app_map = normalized_apps
-            debug_log(f"Cached {len(apps)} Steam apps")
-            return apps
-            
-        except (requests.RequestException, json.JSONDecodeError, KeyError) as e:
-            debug_log(f"Error fetching Steam app list: {e}")
-            return {}
+                json.dump(apps, f, separators=(',', ':'))
+            debug_log(f"SteamSpy catalogue saved: {len(apps)} games")
+        except Exception as e:
+            debug_log(f"Failed to save SteamSpy cache: {e}")
+
+        # Update in-memory maps atomically
+        self.steam_app_list = apps
+        self._normalized_steam_app_map = normalized_apps
+        debug_log("Steam app list ready — notifying UI for thumbnail retry")
+
+        # Notify the UI so it can re-fetch images for games that were missing them
+        if callable(self.on_app_list_ready):
+            try:
+                self.on_app_list_ready()
+            except Exception as e:
+                debug_log(f"on_app_list_ready callback error: {e}")
+
+    def _read_epic_game_name(self, game_folder: Path) -> str:
+        """Try to read the real game title from Epic Games metadata files.
+        Returns the game name string, or empty string if not found."""
+        try:
+            # Check .egstore folder for .mancfg manifest files
+            egstore = game_folder / '.egstore'
+            if egstore.exists():
+                for mf in egstore.glob('*.mancfg'):
+                    try:
+                        with open(mf, 'r', encoding='utf-8', errors='ignore') as f:
+                            data = json.load(f)
+                        title = data.get('DisplayName') or data.get('AppName') or ''
+                        if title and len(title) > 1:
+                            return title.strip()
+                    except Exception:
+                        pass
+            # Also check top-level .mancfg files
+            for mf in game_folder.glob('*.mancfg'):
+                try:
+                    with open(mf, 'r', encoding='utf-8', errors='ignore') as f:
+                        data = json.load(f)
+                    title = data.get('DisplayName') or data.get('AppName') or ''
+                    if title and len(title) > 1:
+                        return title.strip()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return ''
+
+    @staticmethod
+    def _split_camel_case(name: str) -> str:
+        """Split a CamelCase or PascalCase identifier into space-separated words.
+        E.g. 'Reddeadredemption2' -> 'Red Dead Redemption 2'
+             'HaloInfinite' -> 'Halo Infinite'
+        """
+        # Insert space before uppercase letters that follow lowercase letters
+        s = re.sub(r'([a-z])([A-Z])', r'\1 \2', name)
+        # Insert space before a digit sequence that follows a letter
+        s = re.sub(r'([a-zA-Z])(\d)', r'\1 \2', s)
+        # Insert space before a letter that follows a digit
+        s = re.sub(r'(\d)([a-zA-Z])', r'\1 \2', s)
+        return s
+
+    @staticmethod
+    def _parse_appx_package_name(folder_name: str) -> str:
+        """Extract a human-readable game name from a WindowsApps folder name.
+        Folder names follow the pattern: Publisher.AppName_Version_Arch_Hash
+        or Publisher.AppName_Version_Arch__Hash (double underscore).
+        Returns the AppName portion with CamelCase split.
+        """
+        # Strip version/arch/hash suffix: everything after the first underscore that looks like a version
+        # Pattern: Name_1.2.3.4_arch__hash or Name_1.2.3.4_arch_hash
+        base = re.sub(r'_[\d]+\.\d+.*$', '', folder_name)
+        # Remove Publisher. prefix if present (e.g. 'Hoodedhorse.Manorlords' -> 'Manorlords')
+        if '.' in base:
+            # Take the part after the last dot as the app name
+            base = base.split('.')[-1]
+        # Split CamelCase
+        readable = GameScanner._split_camel_case(base)
+        return readable.strip()
+
+    # Known non-game keyword fragments present in Appx package names (Publisher.AppName part only)
+    # These match runtimes, codecs, system utilities, and other non-game packages.
+    _APPX_NON_GAME_KEYWORDS = (
+        'vclibs', 'runtime', 'framework', 'xaml', 'webpimage', 'hevcvideo',
+        'heifimage', 'mpeg2video', 'vp9video', 'webmedia', 'codec', 'videoextension',
+        'imageextension', 'storepurchase', 'storeengagement', 'store.engagement',
+        'directxruntime',
+        'net.native', 'appruntime', 'winappruntime', 'windowsappruntime',
+        'gamingservices', 'xboxgamingoverlay', 'gamingapp', 'xboxidentityprovider',
+        'xboxdevices', 'xbox.tcui', 'bingwallpaper', 'getstarted', 'gethelp',
+        'startexperiencesapp', 'commandpalette', 'webexperience', 'crossdevice',
+        'sechealthui', 'screensketch', 'widgetsplatform', 'foundrylocal',
+        'applicationcompatibility', 'avcencoder', 'windowsstore', 'storepurchaseapp',
+        'yourphone', 'windowsterminal', 'windowsnotepad', 'windowscalculator',
+        'windowscamera', 'windowsphotos', 'windowsappruntime', 'zunemusic',
+        'microsoftmahjong', 'candycrush', 'linkedinfor', 'whatsappdesktop',
+        'clipchamp', 'dolbyaccess', 'dtssound', 'armourycrate', 'lgmonitor',
+        'realtekaudio', 'tobiieyetracking', 'speedtest', 'hdrcalibration',
+        'camostudio', 'icloud', 'itunes', 'applemusic', 'appletv',
+        'primevideo', 'vidstok', 'gameassist', 'paint', 'photos',
+        'minecraftuwp', 'minecraftlauncher',
+        'facebook', 'netflix', 'desktopappinstaller', 'languageexperience',
+        'solitairecollection', 'onedrivesync', 'powertoys', 'microsoftedge',
+        'preordercontent', 'cloudspremium', 'anthropic', 'claude_',
+    )
+
+    def _is_appx_game_candidate(self, folder_name: str) -> bool:
+        """Return True if the WindowsApps folder looks like it could be a game.
+        Filters out known system runtimes, utilities, and non-game apps."""
+        lower = folder_name.lower()
+        # WindowsApps packages should have a version number (x.y.z.w); skip folders that don't
+        # This filters out 'Deleted', 'Merged', 'DeletedAllUserPackages' etc.
+        if '_' not in folder_name:
+            return False
+        # Skip packages whose Publisher.Name portion starts with only digits
+        # (hex/numeric app IDs like '1Ed5Aea5.4160926B82Db', '549981C3F5F10' — clearly not games)
+        name_part = lower.split('_')[0]  # strip version suffix
+        app_part = name_part.split('.')[-1]  # take the AppName after last dot
+        if app_part and re.match(r'^[0-9a-f]{6,}$', app_part.replace(' ', '')):
+            return False  # looks like a hex identifier, not a readable name
+        # Skip known non-game keywords anywhere in the package name
+        for kw in self._APPX_NON_GAME_KEYWORDS:
+            if kw in lower:
+                return False
+        return True
+
+    # Platform/edition qualifiers appended to game names by stores/launchers.
+    # We strip these progressively to find the base Steam title.
+    _NAME_STRIP_SUFFIXES = re.compile(
+        r'\s+(for\s+windows|for\s+pc|for\s+xbox|game\s+of\s+the\s+year\s+edition|'
+        r'goty\s+edition|complete\s+edition|definitive\s+edition|enhanced\s+edition|'
+        r'remastered|standard\s+edition|gold\s+edition|deluxe\s+edition|'
+        r'ultimate\s+edition|windows\s+edition|pc\s+edition|microsoft\s+store)$',
+        re.IGNORECASE,
+    )
 
     def _get_appid_from_name(self, game_name):
         """Get Steam AppID from game name with fallback handling"""
-        # Exact case-insensitive match
         normalized_game_name = (game_name or '').lower().strip()
         if not normalized_game_name:
             return None
-        if normalized_game_name in self.steam_app_list:
-            debug_log(f"Found appid via exact match for '{game_name}'")
-            return self.steam_app_list.get(normalized_game_name)
 
-        # Normalize by removing punctuation and collapsing spaces
-        norm = re.sub(r'[^a-z0-9\s]', ' ', normalized_game_name)
-        norm = re.sub(r'\s+', ' ', norm).strip()
-        if hasattr(self, '_normalized_steam_app_map') and norm in self._normalized_steam_app_map:
-            debug_log(f"Found appid via normalized match for '{game_name}' -> '{norm}'")
-            return self._normalized_steam_app_map.get(norm)
+        # Build the list of name variants to try (strip platform/edition suffixes progressively)
+        variants = [normalized_game_name]
+        stripped = normalized_game_name
+        while True:
+            new = self._NAME_STRIP_SUFFIXES.sub('', stripped).strip()
+            if new == stripped or not new:
+                break
+            variants.append(new)
+            stripped = new
 
-        # Fallback: try partial matching by token containment
-        tokens = set(norm.split())
-        if not tokens:
-            return None
-        best_match = None
-        best_score = 0
-        for name_key, appid in (self.steam_app_list.items() if self.steam_app_list else []):
-            key_norm = re.sub(r'[^a-z0-9\s]', ' ', name_key).strip()
-            key_tokens = set(key_norm.split())
-            if not key_tokens:
+        for candidate in variants:
+            # 1. Exact match
+            if candidate in self.steam_app_list:
+                debug_log(f"Found appid via exact match for '{game_name}' (variant '{candidate}')")
+                return self.steam_app_list[candidate]
+
+            # 2. Normalized (punctuation-stripped) match
+            norm = re.sub(r'\s+', ' ', re.sub(r'[^a-z0-9\s]', ' ', candidate)).strip()
+            if hasattr(self, '_normalized_steam_app_map') and norm in self._normalized_steam_app_map:
+                debug_log(f"Found appid via normalized match for '{game_name}' -> '{norm}'")
+                return self._normalized_steam_app_map[norm]
+
+            # 3. Token-subset match: all query tokens must appear in the Steam name
+            tokens = set(norm.split())
+            if not tokens:
                 continue
-            score = len(tokens & key_tokens)
-            if score > best_score:
-                best_score = score
-                best_match = appid
-        if best_score > 0:
-            debug_log(f"Found appid via partial match for '{game_name}' -> '{best_match}' (score {best_score})")
-            return best_match
+            best_match = None
+            best_score = 0
+            for name_key, appid in (self.steam_app_list.items() if self.steam_app_list else []):
+                key_norm = re.sub(r'[^a-z0-9\s]', ' ', name_key).strip()
+                key_tokens = set(key_norm.split())
+                if not key_tokens:
+                    continue
+                if not tokens.issubset(key_tokens):
+                    continue
+                score = len(key_tokens)
+                if best_match is None or score < best_score:
+                    best_score = score
+                    best_match = appid
+            if best_match:
+                debug_log(f"Found appid via token-subset for '{game_name}' (variant '{candidate}')")
+                return best_match
+
+        # 4. Last resort: difflib fuzzy match on the original normalized name
+        norm_orig = re.sub(r'\s+', ' ', re.sub(r'[^a-z0-9\s]', ' ', normalized_game_name)).strip()
+        if len(norm_orig) >= 4 and hasattr(self, '_normalized_steam_app_map') and self._normalized_steam_app_map:
+            try:
+                import difflib
+                candidates = list(self._normalized_steam_app_map.keys())
+                matches = difflib.get_close_matches(norm_orig, candidates, n=1, cutoff=0.82)
+                if matches:
+                    appid = self._normalized_steam_app_map[matches[0]]
+                    debug_log(f"Found appid via fuzzy match for '{game_name}' -> '{matches[0]}' -> {appid}")
+                    return appid
+            except Exception:
+                pass
+
         debug_log(f"No Steam AppID found for '{game_name}'")
         return None

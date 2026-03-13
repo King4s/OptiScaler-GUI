@@ -159,13 +159,21 @@ class GameListFrame(ctk.CTkScrollableFrame):
         self._cache_timestamp = None
 
         self._display_games()
-        # Note: The summary is displayed by `MainWindow` in a dedicated
-        # summary holder above the game list. Keeping a separate summary in
-        # GameListFrame caused visual duplication. If tests require a plain
-        # tkinter child label to find the summary, the MainWindow holder
-        # exposes one already. Therefore remove the local summary label.
-        # Schedule background image fetching after UI rendered
         self._schedule_fetch_game_images()
+
+        # When the background SteamSpy download finishes, retry thumbnails for
+        # any games that still have the placeholder (no_image or grey square).
+        def _on_app_list_ready():
+            debug_log("Steam app list ready callback — scheduling thumbnail retry")
+            try:
+                self.after(0, self._retry_missing_images)
+            except Exception as e:
+                debug_log(f"Thumbnail retry schedule error: {e}")
+
+        try:
+            game_scanner.on_app_list_ready = _on_app_list_ready
+        except Exception:
+            pass
 
     def _get_update_info(self):
         """Get update information with caching to avoid multiple API calls"""
@@ -196,37 +204,123 @@ class GameListFrame(ctk.CTkScrollableFrame):
             return {"available": False}
 
     def _display_games(self):
+        debug_log(f"_display_games: rendering {len(self.games)} games")
         for i, game in enumerate(self.games):
             game_frame = ctk.CTkFrame(self)
             game_frame.grid(row=i, column=0, padx=5, pady=5, sticky="ew")
-            game_frame.grid_columnconfigure(0, weight=0) # Image column, no stretching
-            game_frame.grid_columnconfigure(1, weight=1) # Info frame column, takes available space
+            game_frame.grid_columnconfigure(0, weight=0)
+            game_frame.grid_columnconfigure(1, weight=1)
 
-            # Game Image - always render a placeholder quickly; image processing happens in background
-            image_path = game.image_path
-            # Define the target height for all images
+            # Placeholder image — replaced in background by _schedule_fetch_game_images
             target_height = 80
-            # For placeholder, create a dynamically sized PIL image based on aspect ratio
-            default_aspect_ratio = 16 / 9
-            placeholder_width = int(target_height * default_aspect_ratio)
-
-            placeholder_img = self._create_placeholder_pil_image(placeholder_width, target_height, text=None)
-            ctk_placeholder_image = ctk.CTkImage(light_image=placeholder_img, dark_image=placeholder_img, size=(placeholder_width, target_height))
-            # Do NOT overlay text on the image area - game name is shown in the info frame instead
+            placeholder_width = int(target_height * 16 / 9)
+            placeholder_img = self._create_placeholder_pil_image(placeholder_width, target_height)
+            ctk_placeholder_image = ctk.CTkImage(light_image=placeholder_img, dark_image=placeholder_img,
+                                                  size=(placeholder_width, target_height))
             placeholder_label = ctk.CTkLabel(game_frame, image=ctk_placeholder_image)
-            setattr(placeholder_label, '_ctk_image_ref', ctk_placeholder_image)  # Keep a reference
+            setattr(placeholder_label, '_ctk_image_ref', ctk_placeholder_image)
             placeholder_label.grid(row=0, column=0, sticky="w")
-            # Store label reference for later update after image processing in background
             self._image_label_map[game.path] = placeholder_label
+
+            # Info frame
+            info_frame = ctk.CTkFrame(game_frame)
+            info_frame.grid(row=0, column=1, padx=(10, 15), pady=5, sticky="ew")
+            info_frame.grid_columnconfigure(0, weight=1)
+
+            if i < 5 or i % 10 == 0:
+                debug_log(f"Displaying game [{i}]: {game.name}, "
+                          f"community_verified={getattr(game, 'community_verified', False)}, "
+                          f"optiscaler_installed={getattr(game, 'optiscaler_installed', False)}")
+
+            name_label = ctk.CTkLabel(info_frame, text=game.name, font=("Arial", 14, "bold"))
+            name_label.grid(row=0, column=0, sticky="w")
+
+            if hasattr(game, 'platform') and game.platform:
+                tag_label = ctk.CTkLabel(info_frame, text=game.platform, font=("Arial", 10, "italic"),
+                                         fg_color="#444", text_color="#fff", corner_radius=6, padx=6, pady=2)
+                tag_label.grid(row=0, column=1, padx=(10, 0), sticky="w")
+
+            if getattr(game, 'community_verified', False):
+                verified_label = ctk.CTkLabel(info_frame, text=t('ui.community_verified', 'Verified'),
+                                              font=("Arial", 10), fg_color="#2e7d32", text_color="#fff",
+                                              corner_radius=6, padx=6, pady=2)
+                verified_label.grid(row=0, column=2, padx=(10, 0), sticky="w")
+            elif getattr(game, 'anti_cheat_list', None):
+                ac_text = ", ".join(game.anti_cheat_list)
+                ac_label = ctk.CTkLabel(info_frame, text=f"{t('ui.anti_cheat', 'Anti-cheat')}: {ac_text}",
+                                        font=("Arial", 10), fg_color="#ffa000", text_color="#000",
+                                        corner_radius=6, padx=6, pady=2)
+                ac_label.grid(row=0, column=2, padx=(10, 0), sticky="w")
+
+            engine = getattr(game, 'engine', None)
+            engine_supported = getattr(game, 'engine_supported', True)
+            if engine and not engine_supported:
+                engine_label = ctk.CTkLabel(info_frame, text=f"{engine} ({t('ui.engine_unsupported')})",
+                                             font=("Arial", 10), fg_color="#d32f2f", text_color="#fff",
+                                             corner_radius=6, padx=6, pady=2)
+                engine_label.grid(row=0, column=3, padx=(10, 0), sticky="w")
+            elif engine:
+                engine_label = ctk.CTkLabel(info_frame, text=f"{engine}", font=("Arial", 10),
+                                             fg_color="#666", text_color="#fff", corner_radius=6, padx=6, pady=2)
+                engine_label.grid(row=0, column=3, padx=(10, 0), sticky="w")
+
+            path_label = ctk.CTkLabel(info_frame, text=game.path, font=("Arial", 10))
+            path_label.grid(row=1, column=0, columnspan=4, sticky="w")
+
+            # Buttons
+            buttons_frame = ctk.CTkFrame(game_frame, fg_color="transparent")
+            buttons_frame.grid(row=0, column=2, padx=5, pady=5, sticky="e")
+            buttons_frame.grid_columnconfigure(0, weight=1)
+
+            is_installed = getattr(game, 'optiscaler_installed', False)
+            debug_log(f"OptiScaler installed for {game.name}: {is_installed}")
+
+            button_row = 0
+            if is_installed:
+                action_button = ctk.CTkButton(
+                    buttons_frame, text=t("ui.uninstall") + " OptiScaler",
+                    fg_color="#d32f2f", hover_color="#b71c1c",
+                    command=lambda g=game: self._uninstall_optiscaler_for_game(g))
+            else:
+                action_button = ctk.CTkButton(
+                    buttons_frame, text=t("ui.install_optiscaler"),
+                    command=lambda g=game: self._install_optiscaler_for_game(g))
+            action_button.grid(row=button_row, column=0, padx=5, pady=2, sticky="e")
+            button_row += 1
+
+            if is_installed:
+                try:
+                    update_info = self._get_update_info()
+                    if update_info.get("available", False):
+                        update_button = ctk.CTkButton(
+                            buttons_frame, text=t("ui.update") + " OptiScaler",
+                            fg_color="#ff9800", hover_color="#f57c00",
+                            command=lambda g=game: self._update_optiscaler_for_game(g))
+                        update_button.grid(row=button_row, column=0, padx=5, pady=2, sticky="e")
+                        button_row += 1
+                except Exception as e:
+                    debug_log(f"Update check failed for {game.name}: {e}")
+
+                edit_settings_button = ctk.CTkButton(
+                    buttons_frame, text=t("ui.edit_settings"),
+                    command=lambda g_path=game.path: self.on_edit_settings(g_path))
+                edit_settings_button.grid(row=button_row, column=0, padx=5, pady=2, sticky="e")
+                button_row += 1
+
+            open_folder_button = ctk.CTkButton(
+                buttons_frame, text=t("ui.open_folder"),
+                command=lambda p=game.path: self._open_game_folder(p))
+            open_folder_button.grid(row=button_row, column=0, padx=5, pady=2, sticky="e")
+
+        debug_log(f"_display_games: done rendering {len(self.games)} games")
+
     def _create_placeholder_pil_image(self, width, height, text=None):
-        """Create a simple placeholder PIL image of the requested size with optional centered text.
-        This is used as the fallback when a game image is missing or failed to load."""
+        """Return a plain PIL image used as a placeholder before the real thumbnail loads."""
         try:
             img = Image.new('RGB', (width, height), color='#444444')
             if text:
                 draw = ImageDraw.Draw(img)
                 try:
-                    # Try to use a reasonably sized truetype font if available
                     font = ImageFont.truetype("arial.ttf", size=max(10, int(height / 6)))
                 except Exception:
                     font = ImageFont.load_default()
@@ -235,159 +329,16 @@ class GameListFrame(ctk.CTkScrollableFrame):
                     text_w = bbox[2] - bbox[0]
                     text_h = bbox[3] - bbox[1]
                 except Exception:
-                    # Fallback: approximate text size based on character count and font size
                     text_w = len(text) * max(6, int(height / 8))
                     text_h = max(12, int(height / 6))
-                text_x = (width - text_w) / 2
-                text_y = (height - text_h) / 2
-                draw.text((text_x, text_y), text, fill=(255, 255, 255), font=font)
+                draw.text(((width - text_w) / 2, (height - text_h) / 2),
+                          text, fill=(255, 255, 255), font=font)
             return img
         except Exception:
-            # As a last resort, return a single-pixel image scaled to the requested size
             try:
                 return Image.new('RGB', (width, height), color='gray')
             except Exception:
                 return Image.new('RGB', (1, 1), color='gray')
-    # NOTE: _schedule_fetch_game_images was previously inserted into the middle of the
-    # _display_games method by mistake which caused UI construction code to become
-    # part of the scheduler. The corrected method below only performs background
-    # image fetch tasks and updates existing placeholder labels via the mapping.
-
-    # _schedule_fetch_game_images removed from this location and redefined below
-
-            # Game Name and Path
-            info_frame = ctk.CTkFrame(game_frame)
-            # Add padding to avoid tags and content hugging the edges
-            info_frame.grid(row=0, column=1, padx=(10, 15), pady=5, sticky="ew")
-            info_frame.grid_columnconfigure(0, weight=1)
-
-            # Game name
-            name_label = ctk.CTkLabel(info_frame, text=game.name, font=("Arial", 14, "bold"))
-            name_label.grid(row=0, column=0, sticky="w")
-
-            # Debug: log occasionally to avoid log flooding which may affect performance
-            if i < 5 or i % 10 == 0:
-                debug_log(f"Displaying game: {game.name}, community_verified={getattr(game, 'community_verified', False)}")
-
-            # Platform/Manager tag
-            if hasattr(game, 'platform') and game.platform:
-                tag_label = ctk.CTkLabel(info_frame, text=game.platform, font=("Arial", 10, "italic"),
-                                         fg_color="#444", text_color="#fff", corner_radius=6, padx=6, pady=2)
-                tag_label.grid(row=0, column=1, padx=(10, 0), sticky="w")
-
-            # Community-verified tag or anti-cheat warning
-            # Community verified games get a green badge
-            if getattr(game, 'community_verified', False):
-                verified_label = ctk.CTkLabel(info_frame, text=t('ui.community_verified', 'Verified'), font=("Arial", 10),
-                                             fg_color="#2e7d32", text_color="#fff", corner_radius=6, padx=6, pady=2)
-                verified_label.grid(row=0, column=2, padx=(10, 0), sticky="w")
-            elif getattr(game, 'anti_cheat_list', None):
-                ac_text = ", ".join(game.anti_cheat_list)
-                ac_label = ctk.CTkLabel(info_frame, text=f"{t('ui.anti_cheat', 'Anti-cheat')}: {ac_text}", font=("Arial", 10),
-                                       fg_color="#ffa000", text_color="#000", corner_radius=6, padx=6, pady=2)
-                ac_label.grid(row=0, column=2, padx=(10, 0), sticky="w")
-
-            # Engine badge - show type and whether it's unsupported
-            engine = getattr(game, 'engine', None)
-            engine_supported = getattr(game, 'engine_supported', True)
-            if engine and not engine_supported:
-                engine_label = ctk.CTkLabel(info_frame, text=f"{engine} ({t('ui.engine_unsupported')})", font=("Arial", 10),
-                                             fg_color="#d32f2f", text_color="#fff", corner_radius=6, padx=6, pady=2)
-                engine_label.grid(row=0, column=3, padx=(10, 0), sticky="w")
-            elif engine:
-                # If engine is known and supported, show a subtle tag
-                engine_label = ctk.CTkLabel(info_frame, text=f"{engine}", font=("Arial", 10),
-                                             fg_color="#666", text_color="#fff", corner_radius=6, padx=6, pady=2)
-                engine_label.grid(row=0, column=3, padx=(10, 0), sticky="w")
-
-            # Game path
-            path_label = ctk.CTkLabel(info_frame, text=game.path, font=("Arial", 10))
-            path_label.grid(row=1, column=0, columnspan=2, sticky="w")
-
-            # Buttons Frame
-            buttons_frame = ctk.CTkFrame(game_frame, fg_color="transparent")
-            buttons_frame.grid(row=0, column=2, padx=5, pady=5, sticky="e")
-            buttons_frame.grid_columnconfigure(0, weight=1)
-
-            # Check if OptiScaler is installed (now from game scanner)
-            is_installed = getattr(game, 'optiscaler_installed', False)
-            debug_log(f"DEBUG: OptiScaler installed check for {game.name} at {game.path}: {is_installed}")
-
-            # Install/Uninstall Button (dynamic based on installation status)
-            # Create the buttons on a short delay so the UI can render first without blocking
-            def _create_buttons():
-                try:
-                    if is_installed:
-                        action_button = ctk.CTkButton(buttons_frame, text=t("ui.uninstall") + " OptiScaler", 
-                                                    fg_color="#d32f2f", hover_color="#b71c1c",
-                                                    command=lambda g=game: self._uninstall_optiscaler_for_game(g))
-                    else:
-                        action_button = ctk.CTkButton(buttons_frame, text=t("ui.install_optiscaler"),
-                                                    command=lambda g=game: self._install_optiscaler_for_game(g))
-                    action_button.grid(row=0, column=0, padx=5, pady=2, sticky="e")
-                    button_row = 1
-                    # If installed, add update/edit buttons dynamically
-                    if is_installed:
-                        try:
-                            update_info = self._get_update_info()
-                            if update_info.get("available", False):
-                                update_button = ctk.CTkButton(buttons_frame, text=t("ui.update") + " OptiScaler",
-                                                            fg_color="#ff9800", hover_color="#f57c00",
-                                                            command=lambda g=game: self._update_optiscaler_for_game(g))
-                                update_button.grid(row=button_row, column=0, padx=5, pady=2, sticky="e")
-                                button_row += 1
-                        except Exception:
-                            pass
-                        try:
-                            edit_settings_button = ctk.CTkButton(buttons_frame, text=t("ui.edit_settings"),
-                                                               command=lambda g_path=game.path: self.on_edit_settings(g_path))
-                            edit_settings_button.grid(row=button_row, column=0, padx=5, pady=2, sticky="e")
-                            button_row += 1
-                        except Exception:
-                            pass
-                except Exception as e:
-                    debug_log(f"Failed to create action button for {game.name}: {e}")
-
-            # Schedule button creation so initial UI layout is fast
-            try:
-                self.after(20, _create_buttons)
-            except Exception:
-                # Fallback: create synchronously if event loop not available or scheduling fails
-                _create_buttons()
-
-            # Check for updates if installed
-            update_available = False
-            button_row = 1
-            
-            if is_installed:
-                # Check if update is available for this game (using cached result)
-                try:
-                    update_info = self._get_update_info()
-                    update_available = update_info.get("available", False)
-                except Exception as e:
-                    debug_log(f"Failed to check updates for {game.name}: {e}")
-                    update_available = False
-                
-                # Update Button (only show if update is available)
-                if update_available:
-                    update_button = ctk.CTkButton(buttons_frame, text=t("ui.update") + " OptiScaler",
-                                                fg_color="#ff9800", hover_color="#f57c00",
-                                                command=lambda g=game: self._update_optiscaler_for_game(g))
-                    update_button.grid(row=button_row, column=0, padx=5, pady=2, sticky="e")
-                    button_row += 1
-                
-                # Edit Settings Button
-                edit_settings_button = ctk.CTkButton(buttons_frame, text=t("ui.edit_settings"),
-                                                   command=lambda g_path=game.path: self.on_edit_settings(g_path))
-                edit_settings_button.grid(row=button_row, column=0, padx=5, pady=2, sticky="e")
-                button_row += 1
-                
-            row_offset = button_row
-
-            # Open Folder Button
-            open_folder_button = ctk.CTkButton(buttons_frame, text=t("ui.open_folder"),
-                                             command=lambda p=game.path: self._open_game_folder(p))
-            open_folder_button.grid(row=row_offset, column=0, padx=5, pady=2, sticky="e")
 
     def _schedule_fetch_game_images(self):
         """Schedule background tasks to fetch images for games that are missing one."""
@@ -465,6 +416,60 @@ class GameListFrame(ctk.CTkScrollableFrame):
                 self._executor.submit(fetch_and_update, game)
             except Exception:
                 # If executor fails, continue without blocking
+                continue
+
+    def _retry_missing_images(self):
+        """Re-fetch thumbnails for games that still have no resolved image.
+        Called after the SteamSpy app list finishes downloading so games that
+        previously got only the placeholder now get a real Steam CDN image."""
+        no_img = str(self.game_scanner.no_image_path)
+        retry_games = [
+            g for g in self.games
+            if not g.image_path or g.image_path == no_img or not Path(g.image_path).exists()
+        ]
+        debug_log(f"Thumbnail retry: {len(retry_games)} games without images")
+        if not retry_games:
+            return
+
+        target_height = 80
+
+        def fetch_and_update_retry(game):
+            try:
+                # Clear cached image_path so fetch_game_image tries again
+                game.image_path = None
+                image_path = self.game_scanner.fetch_game_image(game.name, game.appid)
+                if not image_path or image_path == no_img:
+                    return
+                game.image_path = image_path
+
+                def _update():
+                    img_label = self._image_label_map.get(game.path)
+                    if not img_label or not Path(image_path).exists():
+                        return
+                    try:
+                        img = Image.open(image_path)
+                        ow, oh = img.size
+                        if not oh or not ow:
+                            return
+                        nw = max(1, int(ow * target_height / oh))
+                        resampler = getattr(Image, 'Resampling', None)
+                        lanczos = resampler.LANCZOS if resampler else LANCZOS
+                        img = img.resize((nw, target_height), lanczos)
+                        ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=(nw, target_height))
+                        img_label.configure(image=ctk_img, text='')
+                        setattr(img_label, '_ctk_image_ref', ctk_img)
+                        debug_log(f"Retry thumbnail updated: {game.name}")
+                    except Exception as e:
+                        debug_log(f"Retry thumbnail update failed for {game.name}: {e}")
+
+                self.after(0, _update)
+            except Exception as e:
+                debug_log(f"Retry fetch failed for {game.name}: {e}")
+
+        for game in retry_games:
+            try:
+                self._executor.submit(fetch_and_update_retry, game)
+            except Exception:
                 continue
 
     def _install_optiscaler_for_game(self, game):

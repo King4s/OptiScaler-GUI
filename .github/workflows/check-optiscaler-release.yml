@@ -1,0 +1,297 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# check-optiscaler-release.yml
+#
+# Purpose:
+#   Monitor the upstream OptiScaler repository for new releases.
+#   When a new release is detected this workflow:
+#     1. Updates the tracking file (.github/optiscaler-version.txt).
+#     2. Opens a GitHub Issue summarising the new release so a maintainer
+#        can decide whether OptiScaler-GUI needs any changes.
+#
+# Triggers:
+#   • Scheduled: daily at 06:00 UTC.
+#   • Manual:    workflow_dispatch (useful for testing or one-off checks).
+#
+# Secrets required:
+#   None beyond the built-in GITHUB_TOKEN.
+#
+# No auto-merge, no auto-commit to application code — human review always
+# happens before any change ships to users.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Check OptiScaler Upstream Release
+
+on:
+  # Run once a day at 06:00 UTC.
+  schedule:
+    - cron: '0 6 * * *'
+
+  # Allow maintainers to trigger this manually from the Actions tab.
+  workflow_dispatch:
+
+# Minimal permissions: read the repo contents + create issues/PRs.
+permissions:
+  contents: write   # needed to push the updated tracking file
+  issues: write     # needed to open the notification issue
+
+jobs:
+  check-release:
+    name: Detect new upstream release
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Fetch full history so we can commit cleanly.
+          fetch-depth: 0
+
+      # ── 2. Fetch latest OptiScaler release from GitHub API ───────────────
+      - name: Fetch latest OptiScaler release metadata
+        id: upstream
+        env:
+          # Using the built-in token avoids rate-limiting on the API.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          API_URL="https://api.github.com/repos/cdozdil/OptiScaler/releases/latest"
+
+          echo "Querying: $API_URL"
+
+          # Authenticated request → 5 000 req/hr instead of 60 req/hr.
+          RESPONSE=$(curl -fsSL \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$API_URL")
+
+          # Parse the fields we care about.
+          LATEST_TAG=$(echo "$RESPONSE"    | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['tag_name'])")
+          RELEASE_NAME=$(echo "$RESPONSE"  | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['name'])")
+          RELEASE_URL=$(echo "$RESPONSE"   | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['html_url'])")
+          PUBLISHED_AT=$(echo "$RESPONSE"  | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['published_at'])")
+          BODY=$(echo "$RESPONSE"          | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('body','') or '')")
+
+          # Build a markdown list of release assets (filenames only).
+          ASSETS=$(echo "$RESPONSE" | python3 -c "
+          import sys, json
+          d = json.load(sys.stdin)
+          assets = d.get('assets', [])
+          if assets:
+              lines = ['- ' + a['name'] + '  (' + '{:.1f}'.format(a['size']/1024/1024) + ' MB)' for a in assets]
+              print('\n'.join(lines))
+          else:
+              print('_(no binary assets attached)_')
+          ")
+
+          # Surface values to subsequent steps via GITHUB_OUTPUT.
+          {
+            echo "latest_tag=${LATEST_TAG}"
+            echo "release_name=${RELEASE_NAME}"
+            echo "release_url=${RELEASE_URL}"
+            echo "published_at=${PUBLISHED_AT}"
+            # Multi-line values must use the heredoc delimiter syntax.
+            echo "assets<<ASSETS_EOF"
+            echo "$ASSETS"
+            echo "ASSETS_EOF"
+            echo "body<<BODY_EOF"
+            echo "$BODY"
+            echo "BODY_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Latest upstream tag: ${LATEST_TAG}"
+
+      # ── 3. Read the last known version from our tracking file ────────────
+      - name: Read tracked version
+        id: tracked
+        run: |
+          set -euo pipefail
+
+          TRACKING_FILE=".github/optiscaler-version.txt"
+
+          if [[ -f "$TRACKING_FILE" ]]; then
+            # Strip comment lines and blank lines; take the first real line.
+            KNOWN=$(grep -v '^\s*#' "$TRACKING_FILE" | grep -v '^\s*$' | head -1 | tr -d '[:space:]')
+          else
+            KNOWN="unknown"
+          fi
+
+          echo "known_tag=${KNOWN}" >> "$GITHUB_OUTPUT"
+          echo "Tracked version: ${KNOWN}"
+
+      # ── 4. Decide whether anything changed ──────────────────────────────
+      - name: Compare versions
+        id: compare
+        run: |
+          set -euo pipefail
+
+          LATEST="${{ steps.upstream.outputs.latest_tag }}"
+          KNOWN="${{ steps.tracked.outputs.known_tag }}"
+
+          if [[ "$LATEST" == "$KNOWN" ]]; then
+            echo "new_release=false" >> "$GITHUB_OUTPUT"
+            echo "No new release detected (still at ${KNOWN})."
+          else
+            echo "new_release=true" >> "$GITHUB_OUTPUT"
+            echo "New release detected: ${KNOWN} → ${LATEST}"
+          fi
+
+      # ── 5. Update tracking file (only when a new release was found) ──────
+      - name: Update tracking file
+        if: steps.compare.outputs.new_release == 'true'
+        run: |
+          set -euo pipefail
+
+          LATEST="${{ steps.upstream.outputs.latest_tag }}"
+          TRACKING_FILE=".github/optiscaler-version.txt"
+
+          # Rewrite the file, keeping the header comment intact.
+          cat > "$TRACKING_FILE" <<EOF
+          # This file tracks the last upstream OptiScaler release seen by the
+          # check-optiscaler-release workflow.  Do not edit manually.
+          # Format: a single release tag string, e.g.  v0.7.9
+          # The workflow compares the GitHub API's latest tag against this value
+          # and opens an issue when they differ.
+          ${LATEST}
+          EOF
+
+          echo "Tracking file updated to ${LATEST}."
+
+      # ── 6. Commit the tracking file update ──────────────────────────────
+      - name: Commit updated tracking file
+        if: steps.compare.outputs.new_release == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add .github/optiscaler-version.txt
+          git commit -m "chore: track OptiScaler upstream release ${{ steps.upstream.outputs.latest_tag }}"
+
+          # Push via authenticated remote URL.
+          git remote set-url origin \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}"
+          git push origin HEAD:main
+
+      # ── 7. Check for an already-open issue for this upstream version ─────
+      #       Prevents duplicate issues if the workflow runs multiple times
+      #       before a maintainer closes the previous one.
+      - name: Check for duplicate open issue
+        if: steps.compare.outputs.new_release == 'true'
+        id: dedup
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          LATEST="${{ steps.upstream.outputs.latest_tag }}"
+
+          # Search open issues in this repo with the exact tag in the title.
+          COUNT=$(gh issue list \
+            --repo "${{ github.repository }}" \
+            --label "optiscaler-update" \
+            --state open \
+            --search "OptiScaler ${LATEST} in:title" \
+            --json number \
+            --jq 'length')
+
+          if [[ "$COUNT" -gt 0 ]]; then
+            echo "skip_issue=true"  >> "$GITHUB_OUTPUT"
+            echo "Issue for ${LATEST} already exists — skipping creation."
+          else
+            echo "skip_issue=false" >> "$GITHUB_OUTPUT"
+            echo "No existing issue found for ${LATEST} — will create one."
+          fi
+
+      # ── 8. Ensure the label exists (idempotent) ──────────────────────────
+      - name: Ensure optiscaler-update label exists
+        if: >
+          steps.compare.outputs.new_release == 'true' &&
+          steps.dedup.outputs.skip_issue == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # Create the label; if it already exists the API returns 422 — ignore that.
+          gh label create "optiscaler-update" \
+            --repo "${{ github.repository }}" \
+            --description "Upstream OptiScaler release notification" \
+            --color "0075ca" \
+            2>/dev/null || true
+
+      # ── 9. Open a notification issue ────────────────────────────────────
+      - name: Open upstream-release notification issue
+        if: >
+          steps.compare.outputs.new_release == 'true' &&
+          steps.dedup.outputs.skip_issue == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          LATEST="${{ steps.upstream.outputs.latest_tag }}"
+          RELEASE_NAME="${{ steps.upstream.outputs.release_name }}"
+          RELEASE_URL="${{ steps.upstream.outputs.release_url }}"
+          PUBLISHED_AT="${{ steps.upstream.outputs.published_at }}"
+          ASSETS="${{ steps.upstream.outputs.assets }}"
+          BODY="${{ steps.upstream.outputs.body }}"
+          PREV="${{ steps.tracked.outputs.known_tag }}"
+
+          # Build a well-structured issue body using a heredoc.
+          ISSUE_BODY=$(cat <<ISSUE_BODY_EOF
+          ## Upstream OptiScaler release detected
+
+          A new [OptiScaler](https://github.com/cdozdil/OptiScaler) release has been
+          published. Please review whether OptiScaler-GUI needs any changes to remain
+          compatible.
+
+          | Field | Value |
+          |---|---|
+          | **Previous tracked version** | \`${PREV}\` |
+          | **New version** | \`${LATEST}\` |
+          | **Release name** | ${RELEASE_NAME} |
+          | **Published** | ${PUBLISHED_AT} |
+          | **Release page** | [${RELEASE_URL}](${RELEASE_URL}) |
+
+          ### Release assets
+
+          ${ASSETS}
+
+          ### Upstream release notes
+
+          <details>
+          <summary>Click to expand</summary>
+
+          ${BODY}
+
+          </details>
+
+          ---
+
+          ### Suggested review checklist
+
+          - [ ] Verify \`OptiScalerConfig.GITHUB_API_URL\` in \`src/optiscaler/manager.py\` still points to the correct endpoint.
+          - [ ] Check that the expected archive asset name/format hasn't changed (the manager downloads a \`.7z\` or \`.zip\` asset).
+          - [ ] Review any new or renamed DLL files listed in the assets above against \`ADDITIONAL_FILES\` and \`PROXY_FILENAMES\` in \`manager.py\`.
+          - [ ] Check the upstream release notes for breaking API or config format changes.
+          - [ ] Update \`CHANGELOG.md\` and bump \`src/__version__.py\` if OptiScaler-GUI changes are required.
+
+          _This issue was opened automatically by the
+          [check-optiscaler-release](${{ github.server_url }}/${{ github.repository }}/actions/workflows/check-optiscaler-release.yml)
+          workflow. Close it once reviewed, whether or not changes are needed._
+          ISSUE_BODY_EOF
+          )
+
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "OptiScaler ${LATEST} released — review for GUI compatibility" \
+            --body "$ISSUE_BODY" \
+            --label "optiscaler-update"
+
+          echo "Issue created for OptiScaler ${LATEST}."

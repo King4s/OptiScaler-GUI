@@ -6,15 +6,12 @@ import configparser
 import re
 import threading
 import subprocess
-import requests
-import zipfile
+import concurrent.futures
 from datetime import datetime
 from pathlib import Path
 from utils.debug import debug_log
 from utils.config import config
 from utils.performance import timed
-import concurrent.futures
-import os
 from utils.archive_extractor import archive_extractor
 
 # Configuration constants - moved to top for easier maintenance
@@ -1164,16 +1161,17 @@ ToggleOverlay=VK_INSERT
     def run_dynamic_setup(self, extracted_path, game_path, selected_filename, gpu_type, use_dlss, dlss_source_path=None, overwrite=False):
         """
         Automates the OptiScaler setup steps dynamically with enhanced error handling
-        
+
         Args:
             extracted_path: path to extracted OptiScaler files
             game_path: game folder
             selected_filename: DLL/ASI filename to use (e.g. dxgi.dll)
             gpu_type: 'nvidia', 'amd', 'intel', or 'unknown'
-            use_dlss: True/False (whether to copy nvngx_dlss.dll)
-            dlss_source_path: path to nvngx_dlss.dll (if needed)
+            use_dlss: True if user selected "Yes" to DLSS Inputs, False for "No".
+                      v0.7.9+: "Yes" requires no extra file; "No" sets Dxgi=false in OptiScaler.ini.
+            dlss_source_path: unused since v0.7.9 (nvngx.dll is no longer created by the installer)
             overwrite: whether to overwrite existing target file
-            
+
         Returns:
             tuple: (success: bool, message: str)
         """
@@ -1207,20 +1205,24 @@ ToggleOverlay=VK_INSERT
             shutil.copy2(optiscaler_dll, dest_file)
             debug_log(f"Copied OptiScaler.dll to {selected_filename}")
 
-            # 5. DLSS handling (for AMD/Intel and if requested)
-            nvngx_target = game_path / 'nvngx.dll'
-            if use_dlss and gpu_type in ('amd', 'intel'):
-                if not dlss_source_path or not Path(dlss_source_path).exists():
-                    return False, 'nvngx_dlss.dll not found for DLSS spoofing.'
-                
-                temp_copy = game_path / 'nvngx_dlss_copy.dll'
-                shutil.copy2(dlss_source_path, temp_copy)
-                
-                if nvngx_target.exists():
-                    nvngx_target.unlink()
-                    
-                temp_copy.rename(nvngx_target)
-                debug_log("DLSS spoofing configured")
+            # 5. DLSS handling (v0.7.9+)
+            # "Yes" (use_dlss=True)  → OptiScaler handles DLSS internally; no extra file needed.
+            # "No"  (use_dlss=False) → Disable DXGI spoofing by writing Dxgi=false to the INI
+            #                          (AMD/Intel only; NVIDIA doesn't use this spoofing path).
+            if not use_dlss and gpu_type in ('amd', 'intel'):
+                ini_path = game_path / 'OptiScaler.ini'
+                try:
+                    parser = configparser.ConfigParser(strict=False)
+                    if ini_path.exists():
+                        parser.read(ini_path, encoding='utf-8')
+                    if not parser.has_section('Spoofing'):
+                        parser.add_section('Spoofing')
+                    parser.set('Spoofing', 'Dxgi', 'false')
+                    with open(ini_path, 'w', encoding='utf-8') as f:
+                        parser.write(f)
+                    debug_log("Set Dxgi=false in OptiScaler.ini (DLSS Inputs disabled)")
+                except Exception as e:
+                    debug_log(f"Warning: could not write Dxgi=false to OptiScaler.ini: {e}")
 
             # 6. Create enhanced uninstaller
             self._create_uninstaller_batch(game_path, selected_filename, use_dlss, gpu_type)
@@ -1250,12 +1252,11 @@ ToggleOverlay=VK_INSERT
                 f.write('echo Removing OptiScaler...\n')
                 f.write('echo.\n')
                 
-                # Remove DLSS spoof if used
-                if use_dlss and gpu_type in ('amd', 'intel'):
-                    f.write('if exist nvngx.dll (\n')
-                    f.write('    del nvngx.dll\n')
-                    f.write('    echo Removed DLSS spoofing file\n')
-                    f.write(')\n')
+                # Remove nvngx.dll if present (legacy cleanup; v0.7.9+ no longer creates this file)
+                f.write('if exist nvngx.dll (\n')
+                f.write('    del nvngx.dll\n')
+                f.write('    echo Removed nvngx.dll\n')
+                f.write(')\n')
                 
                 # Remove OptiScaler files
                 optiscaler_files = [

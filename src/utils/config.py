@@ -2,31 +2,40 @@
 Configuration management for OptiScaler-GUI
 """
 import os
+import sys
 from pathlib import Path
 import json
 
 class Config:
     """Configuration manager for OptiScaler-GUI"""
-    
+
     def __init__(self):
-        # Get the root directory of the project
-        self.root_dir = Path(__file__).parent.parent.parent.absolute()
-        
-        # Cache directories
+        # When running as a PyInstaller bundle _MEIPASS holds bundled read-only
+        # files (assets, translations …) while the exe's own directory is used
+        # for writable data (cache, config).
+        frozen = getattr(sys, 'frozen', False)
+        if frozen:
+            # Writable data lives next to the .exe
+            self.root_dir = Path(sys.executable).parent.absolute()
+            # Read-only assets are inside _internal/ (_MEIPASS)
+            self._bundle_dir = Path(sys._MEIPASS).absolute()
+        else:
+            self.root_dir = Path(__file__).parent.parent.parent.absolute()
+            self._bundle_dir = self.root_dir
+
+        # Cache directories (writable – always relative to root_dir / exe dir)
         self.cache_dir = self.root_dir / "cache"
         self.game_cache_dir = self.cache_dir / "game_images"
         self.optiscaler_downloads_dir = self.cache_dir / "optiscaler_downloads"
-        
-        # Assets directories
-        self.assets_dir = self.root_dir / "assets"
+
+        # Assets directories (read-only – from bundle dir when frozen)
+        self.assets_dir = self._bundle_dir / "assets"
         self.icons_dir = self.assets_dir / "icons"
-        
-        # Create directories if they don't exist
+
+        # Create writable directories if they don't exist
         self.cache_dir.mkdir(exist_ok=True)
         self.game_cache_dir.mkdir(exist_ok=True)
         self.optiscaler_downloads_dir.mkdir(exist_ok=True)
-        self.assets_dir.mkdir(exist_ok=True)
-        self.icons_dir.mkdir(exist_ok=True)
         
         # Image settings
         self.max_image_size = (300, 450)  # Standard game cover size
