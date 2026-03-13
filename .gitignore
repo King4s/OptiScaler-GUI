@@ -31,6 +31,7 @@ MANIFEST
 # PyInstaller
 *.manifest
 *.spec
+!build_executable.spec
 
 # Unit test / coverage reports
 htmlcov/
