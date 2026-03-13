@@ -2,10 +2,20 @@
 Version information for OptiScaler-GUI
 """
 
-__version__ = "0.3.6"
-__version_info__ = (0, 3, 6)
+__version__ = "0.4.0"
+__version_info__ = (0, 4, 0)
 
 # Version history:
+# 0.4.0 - Multi-platform detection overhaul & image fix
+#       - Fixed structural UI bug: game info/buttons were unreachable dead code
+#       - Fixed frozen exe asset paths (sys._MEIPASS for read-only assets)
+#       - Replaced dead Steam GetAppList API with SteamSpy background download
+#       - Xbox Game Pass detection via packaging files (.xsp/.smd/.xct/.xvi)
+#       - Epic game DisplayName reading from .egstore manifests
+#       - CamelCase folder name splitting for Epic/Xbox name lookup
+#       - Name suffix stripping + difflib fuzzy matching for Steam AppID lookup
+#       - Steam Store API fallback for CDN 404s (demos & content-hashed URLs)
+#       - Thumbnail retry pass after SteamSpy background download completes
 # 0.3.6 - Library discovery improvements, UI perf & release prep
 #       - PowerShell + fallback discovery, caching/TTL
 #       - Improved UI performance (background image loading)
