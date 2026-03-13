@@ -77,6 +77,7 @@ logs/
 # Development and debug files
 debug_*.py
 test_*.py
+!tests/test_*.py
 fix_*.py
 fix_*.bat
 *_backup.py
