@@ -142,6 +142,65 @@ class GameScanner:
                 debug_log(f"Found Xbox path: {path}")
         return found_paths
 
+    def _find_heroic_paths(self):
+        """Find Heroic Launcher metadata directories."""
+        candidates = [
+            Path.home() / "AppData" / "Roaming" / "heroic",
+            Path.home() / "AppData" / "Local" / "heroic",
+        ]
+        found_paths = []
+        for base in candidates:
+            if not base.exists() or not base.is_dir():
+                continue
+            for rel in ["GamesConfig", "legendaryConfig/legendary", "gog_store"]:
+                p = base / rel
+                if p.exists() and p.is_dir():
+                    found_paths.append(str(p))
+                    debug_log(f"Found Heroic path: {p}")
+        return found_paths
+
+    def _scan_heroic_games(self):
+        """Scan Heroic Launcher JSON configs for installed Epic/GOG games."""
+        games = []
+        try:
+            for root in self._find_heroic_paths():
+                root_path = Path(root)
+                for cfg in root_path.glob("*.json"):
+                    try:
+                        with open(cfg, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                        if not isinstance(data, dict):
+                            continue
+                        install = data.get("install") or {}
+                        install_path = install.get("install_path") or data.get("install_path")
+                        if not install_path:
+                            continue
+                        game_name = data.get("title") or data.get("name") or Path(install_path).name
+                        if not game_name:
+                            continue
+                        p = Path(install_path)
+                        if not p.exists() or not self._is_game_folder(p):
+                            continue
+                        image_path = self.fetch_game_image(game_name)
+                        optiscaler_installed = self._detect_optiscaler(p)
+                        safety = self.analyze_game_safety(Game(game_name, str(p)))
+                        games.append(Game(
+                            name=game_name,
+                            path=str(p),
+                            image_path=image_path,
+                            optiscaler_installed=optiscaler_installed,
+                            engine=safety["engine"],
+                            anti_cheat_list=safety["anti_cheat_list"],
+                            community_verified=safety["community_verified"],
+                            engine_supported=safety.get("engine_supported", True),
+                            platform="Heroic"
+                        ))
+                    except Exception:
+                        continue
+        except Exception as e:
+            debug_log(f"Heroic scan failed: {e}")
+        return games
+
     def _detect_optiscaler(self, game_path):
         """Detect if OptiScaler is installed in a game directory"""
         try:
@@ -507,6 +566,7 @@ class GameScanner:
         all_games.extend(self._scan_epic_games())
         all_games.extend(self._scan_gog_games())
         all_games.extend(self._scan_xbox_games())
+        all_games.extend(self._scan_heroic_games())
         # Add a fast discovery step on Windows that uses PowerShell to find library roots
         try:
             start_lib = time.time()

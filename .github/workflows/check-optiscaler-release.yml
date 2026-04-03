@@ -56,7 +56,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          API_URL="https://api.github.com/repos/cdozdil/OptiScaler/releases/latest"
+          API_URL="https://api.github.com/repos/cdozdil/OmniScaler/releases/latest"
 
           echo "Querying: $API_URL"
 
