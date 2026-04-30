@@ -142,7 +142,6 @@ block_cipher = None
 # Collect all data files
 datas = [
     ('assets', 'assets'),
-    ('cache', 'cache'),
     ('src', 'src'),
     ('src/translations', 'src/translations'),
 ]
