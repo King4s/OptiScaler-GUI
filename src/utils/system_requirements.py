@@ -66,12 +66,16 @@ class SystemRequirementsChecker:
     def _check_7zip(self):
         """Check for system 7-Zip installation"""
         seven_zip_paths = [
+            Path(sys.executable).parent / '7z.exe' if getattr(sys, 'frozen', False) else None,
+            Path(__file__).parents[2] / '7z.exe',
             r'C:\Program Files\7-Zip\7z.exe',
             r'C:\Program Files (x86)\7-Zip\7z.exe',
             '7z'  # Try system PATH
         ]
         
         for path in seven_zip_paths:
+            if path is None:
+                continue
             if shutil.which(path) or (Path(path).exists() if os.path.isabs(path) else False):
                 self.requirements["7zip"]["status"] = True
                 self.requirements["7zip"]["message"] = f"7-Zip found at {path} ✅"

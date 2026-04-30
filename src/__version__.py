@@ -2,10 +2,15 @@
 Version information for OptiScaler-GUI
 """
 
-__version__ = "0.4.2"
-__version_info__ = (0, 4, 2)
+__version__ = "0.4.3"
+__version_info__ = (0, 4, 3)
 
 # Version history:
+# 0.4.3 - Release hardening and install safety
+#       - SHA256 verification for GitHub assets when digest metadata is available
+#       - Runtime 7z.exe self-check and bundled-release verification
+#       - Manifest-based update target reuse, rollback, and config backup
+#       - Stronger anti-cheat confirmation wording
 # 0.4.2 - OptiScaler v0.9.1 compatibility update
 #       - Copy v0.9+ bundled runtime files and directories
 #       - Remove stale v0.7/0.8 files during overwrite installs

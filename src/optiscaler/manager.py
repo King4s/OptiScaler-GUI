@@ -4,6 +4,7 @@ import os
 import shutil
 import configparser
 import json
+import hashlib
 import re
 import threading
 import subprocess
@@ -198,11 +199,11 @@ class OptiScalerManager:
 
             # Validate existing file
             if archive_filename.exists():
-                if self._validate_archive(archive_filename, progress_callback):
+                if self._validate_archive(archive_filename, progress_callback) and self._verify_asset_digest(archive_filename, archive_asset):
                     debug_log(f"Valid archive exists, skipping download: {archive_filename}")
                     return str(archive_filename)
                 else:
-                    debug_log("Existing archive is invalid, removing and re-downloading")
+                    debug_log("Existing archive is invalid or digest mismatched, removing and re-downloading")
                     archive_filename.unlink(missing_ok=True)
 
             # Download with progress tracking
@@ -214,6 +215,32 @@ class OptiScalerManager:
         except Exception as e:
             debug_log(f"Unexpected error in _download_latest_release: {e}")
             return None
+
+    def _verify_asset_digest(self, filepath, asset_info):
+        """Verify GitHub release asset digest when provided."""
+        digest = (asset_info or {}).get("digest")
+        if not digest:
+            return True
+
+        algorithm, _, expected = digest.partition(":")
+        if algorithm.lower() != "sha256" or not expected:
+            debug_log(f"Unsupported asset digest format, skipping verification: {digest}")
+            return True
+
+        try:
+            sha256 = hashlib.sha256()
+            with open(filepath, "rb") as f:
+                for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                    sha256.update(chunk)
+            actual = sha256.hexdigest()
+            if actual.lower() != expected.lower():
+                debug_log(f"Asset digest mismatch for {filepath}: expected {expected}, got {actual}")
+                return False
+            debug_log(f"Verified SHA256 digest for {filepath}")
+            return True
+        except Exception as e:
+            debug_log(f"Failed to verify digest for {filepath}: {e}")
+            return False
     
     def _validate_archive(self, archive_path, progress_callback=None):
         """Validate archive integrity using robust validation methods"""
@@ -263,6 +290,10 @@ class OptiScalerManager:
             # Verify download completed
             if total_size > 0 and filepath.stat().st_size != total_size:
                 debug_log(f"Download size mismatch: expected {total_size}, got {filepath.stat().st_size}")
+                filepath.unlink(missing_ok=True)
+                return None
+
+            if not self._verify_asset_digest(filepath, asset_info):
                 filepath.unlink(missing_ok=True)
                 return None
             
@@ -395,6 +426,9 @@ class OptiScalerManager:
         game_path = Path(game_path)
         debug_log(f"Starting OptiScaler installation: {game_path}")
         debug_log(f"Target filename: {target_filename}")
+        operation_files = []
+        operation_dirs = []
+        backup_files = []
         
         try:
             if progress_callback:
@@ -435,6 +469,9 @@ class OptiScalerManager:
 
             if overwrite:
                 self._remove_stale_legacy_files(dest_dir, target_filename)
+                backup = self._backup_existing_config(dest_dir)
+                if backup:
+                    backup_files.append(backup)
 
             # Find and copy main OptiScaler DLL
             optiscaler_dll_path = self._find_optiscaler_dll(extracted_path)
@@ -445,16 +482,21 @@ class OptiScalerManager:
             # Install main DLL
             shutil.copy2(optiscaler_dll_path, target_path)
             copied_files = [target_filename]
+            operation_files.append(target_filename)
             debug_log(f"Copied OptiScaler.dll as {target_filename}")
 
             payload = self._copy_release_payload(extracted_path, dest_dir, progress_callback)
             copied_files.extend(payload["files"])
+            operation_files.extend(payload["files"])
+            operation_dirs.extend(payload["directories"])
 
             if progress_callback:
                 progress_callback("Creating configuration...")
 
             # Create uninstaller script
             self.create_uninstaller_script(str(dest_dir), target_filename, copied_files)
+            copied_files.append("Remove OptiScaler.bat")
+            operation_files.append("Remove OptiScaler.bat")
             
             # Create default configuration if needed
             config_path = dest_dir / 'OptiScaler.ini'
@@ -462,6 +504,7 @@ class OptiScalerManager:
                 gpu_type = self.detect_gpu_type()
                 self.create_default_config(str(dest_dir), gpu_type)
                 copied_files.append("OptiScaler.ini")
+                operation_files.append("OptiScaler.ini")
                 debug_log("Created default OptiScaler configuration")
 
             self._write_install_manifest(
@@ -478,6 +521,7 @@ class OptiScalerManager:
 
         except Exception as e:
             debug_log(f"Installation failed with exception: {e}")
+            self._rollback_installation(game_path, operation_files, operation_dirs, backup_files)
             return False, f"Installation failed: {e}"
     
     def _determine_install_directory(self, game_path):
@@ -553,6 +597,51 @@ class OptiScalerManager:
                     debug_log(f"Removed stale legacy OptiScaler file: {filename}")
                 except Exception as e:
                     debug_log(f"Failed to remove stale file {filename}: {e}")
+
+    def _backup_existing_config(self, dest_dir):
+        """Create a timestamped backup before overwriting an existing OptiScaler.ini."""
+        config_path = Path(dest_dir) / "OptiScaler.ini"
+        if not config_path.exists():
+            return None
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup_path = config_path.with_name(f"OptiScaler.ini.{timestamp}.backup")
+        try:
+            shutil.copy2(config_path, backup_path)
+            debug_log(f"Backed up existing OptiScaler.ini to {backup_path}")
+            return str(backup_path)
+        except Exception as e:
+            debug_log(f"Failed to back up existing OptiScaler.ini: {e}")
+            return None
+
+    def _rollback_installation(self, game_path, files, directories, backup_files=None):
+        """Remove files copied during a failed install attempt."""
+        install_dir = self._determine_install_directory(game_path)
+        root = install_dir.resolve()
+        backup_files = set(backup_files or [])
+
+        for rel_file in sorted(set(files), key=len, reverse=True):
+            file_path = install_dir / rel_file
+            try:
+                resolved = file_path.resolve()
+                if str(file_path) in backup_files or not str(resolved).lower().startswith(str(root).lower()):
+                    continue
+                if file_path.exists() and file_path.is_file():
+                    file_path.unlink()
+                    debug_log(f"Rolled back install file: {rel_file}")
+            except Exception as e:
+                debug_log(f"Failed rollback for file {rel_file}: {e}")
+
+        for rel_dir in sorted(set(directories), key=len, reverse=True):
+            dir_path = install_dir / rel_dir
+            try:
+                resolved = dir_path.resolve()
+                if not str(resolved).lower().startswith(str(root).lower()):
+                    continue
+                if dir_path.exists() and dir_path.is_dir():
+                    shutil.rmtree(dir_path)
+                    debug_log(f"Rolled back install directory: {rel_dir}")
+            except Exception as e:
+                debug_log(f"Failed rollback for directory {rel_dir}: {e}")
 
     def _should_copy_payload_file(self, relative_path):
         """Return False for release marker files and files handled separately."""
@@ -648,6 +737,18 @@ class OptiScalerManager:
         except Exception as e:
             debug_log(f"Failed to write install manifest {manifest_path}: {e}")
             return False
+
+    def get_installed_target_filename(self, game_path, default="nvngx.dll"):
+        """Return the proxy filename used by an existing GUI-managed install."""
+        install_dir = self._determine_install_directory(game_path)
+        manifest = self._read_install_manifest(install_dir)
+        if manifest and manifest.get("target_filename"):
+            return manifest["target_filename"]
+
+        for filename in OptiScalerConfig.PROXY_FILENAMES:
+            if (install_dir / filename).exists():
+                return filename
+        return default
 
     @timed("copy_additional_files")
     def _copy_additional_files(self, extracted_path, dest_dir, progress_callback=None):
@@ -1417,6 +1518,7 @@ ToggleOverlay=VK_INSERT
 
             if overwrite:
                 self._remove_stale_legacy_files(game_path, selected_filename)
+                self._backup_existing_config(game_path)
 
             # 4. Copy OptiScaler.dll to selected filename
             shutil.copy2(optiscaler_dll, dest_file)
@@ -1450,6 +1552,7 @@ ToggleOverlay=VK_INSERT
 
             # 6. Create enhanced uninstaller
             self.create_uninstaller_script(str(game_path), selected_filename, copied_files)
+            copied_files.append("Remove OptiScaler.bat")
             self._write_install_manifest(
                 game_path,
                 target_filename=selected_filename,

@@ -70,6 +70,7 @@
       "potential_issues": "Potentielle problemer opdaget",
       "continue_installation": "Fortsæt installation?",
       "continue": "Fortsæt",
+      "continue_at_own_risk": "Fortsæt på eget ansvar",
       "optiscaler_installed": "OptiScaler installeret med succes",
       "failed_to_install": "Kunne ikke installere OptiScaler",
       "no_updates": "Ingen Opdateringer",

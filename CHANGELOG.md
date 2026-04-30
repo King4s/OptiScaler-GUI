@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### v0.4.3 - 2026-04-30
+
+#### Improvements
+- Added SHA256 verification for GitHub release assets when the API provides digest metadata.
+- Added runtime/build checks so current OptiScaler `.7z` extraction requires real `7z.exe`.
+- Updates now reuse the target proxy filename recorded in the install manifest instead of defaulting to `nvngx.dll`.
+- Existing `OptiScaler.ini` files are backed up with a timestamp before overwrite updates.
+- Failed installs roll back files copied during the failed operation.
+- Anti-cheat installs now require an explicit "continue at own risk" confirmation.
+- Added end-to-end install/update/uninstall tests for manifest, target reuse, backup, and rollback.
+
 ### v0.4.2 - 2026-04-30
 
 #### Compatibility

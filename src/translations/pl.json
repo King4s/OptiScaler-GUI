@@ -66,6 +66,7 @@
       "potential_issues": "Wykryto potencjalne problemy",
       "continue_installation": "Kontynuować instalację?",
       "continue": "Kontynuuj",
+      "continue_at_own_risk": "Kontynuuj na własne ryzyko",
       "optiscaler_installed": "OptiScaler zainstalowany pomyślnie",
       "failed_to_install": "Nie udało się zainstalować OptiScaler",
       "no_updates": "Brak Aktualizacji",

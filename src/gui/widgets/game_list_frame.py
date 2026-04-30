@@ -484,9 +484,9 @@ class GameListFrame(ctk.CTkScrollableFrame):
                 message=t('ui.anti_cheat_warning_message', 'Anti-cheat detected: {ac}').format(ac=ac_text),
                 icon='warning',
                 option_1=t('ui.cancel'),
-                option_2=t('ui.continue')
+                option_2=t('ui.continue_at_own_risk', 'Continue at own risk')
             )
-            if res.get() == t('ui.cancel'):
+            if res.get() != t('ui.continue_at_own_risk', 'Continue at own risk'):
                 return
 
         # Warn about unknown or unsupported engine if not community verified

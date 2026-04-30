@@ -8,7 +8,7 @@
 
 | Feature             | Status     |
 |---------------------|------------|
-| 📦 Portable Version    | ✅ v0.4.2   |
+| 📦 Portable Version    | ✅ v0.4.3   |
 | 🎮 Steam Auto-Detection | ✅ Full    |
 | 🎮 Epic Games Auto-Detection | ✅ Full    |
 | 🎮 GOG Galaxy Auto-Detection | ✅ Full    |
@@ -65,21 +65,22 @@
 
 **Think of it as**: A desktop installer/manager, like how Steam manages game installations.
 
-**Version: 0.4.2** | **Status: Release** | **🚀 Release: v0.4.2**
+**Version: 0.4.3** | **Status: Release** | **🚀 Release: v0.4.3**
 
-## 🆕 What's New in v0.4.2
+## 🆕 What's New in v0.4.3
 
-### 🔄 **OptiScaler v0.9.1 Compatibility**
-- **🎯 Current OptiScaler Support**: Updated for the v0.9.1 payload layout.
-- **📋 Complete Payload Copying**: Installs new bundled files such as `fakenvapi.dll`, `libxell.dll`, `libxess_fg.dll`, DLSSG-to-FSR3, and split FidelityFX DLLs.
-- **📁 Directory Support**: Copies required folders such as `D3D12_Optiscaler` and `Licenses`.
-- **🧹 Safer Updates**: Removes stale legacy files like old `nvapi64.dll`/`nvngx.dll` during overwrite installs.
-- **📦 Portable Package**: Bundles `7z.exe`, which is required for current BCJ2-compressed OptiScaler `.7z` archives.
+### 🛡️ **Release and Install Hardening**
+- **📦 7z Guaranteed**: Portable releases include `7z.exe`, and release CI verifies it is present.
+- **🔐 Download Verification**: GitHub asset SHA256 digests are verified when available.
+- **🧾 Install Manifest**: Installs record copied files, folders, proxy filename, and OptiScaler version.
+- **↩️ Safer Failure Handling**: Failed installs roll back copied files.
+- **💾 Config Backup**: Existing `OptiScaler.ini` files are timestamp-backed-up before overwrite updates.
+- **⚠️ Anti-Cheat Confirmation**: Anti-cheat installs require explicit "continue at own risk" confirmation.
 
 ### 🚀 **Download Options**
 
 #### 🎯 **For End Users (Recommended)**
-**[📥 Download Portable Version v0.4.2](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.4.2)**
+**[📥 Download Portable Version v0.4.3](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.4.3)**
 
 | Package Type | Size | Checksum | Notes |
 |-------------|------|----------|-------|
@@ -151,12 +152,12 @@ For implementation details, see [Technical Overview](docs/TECHNICAL_OVERVIEW.md)
 
 ### 🎯 **Option 1: Portable Version (Recommended for Users)**
 
-1. **[📥 Download the Portable Version](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.4.2)**
+1. **[📥 Download the Portable Version](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.4.3)**
 2. **Extract** the ZIP file to your desired location
 3. **Run** `OptiScaler-GUI.exe` inside the extracted folder
 4. **Done!** No installation or Python setup required
 
-⚠️ **Note**: This is a stable release (0.4.2) - test thoroughly before using on important games!
+⚠️ **Note**: This is a stable release (0.4.3) - test thoroughly before using on important games!
 
 ### 🛠️ **Option 2: Development Setup**
 
@@ -256,7 +257,7 @@ python build.py                     # Creates portable .exe in dist/
 
 ## 📦 Release Information
 
-**Current Version**: 0.4.2 (Release)
+**Current Version**: 0.4.3 (Release)
 - **Portable Version Available**: Self-contained executable with all dependencies
 - **Size**: ~14 MB portable ZIP (includes Python runtime and bundled `7z.exe`)
 - **Compatibility**: Windows 10/11, no Python installation required
@@ -265,7 +266,8 @@ python build.py                     # Creates portable .exe in dist/
 
 | GUI Version | Compatible OptiScaler Versions | Status |
 |-------------|--------------------------------|--------|
-| **v0.4.2** | v0.7.0 - v0.9.1 | ✅ Current |
+| **v0.4.3** | v0.7.0 - v0.9.1 | ✅ Current |
+| v0.4.2 | v0.7.0 - v0.9.1 | 🟡 Legacy |
 | v0.3.6 | v0.7.0 - v0.7.9 | 🟡 Legacy |
 | v0.3.0 | v0.7.0 - v0.7.7-pre9 | 🟡 Legacy |
 | v0.2.0 | v0.6.0 - v0.7.0 | 🟡 Legacy |
@@ -318,7 +320,7 @@ For full release notes and downloads, visit: [GitHub Releases](https://github.co
 
 ## 🛣️ **Project Status & Roadmap**
 
-### **Current Status (v0.4.2)**
+### **Current Status (v0.4.3)**
 - ✅ **Stable Installation**: Reliable OptiScaler installation for most games
 - ✅ **Portable Distribution**: Self-contained Windows package with bundled `7z.exe`
 - ✅ **Multi-Launcher Detection**: Steam, Epic Games, GOG, Xbox Game Pass, and manual paths
@@ -389,7 +391,7 @@ For full release notes and downloads, visit: [GitHub Releases](https://github.co
 - 📝 **Open Source** - All code is public and auditable
 - 🛡️ **No Data Collection** - GUI works completely offline
 - ✅ **Official Sources** - Downloads OptiScaler from official GitHub only
-- 🔍 **Checksums** - Verify download integrity (coming soon)
+- 🔍 **Checksums** - Verifies GitHub SHA256 asset digests when available
 
 ---
 

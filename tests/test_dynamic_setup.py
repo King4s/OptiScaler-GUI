@@ -1,10 +1,12 @@
 import sys
 from pathlib import Path
 import json
+import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 
 from optiscaler.manager import OptiScalerManager
+from utils.update_manager import OptiScalerUpdateManager
 
 
 def test_dynamic_setup_nvngx_handling(test_env_path):
@@ -100,3 +102,94 @@ def test_dynamic_setup_copies_v09_payload(test_env_path):
     assert not (game_dir / 'fakenvapi.dll').exists()
     assert not (game_dir / 'D3D12_Optiscaler').exists()
     assert not manifest_path.exists()
+
+
+def test_install_update_uninstall_end_to_end_preserves_target_and_backs_up_config(test_env_path):
+    test_env = test_env_path
+    archive_path = test_env / 'fixtures' / 'archives' / 'OptiScaler_e2e.zip'
+    archive_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with zipfile.ZipFile(archive_path, 'w') as zf:
+        zf.writestr('OptiScaler.dll', b'OPTISCALER')
+        zf.writestr('OptiScaler.ini', '[OptiScaler]\nFromArchive=true\n')
+        zf.writestr('fakenvapi.dll', b'FAKE')
+        zf.writestr('D3D12_Optiscaler/D3D12Core.dll', b'D3D12')
+
+    game_dir = test_env / 'mock_games' / 'E2EGame'
+    if game_dir.exists():
+        import shutil
+        shutil.rmtree(game_dir)
+    game_dir.mkdir(parents=True)
+
+    man = OptiScalerManager(download_dir=str(test_env / 'cache'))
+    man._last_release_info = {'tag_name': 'v-test', 'html_url': 'https://example.invalid/release'}
+    man._download_latest_release = lambda progress_callback=None: str(archive_path)
+
+    success, message = man.install_optiscaler(str(game_dir), target_filename='dxgi.dll', overwrite=True)
+    assert success, message
+    assert (game_dir / 'dxgi.dll').exists()
+    assert (game_dir / 'fakenvapi.dll').exists()
+
+    manifest = json.loads((game_dir / '.optiscaler-gui-install.json').read_text(encoding='utf-8'))
+    assert manifest['target_filename'] == 'dxgi.dll'
+    assert manifest['optiscaler_version'] == 'v-test'
+
+    update_manager = OptiScalerUpdateManager()
+    update_manager.cache_dir = test_env / 'cache'
+    update_manager.version_cache_file = update_manager.cache_dir / 'optiscaler_version_cache.json'
+    update_manager.save_version_cache({'latest_known_version': 'v-test-2'})
+
+    original_update_manager = update_manager
+    # Patch the manager used inside this update manager instance.
+    import utils.update_manager as update_module
+    original_manager_cls = update_module.OptiScalerManager
+    update_module.OptiScalerManager = lambda: man
+    try:
+        (game_dir / 'OptiScaler.ini').write_text('[OptiScaler]\nUserValue=true\n', encoding='utf-8')
+        success, message = original_update_manager.update_optiscaler_for_game(str(game_dir))
+    finally:
+        update_module.OptiScalerManager = original_manager_cls
+
+    assert success, message
+    assert (game_dir / 'dxgi.dll').exists()
+    assert not (game_dir / 'nvngx.dll').exists()
+    assert list(game_dir.glob('OptiScaler.ini.*.backup'))
+
+    version_info = original_update_manager.get_installed_version_info(str(game_dir))
+    assert version_info['installed']
+    assert version_info['target_filename'] == 'dxgi.dll'
+
+    success, message = man.uninstall_optiscaler(str(game_dir))
+    assert success, message
+    assert not (game_dir / 'dxgi.dll').exists()
+    assert not (game_dir / 'fakenvapi.dll').exists()
+
+
+def test_install_rollback_removes_partial_payload_on_failure(test_env_path, monkeypatch):
+    test_env = test_env_path
+    archive_path = test_env / 'fixtures' / 'archives' / 'OptiScaler_rollback.zip'
+    archive_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with zipfile.ZipFile(archive_path, 'w') as zf:
+        zf.writestr('OptiScaler.dll', b'OPTISCALER')
+        zf.writestr('fakenvapi.dll', b'FAKE')
+
+    game_dir = test_env / 'mock_games' / 'RollbackGame'
+    if game_dir.exists():
+        import shutil
+        shutil.rmtree(game_dir)
+    game_dir.mkdir(parents=True)
+
+    man = OptiScalerManager(download_dir=str(test_env / 'cache'))
+    man._download_latest_release = lambda progress_callback=None: str(archive_path)
+
+    def fail_manifest(*args, **kwargs):
+        raise RuntimeError('manifest failure')
+
+    monkeypatch.setattr(man, '_write_install_manifest', fail_manifest)
+
+    success, message = man.install_optiscaler(str(game_dir), target_filename='dxgi.dll', overwrite=True)
+    assert not success
+    assert 'manifest failure' in message
+    assert not (game_dir / 'dxgi.dll').exists()
+    assert not (game_dir / 'fakenvapi.dll').exists()

@@ -182,11 +182,13 @@ class OptiScalerUpdateManager:
             
             if progress_callback:
                 progress_callback(t("status.updating_optiscaler"))
+
+            target_filename = manager.get_installed_target_filename(game_path, default="nvngx.dll")
             
             # Use the manager's update/reinstall functionality
             success, message = manager.install_optiscaler(
                 game_path, 
-                target_filename="nvngx.dll", 
+                target_filename=target_filename, 
                 overwrite=True,
                 progress_callback=progress_callback
             )
