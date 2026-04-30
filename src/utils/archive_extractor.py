@@ -247,6 +247,13 @@ class ArchiveExtractor:
                 error_msg = "Invalid or corrupted 7z file"
                 debug_log(error_msg)
                 return False, error_msg, None
+            if "UnsupportedCompressionMethodError" in type(e).__name__ or "BCJ2" in str(e):
+                error_msg = (
+                    "This 7z archive uses a compression method py7zr cannot extract. "
+                    "Install or bundle 7z.exe to extract current OptiScaler releases."
+                )
+                debug_log(error_msg)
+                return False, error_msg, None
             error_msg = f"Python py7zr extraction failed: {e}"
             debug_log(error_msg)
             return False, error_msg, None

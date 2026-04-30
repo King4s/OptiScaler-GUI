@@ -38,6 +38,22 @@ class OptiScalerConfig:
         # v0.7.9+ files
         "amd_fidelityfx_dx12_v2.dll",  # FidelityFX SDK 2.0.0
         "amd_fidelityfx_vk_v2.dll",    # FidelityFX SDK 2.0.0
+        # v0.9+ bundled runtime files
+        "fakenvapi.dll",
+        "fakenvapi.ini",
+        "dlssg_to_fsr3_amd_is_better.dll",
+        "libxell.dll",
+        "libxess_fg.dll",
+        "amd_fidelityfx_framegeneration_dx12.dll",
+        "amd_fidelityfx_upscaler_dx12.dll",
+        "setup_windows.bat",
+        "setup_linux.sh",
+    ]
+
+    ADDITIONAL_DIRECTORIES = [
+        "D3D12_Optiscaler",
+        "DlssOverrides",
+        "Licenses",
     ]
     
     PROXY_FILENAMES = [
@@ -59,7 +75,21 @@ class OptiScalerConfig:
         "amd_fidelityfx_vk.dll",
         "libxess.dll",
         "libxess_dx11.dll",
+        "fakenvapi.dll",
+        "dlssg_to_fsr3_amd_is_better.dll",
         "Remove OptiScaler.bat"
+    ]
+
+    SETUP_MARKER_PATTERNS = [
+        "!! EXTRACT ALL FILES TO GAME FOLDER !!*",
+        "!! README_EXTRACT ALL FILES TO GAME FOLDER !!*",
+    ]
+
+    STALE_LEGACY_FILES = [
+        "nvapi64.dll",
+        "nvngx.dll",
+        "amd_fidelityfx_dx12_v2.dll",
+        "amd_fidelityfx_vk_v2.dll",
     ]
 
 class OptiScalerManager:
@@ -91,6 +121,7 @@ class OptiScalerManager:
         
         self.download_dir.mkdir(parents=True, exist_ok=True)
         self._seven_zip_path = self._find_seven_zip()
+        self._last_extract_error = None
         
         debug_log(f"OptiScalerManager initialized with download_dir: {self.download_dir}")
     
@@ -134,13 +165,14 @@ class OptiScalerManager:
             # Find suitable archive asset
             archive_asset = None
             for asset in assets:
-                if any(asset["name"].endswith(ext) for ext in OptiScalerConfig.ARCHIVE_EXTENSIONS):
+                asset_name = asset.get("name", "")
+                if any(asset_name.lower().endswith(ext) for ext in OptiScalerConfig.ARCHIVE_EXTENSIONS):
                     archive_asset = asset
-                    debug_log(f"Selected asset: {asset['name']}")
+                    debug_log(f"Selected asset: {asset_name}")
                     break
 
             if not archive_asset:
-                debug_log(f"No suitable archive found. Available assets: {[a['name'] for a in assets]}")
+                debug_log(f"No suitable archive found. Available assets: {[a.get('name') for a in assets]}")
                 return None
 
             download_url = archive_asset["browser_download_url"]
@@ -260,6 +292,7 @@ class OptiScalerManager:
             debug_log(f"Extraction successful: {message}")
             return extracted_path
         else:
+            self._last_extract_error = message
             debug_log(f"Extraction failed: {message}")
             if progress_callback:
                 progress_callback(f"Extraction failed: {message}")
@@ -353,17 +386,14 @@ class OptiScalerManager:
             extracted_path = self._extract_release(zip_path, game_path=str(game_path), progress_callback=progress_callback)
             if not extracted_path:
                 debug_log("Extraction failed")
-                return False, "Extraction failed"
+                error_detail = f": {self._last_extract_error}" if self._last_extract_error else ""
+                return False, f"Extraction failed{error_detail}"
             debug_log(f"Extracted to: {extracted_path}")
 
             if progress_callback:
                 progress_callback("Installing files...")
 
-            # Remove setup marker file (like official setup does)
-            marker_file = Path(extracted_path) / "!! EXTRACT ALL FILES TO GAME FOLDER !!"
-            if marker_file.exists():
-                marker_file.unlink()
-                debug_log("Removed setup marker file")
+            self._remove_setup_markers(extracted_path)
 
             # Determine installation directory
             dest_dir = self._determine_install_directory(game_path)
@@ -377,6 +407,9 @@ class OptiScalerManager:
             elif target_path.exists():
                 target_path.unlink()
                 debug_log(f"Removed existing {target_filename}")
+
+            if overwrite:
+                self._remove_stale_legacy_files(dest_dir, target_filename)
 
             # Find and copy main OptiScaler DLL
             optiscaler_dll_path = self._find_optiscaler_dll(extracted_path)
@@ -435,6 +468,10 @@ class OptiScalerManager:
         """
         return OptiScalerConfig.ADDITIONAL_FILES.copy()
 
+    def get_additional_optiscaler_directories(self):
+        """Get OptiScaler directories that must be copied recursively."""
+        return OptiScalerConfig.ADDITIONAL_DIRECTORIES.copy()
+
     # list_available_target_filenames is defined later in this file with a richer list
 
     def _find_optiscaler_dll(self, extracted_path):
@@ -455,6 +492,36 @@ class OptiScalerManager:
         debug_log("OptiScaler.dll not found in extracted files")
         return None
 
+    def _remove_setup_markers(self, extracted_path):
+        """Remove informational extraction marker files from a release payload."""
+        extracted_path = Path(extracted_path)
+        for pattern in OptiScalerConfig.SETUP_MARKER_PATTERNS:
+            for marker_file in extracted_path.glob(pattern):
+                if marker_file.is_file():
+                    try:
+                        marker_file.unlink()
+                        debug_log(f"Removed setup marker file: {marker_file.name}")
+                    except Exception as e:
+                        debug_log(f"Failed to remove setup marker {marker_file}: {e}")
+
+    def _remove_stale_legacy_files(self, dest_dir, target_filename):
+        """
+        Remove files from older OptiScaler layouts before installing v0.9+ payloads.
+        The selected proxy target is preserved because it is handled separately.
+        """
+        dest_dir = Path(dest_dir)
+        target_filename_lower = target_filename.lower()
+        for filename in OptiScalerConfig.STALE_LEGACY_FILES:
+            if filename.lower() == target_filename_lower:
+                continue
+            stale_path = dest_dir / filename
+            if stale_path.exists():
+                try:
+                    stale_path.unlink()
+                    debug_log(f"Removed stale legacy OptiScaler file: {filename}")
+                except Exception as e:
+                    debug_log(f"Failed to remove stale file {filename}: {e}")
+
     @timed("copy_additional_files")
     def _copy_additional_files(self, extracted_path, dest_dir, progress_callback=None):
         """Copy additional OptiScaler files with improved error handling"""
@@ -463,6 +530,7 @@ class OptiScalerManager:
         copied_files = []
         
         additional_files = self.get_additional_optiscaler_files()
+        additional_dirs = self.get_additional_optiscaler_directories()
         
         # Build a list of files to copy with source/destination path
         copy_tasks = []
@@ -493,6 +561,26 @@ class OptiScalerManager:
                         progress_callback(f"Installing files... ({len(copied_files)}/{len(additional_files)})")
                 except Exception as e:
                     debug_log(f"Failed to copy {file}: {e}")
+
+        for dirname in additional_dirs:
+            src_dir = extracted_path / dirname
+            if not src_dir.exists():
+                found_dirs = [p for p in extracted_path.rglob(dirname) if p.is_dir()]
+                if found_dirs:
+                    src_dir = found_dirs[0]
+                else:
+                    debug_log(f"Additional directory not found: {dirname}")
+                    continue
+
+            dst_dir = dest_dir / dirname
+            try:
+                if dst_dir.exists():
+                    shutil.rmtree(dst_dir)
+                shutil.copytree(src_dir, dst_dir)
+                copied_files.append(dirname)
+                debug_log(f"Copied additional directory: {dirname}")
+            except Exception as e:
+                debug_log(f"Failed to copy directory {dirname}: {e}")
         
         return copied_files
 
@@ -519,16 +607,15 @@ class OptiScalerManager:
                 
                 # Remove main OptiScaler files
                 for filename in copied_files:
-                    f.write(f'    del "{filename}"\n')
+                    if filename in OptiScalerConfig.ADDITIONAL_DIRECTORIES:
+                        f.write(f'    if exist "{filename}" rd /s /q "{filename}"\n')
+                    else:
+                        f.write(f'    if exist "{filename}" del "{filename}"\n')
                 
                 # Remove OptiScaler directories
-                f.write('    del /Q D3D12_Optiscaler\\*\n')
-                f.write('    rd D3D12_Optiscaler\n')
-                f.write('    del /Q DlssOverrides\\*\n')
-                f.write('    rd DlssOverrides\n')
-                f.write('    del /Q Licenses\\*\n')
-                f.write('    rd Licenses\n')
-                f.write('    del OptiScaler.log\n')
+                for dirname in OptiScalerConfig.ADDITIONAL_DIRECTORIES:
+                    f.write(f'    if exist "{dirname}" rd /s /q "{dirname}"\n')
+                f.write('    if exist OptiScaler.log del OptiScaler.log\n')
                 
                 f.write('    echo.\n')
                 f.write('    echo OptiScaler removed successfully!\n')
@@ -1182,15 +1269,15 @@ ToggleOverlay=VK_INSERT
             debug_log(f"Running dynamic setup for {game_path} with filename {selected_filename}")
             
             # 1. Remove marker file if present
-            marker = extracted_path / '!! EXTRACT ALL FILES TO GAME FOLDER !!'
-            if marker.exists():
-                marker.unlink()
-                debug_log("Removed extraction marker file")
+            self._remove_setup_markers(extracted_path)
 
             # 2. Check for OptiScaler.dll
             optiscaler_dll = extracted_path / 'OptiScaler.dll'
             if not optiscaler_dll.exists():
-                return False, 'OptiScaler.dll not found in extracted files.'
+                found_dll = self._find_optiscaler_dll(extracted_path)
+                if not found_dll:
+                    return False, 'OptiScaler.dll not found in extracted files.'
+                optiscaler_dll = Path(found_dll)
 
             # 3. Prepare destination
             dest_file = game_path / selected_filename
@@ -1201,9 +1288,15 @@ ToggleOverlay=VK_INSERT
                 else:
                     return False, f"{selected_filename} already exists in game folder."
 
+            if overwrite:
+                self._remove_stale_legacy_files(game_path, selected_filename)
+
             # 4. Copy OptiScaler.dll to selected filename
             shutil.copy2(optiscaler_dll, dest_file)
             debug_log(f"Copied OptiScaler.dll to {selected_filename}")
+
+            copied_files = [selected_filename]
+            copied_files.extend(self._copy_additional_files(extracted_path, game_path))
 
             # 5. DLSS handling (v0.7.9+)
             # "Yes" (use_dlss=True)  → OptiScaler handles DLSS internally; no extra file needed.
@@ -1215,6 +1308,9 @@ ToggleOverlay=VK_INSERT
                     parser = configparser.ConfigParser(strict=False)
                     if ini_path.exists():
                         parser.read(ini_path, encoding='utf-8')
+                    else:
+                        self.create_default_config(str(game_path), gpu_type)
+                        parser.read(ini_path, encoding='utf-8')
                     if not parser.has_section('Spoofing'):
                         parser.add_section('Spoofing')
                     parser.set('Spoofing', 'Dxgi', 'false')
@@ -1225,7 +1321,7 @@ ToggleOverlay=VK_INSERT
                     debug_log(f"Warning: could not write Dxgi=false to OptiScaler.ini: {e}")
 
             # 6. Create enhanced uninstaller
-            self._create_uninstaller_batch(game_path, selected_filename, use_dlss, gpu_type)
+            self.create_uninstaller_script(str(game_path), selected_filename, copied_files)
 
             return True, 'OptiScaler setup completed successfully.'
             

@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### v0.4.2 - 2026-04-30
+
+#### Compatibility
+- Added support for the current OptiScaler v0.9.1 payload layout.
+- Installations now copy v0.9+ bundled runtime files including `fakenvapi.dll`, `libxell.dll`, `libxess_fg.dll`, DLSSG-to-FSR3, and split FidelityFX upscaler/framegeneration DLLs.
+- Installations now copy required payload directories such as `D3D12_Optiscaler` and `Licenses`.
+
+#### Fixes
+- Removed stale legacy OptiScaler files such as old `nvapi64.dll`/`nvngx.dll` during overwrite installs to match upstream v0.9 update requirements.
+- Added explicit handling for OptiScaler archives that require real `7z.exe` because `py7zr` cannot extract BCJ2-compressed archives.
+- Updated dynamic setup tests for the v0.7.9+ DLSS Inputs behavior where the GUI no longer creates `nvngx.dll`.
+
 ### v0.3.6 - 2025-11-14
 
 #### Improvements

@@ -2,10 +2,14 @@
 Version information for OptiScaler-GUI
 """
 
-__version__ = "0.4.1"
-__version_info__ = (0, 4, 1)
+__version__ = "0.4.2"
+__version_info__ = (0, 4, 2)
 
 # Version history:
+# 0.4.2 - OptiScaler v0.9.1 compatibility update
+#       - Copy v0.9+ bundled runtime files and directories
+#       - Remove stale v0.7/0.8 files during overwrite installs
+#       - Require/report real 7z.exe for current OptiScaler archives using BCJ2 compression
 # 0.4.1 - Remove excessive debug logging left from image investigation
 # 0.4.0 - Multi-platform detection overhaul & image fix
 #       - Fixed structural UI bug: game info/buttons were unreachable dead code

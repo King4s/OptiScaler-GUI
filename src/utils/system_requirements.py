@@ -120,7 +120,7 @@ class SystemRequirementsChecker:
         elif seven_zip_ok:
             return "good", "7-Zip available - good performance ✅"
         elif py7zr_ok:
-            return "functional", "py7zr available - functional but slower ⚠️"
+            return "limited", "py7zr available, but current OptiScaler .7z releases may require 7z.exe ⚠️"
         else:
             return "broken", "No 7z extraction method available - .7z files cannot be extracted ❌"
     
@@ -155,11 +155,11 @@ class SystemRequirementsChecker:
                 "description": "Cannot extract OptiScaler .7z files",
                 "action": "Install 7-Zip from https://www.7-zip.org/ OR run: pip install py7zr"
             })
-        elif status == "functional":
+        elif status == "limited":
             recommendations.append({
-                "priority": "optional",
-                "title": "Install 7-Zip for Better Performance", 
-                "description": "7-Zip provides faster extraction than py7zr",
+                "priority": "critical",
+                "title": "Install 7-Zip for Current OptiScaler Releases", 
+                "description": "Current OptiScaler archives can use 7z compression filters that py7zr cannot extract",
                 "action": "Download from https://www.7-zip.org/"
             })
         
@@ -185,7 +185,7 @@ class SystemRequirementsChecker:
         archive_status, _ = self.get_archive_extraction_status()
         if critical_missing or archive_status == "broken":
             report["overall_status"] = "not_ready"
-        elif archive_status == "functional":
+        elif archive_status == "limited":
             report["overall_status"] = "functional"
         
         return report
