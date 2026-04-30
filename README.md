@@ -8,12 +8,12 @@
 
 | Feature             | Status     |
 |---------------------|------------|
-| 📦 Portable Version    | ✅ v0.3.6   |
+| 📦 Portable Version    | ✅ v0.4.2   |
 | 🎮 Steam Auto-Detection | ✅ Full    |
 | 🎮 Epic Games Auto-Detection | ✅ Full    |
-| � GOG Galaxy Auto-Detection | ✅ Full    |
-| � Xbox Game Pass Auto-Detection | ✅ Full    |
-| � Manual Path Selection | ✅ All Platforms |
+| 🎮 GOG Galaxy Auto-Detection | ✅ Full    |
+| 🎮 Xbox Game Pass Auto-Detection | ✅ Full    |
+| 📁 Manual Path Selection | ✅ All Platforms |
 | 🚀 FSR / DLSS / XeSS   | ✅ All 3    |
 | 🐍 Python Runtime      | ✅ Bundled  |
 | 🌍 Multi-language UI   | ✅ DA / EN / PL |
@@ -26,9 +26,9 @@
 > *Coming soon: Animated GIF showing the interface in action*
 > 
 > **Quick Visual Guide:**
-> 1. 🔍 **Scan Games** → Automatically detects Steam library
+> 1. 🔍 **Scan Games** → Automatically detects supported game libraries
 > 2. 🎯 **Select Game** → Choose from detected games list  
-> 3. 📦 **Pick Version** → Latest OptiScaler recommended
+> 3. 📦 **Download OptiScaler** → Latest official release is used
 > 4. ⚡ **One Click Install** → GUI handles everything!
 > 5. 🎮 **Launch & Play** → Enhanced graphics ready!
 
@@ -53,8 +53,8 @@
 ### **What this GUI does**
 - **Installs OptiScaler** into your games (replaces manual file copying)
 - **Downloads** latest OptiScaler releases automatically  
-- **Detects** Steam games and suggests installation targets
-- **Manages** OptiScaler versions across multiple games
+- **Detects** Steam, Epic Games, GOG, Xbox Game Pass, and manual game paths
+- **Manages** OptiScaler installations across multiple games
 - **Provides** user-friendly installation for non-technical users
 
 ### **What this GUI does NOT do**
@@ -65,24 +65,25 @@
 
 **Think of it as**: A desktop installer/manager, like how Steam manages game installations.
 
-**Version: 0.3.6** | **Status: Release** | **🚀 Release: v0.3.6**
+**Version: 0.4.2** | **Status: Release** | **🚀 Release: v0.4.2**
 
-## 🆕 What's New in v0.3.5
+## 🆕 What's New in v0.4.2
 
-### 📦 **Ultra-Compact Portable Version - 66% Smaller!**
-- **🎯 Download & Run**: Get the portable ZIP, extract, and run - no Python installation needed!
-- **📋 Complete Package**: All dependencies bundled including Python runtime and 7z.exe
-- **🔧 Self-Contained**: Works on any Windows system without additional software
-- **💿 Size**: ~48 MB portable package (down from 143 MB - 66% smaller!)
+### 🔄 **OptiScaler v0.9.1 Compatibility**
+- **🎯 Current OptiScaler Support**: Updated for the v0.9.1 payload layout.
+- **📋 Complete Payload Copying**: Installs new bundled files such as `fakenvapi.dll`, `libxell.dll`, `libxess_fg.dll`, DLSSG-to-FSR3, and split FidelityFX DLLs.
+- **📁 Directory Support**: Copies required folders such as `D3D12_Optiscaler` and `Licenses`.
+- **🧹 Safer Updates**: Removes stale legacy files like old `nvapi64.dll`/`nvngx.dll` during overwrite installs.
+- **📦 Portable Package**: Bundles `7z.exe`, which is required for current BCJ2-compressed OptiScaler `.7z` archives.
 
 ### 🚀 **Download Options**
 
 #### 🎯 **For End Users (Recommended)**
-**[📥 Download Portable Version v0.3.6](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.3.6)**
+**[📥 Download Portable Version v0.4.2](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.4.2)**
 
 | Package Type | Size | Checksum | Notes |
 |-------------|------|----------|-------|
-| 📦 Portable ZIP | ~48 MB | *See release page* | No installation required - 66% smaller! |
+| 📦 Portable ZIP | ~14 MB | *See release page* | No installation required |
 | 🛠️ Future: .EXE Installer | *TBD* | *Coming soon* | Auto-install + shortcuts |
 
 **Features:**
@@ -105,13 +106,13 @@
 
 1. **Download Process**:
    - Fetches latest OptiScaler releases from [official GitHub](https://github.com/optiscaler/OptiScaler)
-   - Downloads `.7z` archives (e.g., `OptiScaler_v0.7.7-pre9_Daria.7z`)
-   - Extracts using system 7z.exe preferred (fastest), falling back to py7zr or Python zipfile
+   - Downloads `.7z` archives (e.g., `Optiscaler_0.9.1-final.20260427._DSB.7z`)
+   - Extracts using bundled/system `7z.exe` for current OptiScaler releases
 
 2. **Installation Process**:
    - Copies `OptiScaler.dll` to your game directory
    - Renames it to appropriate proxy DLL (`dxgi.dll`, `nvngx.dll`, etc.)
-   - Copies additional files (`OptiScaler.ini`, FSR/XeSS libraries)
+   - Copies additional files and folders (`OptiScaler.ini`, FSR/XeSS/Fakenvapi libraries, `D3D12_Optiscaler`, `Licenses`)
    - Creates basic configuration for your game
 
 3. **Integration**:
@@ -123,13 +124,13 @@
 - **Language**: Python 3.8+ with Tkinter GUI
 - **Architecture**: Desktop application (not web-based)
 - **Distribution**: PyInstaller portable executable
-- **File Handling**: 7z.exe + py7zr + zipfile fallbacks
-- **Game Detection**: Steam registry scanning + manual path selection
+- **File Handling**: Bundled/system 7z.exe for `.7z`, Python zipfile for `.zip`
+- **Game Detection**: Steam, Epic Games, GOG, Xbox Game Pass, and manual path selection
 - **OptiScaler Integration**: File-based installation (no API/injection)
 
 ### 🎯 Key Features
 
-- **🔍 Automatic Game Detection**: Scans Steam library and detects installed games
+- **🔍 Automatic Game Detection**: Scans supported launchers and detects installed games
 
 #### 🔎 Windows Library Discovery & Scanning Improvements
 We recently added a major improvement to how the GUI detects library roots and installed games on Windows:
@@ -154,7 +155,7 @@ These improvements make the auto-detection more robust, safer, and faster for Wi
 - **🛡️ Robust Architecture**: Multi-tier fallback systems for maximum compatibility
 - **🌐 Complete Portable Support**: Bundled 7z.exe and all dependencies included
 - **🎮 Unreal Engine Support**: Enhanced detection for UE games (Engine/Binaries/Win64)
-- **💾 Backup & Restore**: Safe installation with automatic backup of original files
+- **🧹 Update Cleanup**: Removes stale legacy OptiScaler files during overwrite installs
 - **📊 Real-Time Progress**: Visual feedback during downloads and installations
 - **🔄 Update Management**: Automatic checking for latest OptiScaler releases
 - **🌍 Multi-Language**: Support for Danish, English, and Polish
@@ -162,7 +163,7 @@ These improvements make the auto-detection more robust, safer, and faster for Wi
 ### 🎮 What is OptiScaler?
 
 [OptiScaler](https://github.com/optiscaler/OptiScaler) is a DirectX proxy DLL that enables:
-- **AMD FSR 1.0, 2.0, 3.0** - FidelityFX Super Resolution
+- **AMD FSR 1.x/2.x/3.x/4.x** - FidelityFX Super Resolution and frame generation
 - **Intel XeSS** - Xe Super Sampling  
 - **NVIDIA DLSS** - Deep Learning Super Sampling
 
@@ -195,19 +196,19 @@ These improvements make the auto-detection more robust, safer, and faster for Wi
 
 ### 🎯 **Option 1: Portable Version (Recommended for Users)**
 
-1. **[📥 Download the Portable Version](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.3.6)**
+1. **[📥 Download the Portable Version](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.4.2)**
 2. **Extract** the ZIP file to your desired location
 3. **Run** `OptiScaler-GUI.exe` inside the extracted folder
 4. **Done!** No installation or Python setup required
 
-⚠️ **Note**: This is a stable release (0.3.6) - test thoroughly before using on important games!
+⚠️ **Note**: This is a stable release (0.4.2) - test thoroughly before using on important games!
 
 ### 🛠️ **Option 2: Development Setup**
 
 #### Prerequisites
 - **Windows 10/11** 
 - **Python 3.8+** ([Download Python](https://python.org))
-- **Steam** (for automatic game detection)
+- **Steam, Epic Games, GOG, or Xbox Game Pass** (optional, for automatic game detection)
 
 #### Installation
 
@@ -242,24 +243,22 @@ For convenience, you can also use:
 
 #### For Portable Version Users:
 1. **Launch** `OptiScaler-GUI.exe` from the extracted folder
-2. **Scan for games** - Automatically detects your Steam library
+2. **Scan for games** - Automatically detects supported game libraries
 3. **Select a game** from the detected list
-4. **Choose OptiScaler version** (latest recommended)
-5. **Click Install** - GUI handles everything automatically!
-6. **Configure settings** for optimal performance
-7. **Launch your game** and enjoy enhanced performance!
+4. **Click Install** - GUI downloads the latest official OptiScaler release and installs it
+5. **Launch your game** and use OptiScaler's in-game overlay for runtime settings
 
 #### Additional Features:
 - **📁 Manual Path Selection**: Browse for games not automatically detected
 - **🌍 Multi-Language Support**: Danish, English, Polish (auto-detection)
-- **🔄 Auto-Updates**: OptiScaler version checking and updates
+- **🔄 Update Checks**: OptiScaler release checking and per-game update flow
 - **📋 Progress Tracking**: Real-time installation progress with detailed logs
 
 ## 🏗️ Architecture Highlights
 
 ### Robust Multi-Tier Systems
-- **Archive Extraction**: System 7z.exe → py7zr → zipfile fallback
-- **Installation Methods**: Direct install → backup & restore → fallback modes
+- **Archive Extraction**: Bundled/system 7z.exe for `.7z` → zipfile for `.zip`
+- **Installation Methods**: Direct proxy DLL install with cleanup and fallback handling
 - **Error Handling**: Comprehensive error detection and user guidance
 - **Compatibility**: Works on all Windows systems regardless of installed tools
 
@@ -290,13 +289,8 @@ OptiScaler-GUI/
 
 ### Running Tests
 ```bash
-# Test core functionality
-python test_archive_extractor.py    # Test archive extraction
-python test_progress_simple.py      # Test progress systems
-python check_requirements.py        # Validate environment
-
-# Run comprehensive tests
-./run_progress_tests.bat            # Full test suite
+pytest -q                           # Run the test suite
+python check_requirements.py         # Validate environment
 ```
 
 ### Building Portable Version
@@ -307,9 +301,9 @@ python build.py                     # Creates portable .exe in dist/
 
 ## 📦 Release Information
 
-**Current Version**: 0.3.6 (Release)
+**Current Version**: 0.4.2 (Release)
 - **Portable Version Available**: Self-contained executable with all dependencies
-- **Size**: ~48 MB (includes Python runtime and all libraries - 66% size reduction!)
+- **Size**: ~14 MB portable ZIP (includes Python runtime and bundled `7z.exe`)
 - **Compatibility**: Windows 10/11, no Python installation required
 
 ### 🔄 **OptiScaler Version Compatibility**
@@ -328,7 +322,7 @@ python build.py                     # Creates portable .exe in dist/
 - **Direct Installation**: `OptiScaler.dll` placement
 - **Configuration Management**: Automatic `OptiScaler.ini` generation
 - **Library Support**: FSR, XeSS, and DLSS companion files
-- **Backup System**: Automatic backup before installation
+- **Update Cleanup**: Removes stale legacy OptiScaler files on overwrite installs
 
 ### 🎮 **Tested Game Engines**
 
@@ -362,28 +356,26 @@ For full release notes and downloads, visit: [GitHub Releases](https://github.co
 **A:** Yes! After installation, launch your game and press **Insert** to access OptiScaler's built-in configuration overlay. This GUI doesn't replace that functionality.
 
 ### **Q: Which OptiScaler versions are supported?**
-**A:** Currently supports v0.7.0 through v0.7.7-pre9. The GUI automatically downloads from the official OptiScaler releases.
+**A:** Currently supports v0.7.0 through v0.9.1. The GUI automatically downloads from the official OptiScaler releases.
 
 ### **Q: Can I use this for games not on Steam?**
-**A:** Yes! While it auto-detects Steam games, you can manually browse and select any game directory.
+**A:** Yes. The GUI can auto-detect several launchers, and you can manually browse and select any game directory.
 
 ## 🛣️ **Project Status & Roadmap**
 
-### **Current Status (v0.3.6)**
+### **Current Status (v0.4.2)**
 - ✅ **Stable Installation**: Reliable OptiScaler installation for most games
-- ✅ **Ultra-Compact Distribution**: 48 MB self-contained executable (66% size reduction)
-- ✅ **Steam Integration**: Automatic game detection from Steam library
+- ✅ **Portable Distribution**: Self-contained Windows package with bundled `7z.exe`
+- ✅ **Multi-Launcher Detection**: Steam, Epic Games, GOG, Xbox Game Pass, and manual paths
 - ✅ **Multi-Language**: Danish, English, and Polish translations
 - ✅ **Error Recovery**: Robust fallback systems for edge cases
 
 ### **Known Limitations**
 - 🟡 **Configuration Limited**: Basic INI generation only (use OptiScaler overlay for advanced settings)
 - 🟡 **Windows Only**: No Linux/Mac support (follows OptiScaler platform limitations)
-- 🟡 **Steam Focused**: Epic Games Store and GOG detection not yet implemented
 - 🟡 **Manual Updates**: GUI updates require manual download (no auto-updater)
 
 ### **Planned Features (Future Versions)**
-- 🔮 **Enhanced Game Detection**: Epic Games Store, GOG, and custom launcher support
 - 🔮 **Backup Management**: Better backup/restore functionality with versioning
 - 🔮 **Installation Profiles**: Save and reuse installation configurations
 - 🔮 **OptiScaler INI Editor**: Basic configuration editor (complementary to overlay)
@@ -415,7 +407,7 @@ For full release notes and downloads, visit: [GitHub Releases](https://github.co
 │                                                             │
 │  🖥️ This GUI (Community Project)                           │
 │  ├── Installation manager                                  │
-│  ├── Steam game detection                                  │
+│  ├── Multi-launcher game detection                         │
 │  ├── File download/extraction                              │
 │  └── Basic configuration setup                             │
 │                                                             │
@@ -432,9 +424,10 @@ For full release notes and downloads, visit: [GitHub Releases](https://github.co
 
 ### 🎯 **Supported Games & Compatibility**
 - ✅ **Steam Games** - Automatic detection
+- ✅ **Epic/GOG/Xbox Games** - Automatic detection where library metadata is available
 - ✅ **Unreal Engine** - Enhanced support for UE games  
 - ✅ **DirectX 11/12** - Full compatibility
-- ⚠️ **Non-Steam Games** - Manual path selection required
+- ⚠️ **Other launchers/custom installs** - Manual path selection may be required
 - ❓ **Game not working?** - [Report compatibility issue](https://github.com/King4s/OptiScaler-GUI/issues/new?template=game_compatibility.md)
 
 ### 🔒 **Security & Trust**
@@ -454,12 +447,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [**OptiScaler Team**](https://github.com/optiscaler/OptiScaler) - For the incredible upscaling technology
 - **Python Community** - For the amazing libraries that make this possible  
 - **Gaming Community** - For feedback and testing
-
----
-
-**Made with ❤️ for the gaming community**
-
-*Bringing cutting-edge upscaling technology to everyone, one click at a time.*
 
 ---
 
