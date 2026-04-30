@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+import json
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 
@@ -85,3 +86,17 @@ def test_dynamic_setup_copies_v09_payload(test_env_path):
     assert (game_dir / 'D3D12_Optiscaler' / 'D3D12Core.dll').exists()
     assert (game_dir / 'Licenses' / 'XeSS_LICENSE.txt').exists()
     assert not (game_dir / 'nvapi64.dll').exists()
+
+    manifest_path = game_dir / '.optiscaler-gui-install.json'
+    assert manifest_path.exists()
+    manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+    assert manifest['target_filename'] == 'dxgi.dll'
+    assert 'fakenvapi.dll' in manifest['files']
+    assert 'D3D12_Optiscaler' in manifest['directories']
+
+    success, message = man.uninstall_optiscaler(str(game_dir))
+    assert success, message
+    assert not (game_dir / 'dxgi.dll').exists()
+    assert not (game_dir / 'fakenvapi.dll').exists()
+    assert not (game_dir / 'D3D12_Optiscaler').exists()
+    assert not manifest_path.exists()

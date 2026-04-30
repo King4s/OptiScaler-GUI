@@ -3,6 +3,7 @@ import zipfile
 import os
 import shutil
 import configparser
+import json
 import re
 import threading
 import subprocess
@@ -92,6 +93,15 @@ class OptiScalerConfig:
         "amd_fidelityfx_vk_v2.dll",
     ]
 
+    INSTALL_MANIFEST = ".optiscaler-gui-install.json"
+    PAYLOAD_EXCLUDED_FILENAMES = {
+        "OptiScaler.dll",
+        INSTALL_MANIFEST,
+    }
+    PAYLOAD_EXCLUDED_PREFIXES = (
+        "!!",
+    )
+
 class OptiScalerManager:
     """
     OptiScaler Manager for GUI
@@ -122,6 +132,7 @@ class OptiScalerManager:
         self.download_dir.mkdir(parents=True, exist_ok=True)
         self._seven_zip_path = self._find_seven_zip()
         self._last_extract_error = None
+        self._last_release_info = None
         
         debug_log(f"OptiScalerManager initialized with download_dir: {self.download_dir}")
     
@@ -158,6 +169,7 @@ class OptiScalerManager:
             )
             response.raise_for_status()
             release_info = response.json()
+            self._last_release_info = release_info
             assets = release_info.get("assets", [])
             
             debug_log(f"Found {len(assets)} assets in release")
@@ -422,9 +434,8 @@ class OptiScalerManager:
             copied_files = [target_filename]
             debug_log(f"Copied OptiScaler.dll as {target_filename}")
 
-            # Copy additional files
-            additional_files = self._copy_additional_files(extracted_path, dest_dir, progress_callback)
-            copied_files.extend(additional_files)
+            payload = self._copy_release_payload(extracted_path, dest_dir, progress_callback)
+            copied_files.extend(payload["files"])
 
             if progress_callback:
                 progress_callback("Creating configuration...")
@@ -437,8 +448,16 @@ class OptiScalerManager:
             if not config_path.exists():
                 gpu_type = self.detect_gpu_type()
                 self.create_default_config(str(dest_dir), gpu_type)
+                copied_files.append("OptiScaler.ini")
                 debug_log("Created default OptiScaler configuration")
 
+            self._write_install_manifest(
+                dest_dir,
+                target_filename=target_filename,
+                files=copied_files,
+                directories=payload["directories"],
+                release_info=self._last_release_info,
+            )
             debug_log("Installation completed successfully")
             if progress_callback:
                 progress_callback("Installation completed!")
@@ -521,6 +540,101 @@ class OptiScalerManager:
                     debug_log(f"Removed stale legacy OptiScaler file: {filename}")
                 except Exception as e:
                     debug_log(f"Failed to remove stale file {filename}: {e}")
+
+    def _should_copy_payload_file(self, relative_path):
+        """Return False for release marker files and files handled separately."""
+        rel = Path(relative_path)
+        name = rel.name
+        if name in OptiScalerConfig.PAYLOAD_EXCLUDED_FILENAMES:
+            return False
+        return not any(name.startswith(prefix) for prefix in OptiScalerConfig.PAYLOAD_EXCLUDED_PREFIXES)
+
+    @timed("copy_release_payload")
+    def _copy_release_payload(self, extracted_path, dest_dir, progress_callback=None):
+        """
+        Copy the release payload dynamically instead of relying on a fixed DLL list.
+
+        OptiScaler.dll is installed separately under the selected proxy filename.
+        Marker files are skipped. Everything else in the payload is copied with
+        relative paths preserved, so future upstream DLL additions keep working.
+        """
+        extracted_path = Path(extracted_path)
+        dest_dir = Path(dest_dir)
+        copied_files = []
+        copied_dirs = set()
+
+        files_to_copy = [
+            path for path in extracted_path.rglob("*")
+            if path.is_file() and self._should_copy_payload_file(path.relative_to(extracted_path))
+        ]
+
+        for index, src_path in enumerate(files_to_copy, 1):
+            rel_path = src_path.relative_to(extracted_path)
+            dst_path = dest_dir / rel_path
+            try:
+                dst_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src_path, dst_path)
+                rel_text = rel_path.as_posix()
+                copied_files.append(rel_text)
+                for parent in rel_path.parents:
+                    if str(parent) != ".":
+                        copied_dirs.add(parent.as_posix())
+                debug_log(f"Copied OptiScaler payload file: {rel_text}")
+                if progress_callback and (index == len(files_to_copy) or index % 5 == 0):
+                    progress_callback(f"Installing payload... ({index}/{len(files_to_copy)})")
+            except Exception as e:
+                debug_log(f"Failed to copy payload file {rel_path}: {e}")
+
+        for src_dir in [path for path in extracted_path.rglob("*") if path.is_dir()]:
+            rel_dir = src_dir.relative_to(extracted_path)
+            if str(rel_dir) == ".":
+                continue
+            if not any(src_dir.rglob("*")):
+                try:
+                    (dest_dir / rel_dir).mkdir(parents=True, exist_ok=True)
+                    copied_dirs.add(rel_dir.as_posix())
+                except Exception as e:
+                    debug_log(f"Failed to create empty payload directory {rel_dir}: {e}")
+
+        return {"files": copied_files, "directories": sorted(copied_dirs)}
+
+    def _get_manifest_path(self, install_dir):
+        return Path(install_dir) / OptiScalerConfig.INSTALL_MANIFEST
+
+    def _read_install_manifest(self, install_dir):
+        manifest_path = self._get_manifest_path(install_dir)
+        if not manifest_path.exists():
+            return None
+        try:
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            debug_log(f"Failed to read install manifest {manifest_path}: {e}")
+            return None
+
+    def _write_install_manifest(self, install_dir, target_filename, files, directories, release_info=None):
+        manifest_path = self._get_manifest_path(install_dir)
+        release_info = release_info or {}
+        unique_files = sorted({str(file).replace("\\", "/") for file in files if file})
+        unique_dirs = sorted({str(directory).replace("\\", "/") for directory in directories if directory})
+        manifest = {
+            "schema_version": 1,
+            "installed_by": "OptiScaler-GUI",
+            "installed_at": datetime.now().isoformat(),
+            "target_filename": target_filename,
+            "optiscaler_version": release_info.get("tag_name") or release_info.get("name") or "Unknown",
+            "release_url": release_info.get("html_url"),
+            "files": unique_files,
+            "directories": unique_dirs,
+        }
+        try:
+            with open(manifest_path, "w", encoding="utf-8") as f:
+                json.dump(manifest, f, indent=2)
+            debug_log(f"Wrote OptiScaler install manifest: {manifest_path}")
+            return True
+        except Exception as e:
+            debug_log(f"Failed to write install manifest {manifest_path}: {e}")
+            return False
 
     @timed("copy_additional_files")
     def _copy_additional_files(self, extracted_path, dest_dir, progress_callback=None):
@@ -1296,7 +1410,8 @@ ToggleOverlay=VK_INSERT
             debug_log(f"Copied OptiScaler.dll to {selected_filename}")
 
             copied_files = [selected_filename]
-            copied_files.extend(self._copy_additional_files(extracted_path, game_path))
+            payload = self._copy_release_payload(extracted_path, game_path)
+            copied_files.extend(payload["files"])
 
             # 5. DLSS handling (v0.7.9+)
             # "Yes" (use_dlss=True)  → OptiScaler handles DLSS internally; no extra file needed.
@@ -1322,6 +1437,13 @@ ToggleOverlay=VK_INSERT
 
             # 6. Create enhanced uninstaller
             self.create_uninstaller_script(str(game_path), selected_filename, copied_files)
+            self._write_install_manifest(
+                game_path,
+                target_filename=selected_filename,
+                files=copied_files,
+                directories=payload["directories"],
+                release_info=self._last_release_info,
+            )
 
             return True, 'OptiScaler setup completed successfully.'
             
@@ -1410,6 +1532,54 @@ ToggleOverlay=VK_INSERT
 
             removed_files = []
             removed_dirs = []
+            manifest = self._read_install_manifest(install_dir)
+
+            if manifest:
+                manifest_files = list(manifest.get("files", []))
+                manifest_files.extend([
+                    OptiScalerConfig.INSTALL_MANIFEST,
+                    "Remove OptiScaler.bat",
+                    "OptiScaler.log",
+                ])
+                for rel_file in sorted(set(manifest_files)):
+                    file_path = install_dir / rel_file
+                    try:
+                        resolved = file_path.resolve()
+                        if not str(resolved).lower().startswith(str(install_dir.resolve()).lower()):
+                            debug_log(f"Skipping manifest path outside install dir: {rel_file}")
+                            continue
+                        if file_path.exists() and file_path.is_file():
+                            file_path.unlink()
+                            removed_files.append(rel_file)
+                            debug_log(f"Removed manifest file: {rel_file}")
+                    except Exception as e:
+                        debug_log(f"Failed to remove manifest file {rel_file}: {e}")
+
+                for rel_dir in sorted(set(manifest.get("directories", [])), key=lambda value: len(value), reverse=True):
+                    dir_path = install_dir / rel_dir
+                    try:
+                        resolved = dir_path.resolve()
+                        if not str(resolved).lower().startswith(str(install_dir.resolve()).lower()):
+                            debug_log(f"Skipping manifest directory outside install dir: {rel_dir}")
+                            continue
+                        if dir_path.exists() and dir_path.is_dir():
+                            shutil.rmtree(dir_path)
+                            removed_dirs.append(rel_dir)
+                            debug_log(f"Removed manifest directory: {rel_dir}")
+                    except Exception as e:
+                        debug_log(f"Failed to remove manifest directory {rel_dir}: {e}")
+
+                if removed_files or removed_dirs:
+                    summary = f"Successfully removed OptiScaler from {game_path}\n"
+                    if removed_files:
+                        summary += f"Files removed: {', '.join(removed_files[:5])}"
+                        if len(removed_files) > 5:
+                            summary += f" and {len(removed_files) - 5} more files"
+                        summary += "\n"
+                    if removed_dirs:
+                        summary += f"Directories removed: {', '.join(removed_dirs[:5])}"
+                    debug_log("Manifest-based uninstall completed successfully")
+                    return True, summary
             
             # List of OptiScaler files to remove (including proxy DLLs)
             optiscaler_files = [

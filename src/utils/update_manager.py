@@ -138,6 +138,14 @@ class OptiScalerUpdateManager:
         manager = OptiScalerManager()
         if manager.is_optiscaler_installed(str(game_path)):
             version_info["installed"] = True
+            install_dir = manager._determine_install_directory(game_path)
+            manifest = manager._read_install_manifest(install_dir)
+            if manifest:
+                version_info["version"] = manifest.get("optiscaler_version", "Unknown")
+                version_info["installed_at"] = manifest.get("installed_at")
+                version_info["target_filename"] = manifest.get("target_filename")
+                version_info["files"] = manifest.get("files", [])
+                return version_info
             
             # Try to find version information
             if ini_path.exists():

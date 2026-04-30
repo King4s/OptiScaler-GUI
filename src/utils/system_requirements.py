@@ -116,13 +116,13 @@ class SystemRequirementsChecker:
         py7zr_ok = self.requirements["py7zr"]["status"]
         
         if seven_zip_ok and py7zr_ok:
-            return "optimal", "Both 7-Zip and py7zr available - optimal performance ✅"
+            return "optimal", "7-Zip available for current OptiScaler archives; py7zr available for validation ✅"
         elif seven_zip_ok:
-            return "good", "7-Zip available - good performance ✅"
+            return "good", "7-Zip available for current OptiScaler archives ✅"
         elif py7zr_ok:
-            return "limited", "py7zr available, but current OptiScaler .7z releases may require 7z.exe ⚠️"
+            return "broken", "py7zr is installed, but current OptiScaler .7z archives require 7z.exe ❌"
         else:
-            return "broken", "No 7z extraction method available - .7z files cannot be extracted ❌"
+            return "broken", "7z.exe not found - current OptiScaler .7z files cannot be extracted ❌"
     
     def get_user_recommendations(self):
         """Get user-friendly recommendations for missing requirements"""
@@ -153,14 +153,7 @@ class SystemRequirementsChecker:
                 "priority": "critical",
                 "title": "Install Archive Extraction Tool",
                 "description": "Cannot extract OptiScaler .7z files",
-                "action": "Install 7-Zip from https://www.7-zip.org/ OR run: pip install py7zr"
-            })
-        elif status == "limited":
-            recommendations.append({
-                "priority": "critical",
-                "title": "Install 7-Zip for Current OptiScaler Releases", 
-                "description": "Current OptiScaler archives can use 7z compression filters that py7zr cannot extract",
-                "action": "Download from https://www.7-zip.org/"
+                "action": "Install 7-Zip from https://www.7-zip.org/"
             })
         
         return recommendations
@@ -185,9 +178,6 @@ class SystemRequirementsChecker:
         archive_status, _ = self.get_archive_extraction_status()
         if critical_missing or archive_status == "broken":
             report["overall_status"] = "not_ready"
-        elif archive_status == "limited":
-            report["overall_status"] = "functional"
-        
         return report
 
 def show_requirements_dialog():

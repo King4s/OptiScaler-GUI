@@ -56,9 +56,9 @@ class ArchiveExtractor:
     
     By default this extractor prefers using the system 7z.exe (fastest and most
     reliable for .7z archives). If system 7z is not available or extraction
-    fails, it falls back to the py7zr Python library (if installed). ZIP
-    archives always use Python's `zipfile` module. You can control behavior
-    via the `self.prefer_system_7z` boolean (True by default).
+    Current OptiScaler .7z archives can use compression filters unsupported by
+    py7zr, so .7z extraction requires a real 7z.exe. ZIP archives use Python's
+    `zipfile` module.
     """
     
     def __init__(self):
@@ -140,33 +140,15 @@ class ArchiveExtractor:
             return False, f"Unsupported archive format: {suffix}", None
     
     def _extract_7z(self, archive_path, extract_path, progress_callback=None):
-        """Extract 7z archive with multiple fallback methods"""
-        # If configured to prefer the system 7z, try it first (fastest and most reliable)
-        if self.prefer_system_7z and self.system_7z_path:
+        """Extract 7z archive using real 7z.exe."""
+        if self.system_7z_path:
             success, message, path = self._extract_7z_system(archive_path, extract_path, progress_callback)
             if success:
                 return success, message, path
 
-            debug_log(f"System 7z failed: {message}, trying Python fallback...")
-            if progress_callback:
-                progress_callback("System 7z failed, trying Python fallback...")
+            return False, message, None
 
-        # If we're not preferring system 7z, and py7zr is available, try Python method first.
-        if not self.prefer_system_7z and PY7ZR_AVAILABLE:
-            success, message, path = self._extract_7z_python(archive_path, extract_path, progress_callback)
-            if success:
-                return success, message, path
-
-            debug_log(f"Python py7zr extraction failed: {message}, trying system 7z...")
-            if progress_callback:
-                progress_callback("Python py7zr failed, trying system 7z...")
-
-        # Fallback: If py7zr is available, try it as a fallback
-        if PY7ZR_AVAILABLE:
-            return self._extract_7z_python(archive_path, extract_path, progress_callback)
-        
-        # No extraction methods available
-        error_msg = "Cannot extract 7z archive: Neither system 7z.exe nor py7zr library available"
+        error_msg = "Cannot extract 7z archive: 7z.exe is required for current OptiScaler releases"
         debug_log(error_msg)
         return False, error_msg, None
 
@@ -296,7 +278,7 @@ class ArchiveExtractor:
             "supported_formats": []
         }
         
-        if capabilities["system_7z_available"] or capabilities["py7zr_available"]:
+        if capabilities["system_7z_available"]:
             capabilities["supported_formats"].append(".7z")
         
         if capabilities["zip_available"]:

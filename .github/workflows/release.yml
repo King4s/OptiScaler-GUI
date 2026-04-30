@@ -27,21 +27,41 @@ jobs:
 
       - name: Run tests
         run: python -m pytest -q
-        continue-on-error: true
 
-      - name: Build portable exe
-        run: python -m PyInstaller build_executable.spec --clean --noconfirm
-
-      - name: Package portable zip
-        shell: python
+      - name: Verify 7-Zip is available
+        shell: pwsh
         run: |
-          import shutil, os
-          from pathlib import Path
-          tag = os.environ.get('GITHUB_REF_NAME', 'vX.X.X')
-          portable = Path('dist/OptiScaler-GUI-Portable')
-          out = f'dist/OptiScaler-GUI-{tag}-Portable'
-          result = shutil.make_archive(out, 'zip', 'dist', 'OptiScaler-GUI-Portable')
-          print(f'Created: {result}')
+          $candidates = @(
+            "$env:ProgramFiles\7-Zip\7z.exe",
+            "${env:ProgramFiles(x86)}\7-Zip\7z.exe"
+          )
+          $found = $false
+          foreach ($candidate in $candidates) {
+            if (Test-Path $candidate) {
+              Write-Host "Found 7z.exe at $candidate"
+              $found = $true
+              break
+            }
+          }
+          if (-not $found) {
+            Write-Error "7z.exe is required because current OptiScaler .7z archives need real 7-Zip extraction."
+            exit 1
+          }
+
+      - name: Build and package portable release
+        run: python build.py --zip --version ${{ github.ref_name }}
+
+      - name: Verify release ZIP contains 7z.exe
+        shell: pwsh
+        run: |
+          $zip = "dist/OptiScaler-GUI-${{ github.ref_name }}-Portable.zip"
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $entries = [System.IO.Compression.ZipFile]::OpenRead($zip).Entries
+          if (-not ($entries | Where-Object { $_.FullName -match '(^|/)7z\.exe$' })) {
+            Write-Error "Release ZIP does not contain 7z.exe"
+            exit 1
+          }
+          Write-Host "Verified 7z.exe is included in $zip"
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
