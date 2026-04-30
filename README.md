@@ -100,56 +100,9 @@
 
 **This is an INSTALLATION MANAGER for OptiScaler - not a replacement for its built-in features!**
 
-### 🔧 **Technical Architecture**
-
-#### **What happens when you use this GUI:**
-
-1. **Download Process**:
-   - Fetches latest OptiScaler releases from [official GitHub](https://github.com/optiscaler/OptiScaler)
-   - Downloads `.7z` archives (e.g., `Optiscaler_0.9.1-final.20260427._DSB.7z`)
-   - Extracts using bundled/system `7z.exe` for current OptiScaler releases
-
-2. **Installation Process**:
-   - Copies `OptiScaler.dll` to your game directory
-   - Renames it to appropriate proxy DLL (`dxgi.dll`, `nvngx.dll`, etc.)
-   - Copies additional files and folders (`OptiScaler.ini`, FSR/XeSS/Fakenvapi libraries, `D3D12_Optiscaler`, `Licenses`)
-   - Creates basic configuration for your game
-
-3. **Integration**:
-   - OptiScaler becomes active when you launch the game
-   - Use **Insert key** in-game to access OptiScaler's built-in overlay
-   - All runtime configuration happens through OptiScaler's native UI
-
-#### **Technology Stack**:
-- **Language**: Python 3.8+ with Tkinter GUI
-- **Architecture**: Desktop application (not web-based)
-- **Distribution**: PyInstaller portable executable
-- **File Handling**: Bundled/system 7z.exe for `.7z`, Python zipfile for `.zip`
-- **Game Detection**: Steam, Epic Games, GOG, Xbox Game Pass, and manual path selection
-- **OptiScaler Integration**: File-based installation (no API/injection)
-
 ### 🎯 Key Features
 
 - **🔍 Automatic Game Detection**: Scans supported launchers and detects installed games
-
-#### 🔎 Windows Library Discovery & Scanning Improvements
-We recently added a major improvement to how the GUI detects library roots and installed games on Windows:
-
-- **PowerShell PoC**: When PowerShell (pwsh / powershell) is present and enabled in the GUI settings, the application will run a small PoC pipeline (Get-InstalledPrograms | Get-DetectedLaunchers | Get-ActiveDrives | Find-GameLibraries) to enumerate installed launchers and discover game library folders quickly and safely.
-- **Pure-Python Fallback**: If PowerShell is unavailable or disabled, the GUI falls back to a pure-Python discovery algorithm that probes:
-   - the Windows Uninstall registry keys,
-   - WinRT Appx package install locations (if winrt available),
-   - a drive scan for common library folder names (Steam/Epic/GOG), and
-   - Steam's `libraryfolders.vdf` (parsed via vdf, JSON, or a custom KV fallback parser).
-- **Path Normalization & De-duplication**: Paths returned by multiple sources are normalized and de-duplicated (case-insensitively on Windows) but the original display path is preserved for UI display.
-- **Caching & TTL**: Discovered library roots are cached in `cache/library_discovery.json` for a configurable TTL. This avoids re-enumeration on each run and improves responsiveness.
-- **UI Experience Improvements**:
-   - `Rescan` button: manually refresh discovered libraries.
-   - `Clear discovery cache` button: forces re-discovery regardless of TTL.
-   - Scanning summary label: shows `Scanned X libraries` with a breakdown and scan duration in the UI.
-- **Safety**: Registry and Appx enumerations are shallow-only (no deep recursive scanning) and there is an Excluded drives config option to avoid scanning specified drives.
-
-These improvements make the auto-detection more robust, safer, and faster for Windows users while still offering reliable behavior on systems where PowerShell is not available.
 - **📦 One-Click Installation**: Download and install OptiScaler with a single click
 - **🔧 Intelligent Configuration**: Smart setup for AMD FSR, Intel XeSS, and NVIDIA DLSS
 - **🛡️ Robust Architecture**: Multi-tier fallback systems for maximum compatibility
@@ -159,6 +112,8 @@ These improvements make the auto-detection more robust, safer, and faster for Wi
 - **📊 Real-Time Progress**: Visual feedback during downloads and installations
 - **🔄 Update Management**: Automatic checking for latest OptiScaler releases
 - **🌍 Multi-Language**: Support for Danish, English, and Polish
+
+For implementation details, see [Technical Overview](docs/TECHNICAL_OVERVIEW.md).
 
 ### 🎮 What is OptiScaler?
 
@@ -258,9 +213,9 @@ For convenience, you can also use:
 
 ### Robust Multi-Tier Systems
 - **Archive Extraction**: Bundled/system 7z.exe for `.7z` → zipfile for `.zip`
-- **Installation Methods**: Direct proxy DLL install with cleanup and fallback handling
+- **Installation Methods**: Direct proxy DLL install with manifest-based uninstall/update tracking
 - **Error Handling**: Comprehensive error detection and user guidance
-- **Compatibility**: Works on all Windows systems regardless of installed tools
+- **Compatibility**: Portable release bundles required extraction tooling
 
 ### Staying Updated with OptiScaler
 

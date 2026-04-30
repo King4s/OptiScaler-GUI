@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
-Archive Extractor for OptiScaler GUI
-Provides robust archive extraction with multiple fallback methods
+Archive Extractor for OptiScaler GUI.
+
+Current OptiScaler .7z archives require real 7z.exe extraction. py7zr is kept
+only for archive validation/listing compatibility and is not used as a .7z
+extraction fallback.
 """
 
 import sys
@@ -47,18 +50,16 @@ try:
         PY7ZR_BAD_7Z_EXC = Exception
 except ImportError:
     PY7ZR_AVAILABLE = False
-    debug_log("py7zr library not available - 7z extraction will use system 7z.exe only")
+    debug_log("py7zr library not available - 7z extraction requires system/bundled 7z.exe")
     PY7ZR_BAD_7Z_EXC = Exception
 
 class ArchiveExtractor:
     """
-    Robust archive extractor with multiple fallback methods
-    
-    By default this extractor prefers using the system 7z.exe (fastest and most
-    reliable for .7z archives). If system 7z is not available or extraction
-    Current OptiScaler .7z archives can use compression filters unsupported by
-    py7zr, so .7z extraction requires a real 7z.exe. ZIP archives use Python's
-    `zipfile` module.
+    Robust archive extractor.
+
+    .7z archives require bundled/system 7z.exe. ZIP archives use Python's
+    `zipfile` module. The persisted prefer_system_7z setting is retained for
+    config compatibility but no longer changes .7z extraction behavior.
     """
     
     def __init__(self):
@@ -74,7 +75,7 @@ class ArchiveExtractor:
         # Filter out None values
         self.seven_zip_paths = [path for path in self.seven_zip_paths if path is not None]
         self.system_7z_path = self._find_system_7z()
-        # Prefer system 7z over py7zr when available (configurable)
+        # Retained for backwards-compatible settings UI; .7z still requires 7z.exe.
         self.prefer_system_7z = bool(get_config_value('prefer_system_7z', True))
         
     def _get_bundled_7z_path(self):
@@ -275,6 +276,7 @@ class ArchiveExtractor:
             "system_7z_path": self.system_7z_path,
             "py7zr_available": PY7ZR_AVAILABLE,
             "zip_available": True,  # Always available with Python
+            "requires_7z_for_7z": True,
             "supported_formats": []
         }
         

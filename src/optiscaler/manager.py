@@ -189,6 +189,12 @@ class OptiScalerManager:
 
             download_url = archive_asset["browser_download_url"]
             archive_filename = self.download_dir / archive_asset["name"]
+            size_mb = archive_asset.get("size", 0) / (1024 * 1024)
+            release_tag = release_info.get("tag_name") or release_info.get("name") or "Unknown"
+            if progress_callback:
+                progress_callback(
+                    f"Latest OptiScaler: {release_tag} | Asset: {archive_asset['name']} ({size_mb:.1f} MB)"
+                )
 
             # Validate existing file
             if archive_filename.exists():
@@ -292,6 +298,13 @@ class OptiScalerManager:
         extract_path = self.download_dir / "extracted_optiscaler"
         
         debug_log(f"Extracting {archive_path} to {extract_path}")
+        capabilities = archive_extractor.get_extraction_capabilities()
+        if progress_callback:
+            if archive_path.suffix.lower() == ".7z":
+                seven_zip = capabilities.get("system_7z_path")
+                progress_callback(f"Archive extraction: 7z.exe {'found at ' + seven_zip if seven_zip else 'not found'}")
+            else:
+                progress_callback(f"Archive extraction: {archive_path.suffix.lower()} via Python zipfile")
         
         # Use the robust archive extractor with fallback methods
         success, message, extracted_path = archive_extractor.extract_archive(
