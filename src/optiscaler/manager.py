@@ -54,7 +54,6 @@ class OptiScalerConfig:
 
     ADDITIONAL_DIRECTORIES = [
         "D3D12_Optiscaler",
-        "DlssOverrides",
         "Licenses",
     ]
     
@@ -90,8 +89,6 @@ class OptiScalerConfig:
     STALE_LEGACY_FILES = [
         "nvapi64.dll",
         "nvngx.dll",
-        "amd_fidelityfx_dx12_v2.dll",
-        "amd_fidelityfx_vk_v2.dll",
     ]
 
     INSTALL_MANIFEST = ".optiscaler-gui-install.json"
@@ -118,6 +115,9 @@ class OptiScalerManager:
       when user selects "No" to DLSS Inputs. This reduces installation complexity.
     - v0.7.8+: Updated default configuration structure and game quirks handling
     - v0.7.9+: Added FSR 4.0.2 and FidelityFX SDK 2.0.0 support
+    - v0.9.0+: Major rewrite. Added XeFG, FSR4-FG, FG Input/Output split, FFX 2.2 SDK,
+      DLSS Overrides folder removed, Fakenvapi bundled, setup_windows.bat/setup_linux.sh added
+    - v0.9.2+: Updated to XeSS 3.0.1 SDK, Depth Aware sharpening, improved FG handling
     """
     def __init__(self, download_dir=None):
         self.github_release_url = OptiScalerConfig.GITHUB_API_URL

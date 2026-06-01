@@ -12,7 +12,7 @@ from utils.progress import ProgressManager, progress_manager
 from utils.update_manager import update_manager
 
 # Application version
-VERSION = "1.0.0"
+from __version__ import __version__ as VERSION
 
 class MainWindow(ctk.CTk):
     def __init__(self):

@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### v0.5.0 - 2026-06-01
+
+#### Compatibility
+- Support for OptiScaler v0.9.2 (latest: XeSS 3.0.1 SDK, Depth Aware sharpening, FSR 4.1 + FSR-FG 4.0.0).
+- Removed `DlssOverrides` from additional directories — this folder was removed upstream in v0.9.0.
+- Removed `amd_fidelityfx_dx12_v2.dll` / `amd_fidelityfx_vk_v2.dll` from stale legacy files — these FFX 2.2 SDK DLLs are still shipped in v0.9.x payloads.
+- Updated compatibility notes for v0.9.0–v0.9.2.
+
 ### v0.4.3 - 2026-04-30
 
 #### Improvements
