@@ -30,6 +30,8 @@ Be concise. This file summarizes the essential, discoverable patterns and workfl
 4) Integration & external dependencies
  - OptiScaler releases are fetched from GitHub API (see `OptiScalerConfig.GITHUB_API_URL` in `src/optiscaler/manager.py`). Tests or mock work should patch network calls.
  - **v0.7.9 update**: DLSS Inputs (AMD/Intel) no longer creates `nvngx.dll` file. Only modifies `Dxgi=false` when user selects "No". Update setup logic accordingly.
+ - **v0.9.0+ update**: DlssOverrides folder removed upstream. Fakenvapi bundled. FG Input/Output split. FFX 2.2 SDK (FSR 4.1, FSR-FG 4.0.0).
+ - **v0.9.2+ update**: XeSS 3.0.1 SDK, Depth Aware sharpening, improved FSR-FG crash fixes, overlay theme customization.
  - 7-Zip: code tries standard install locations plus PATH; tests should mock `shutil.which` or the `_find_seven_zip` result.
  - PyInstaller: `src/main.py` checks `sys.frozen` / `sys._MEIPASS`. When editing startup logic, preserve both source and frozen behaviors.
 

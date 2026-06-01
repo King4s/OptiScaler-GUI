@@ -2,10 +2,15 @@
 Version information for OptiScaler-GUI
 """
 
-__version__ = "0.4.3"
-__version_info__ = (0, 4, 3)
+__version__ = "0.5.0"
+__version_info__ = (0, 5, 0)
 
 # Version history:
+# 0.5.0 - OptiScaler v0.9.2 compatibility update
+#       - Support OptiScaler v0.9.2 (latest: XeSS 3.0.1 SDK, Depth Aware sharpening)
+#       - Removed DlssOverrides from additional directories (removed upstream in v0.9)
+#       - Removed amd_fidelityfx_dx12_v2.dll/vk_v2.dll from stale legacy files (still shipped in v0.9.x)
+#       - Updated compatibility notes for v0.9.0-v0.9.2
 # 0.4.3 - Release hardening and install safety
 #       - SHA256 verification for GitHub assets when digest metadata is available
 #       - Runtime 7z.exe self-check and bundled-release verification

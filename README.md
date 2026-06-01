@@ -8,7 +8,7 @@
 
 | Feature             | Status     |
 |---------------------|------------|
-| 📦 Portable Version    | ✅ v0.4.3   |
+| 📦 Portable Version    | ✅ v0.5.0   |
 | 🎮 Steam Auto-Detection | ✅ Full    |
 | 🎮 Epic Games Auto-Detection | ✅ Full    |
 | 🎮 GOG Galaxy Auto-Detection | ✅ Full    |
@@ -65,22 +65,21 @@
 
 **Think of it as**: A desktop installer/manager, like how Steam manages game installations.
 
-**Version: 0.4.3** | **Status: Release** | **🚀 Release: v0.4.3**
+**Version: 0.5.0** | **Status: Release** | **🚀 Release: v0.5.0**
 
-## 🆕 What's New in v0.4.3
+## 🆕 What's New in v0.5.0
 
-### 🛡️ **Release and Install Hardening**
-- **📦 7z Guaranteed**: Portable releases include `7z.exe`, and release CI verifies it is present.
-- **🔐 Download Verification**: GitHub asset SHA256 digests are verified when available.
-- **🧾 Install Manifest**: Installs record copied files, folders, proxy filename, and OptiScaler version.
-- **↩️ Safer Failure Handling**: Failed installs roll back copied files.
-- **💾 Config Backup**: Existing `OptiScaler.ini` files are timestamp-backed-up before overwrite updates.
-- **⚠️ Anti-Cheat Confirmation**: Anti-cheat installs require explicit "continue at own risk" confirmation.
+### 🔄 **OptiScaler v0.9.2 Compatibility**
+- Support for latest OptiScaler v0.9.2 (XeSS 3.0.1 SDK, Depth Aware sharpening, FSR 4.1 + FSR-FG 4.0.0)
+- `DlssOverrides` removed from payload (removed upstream in v0.9.0)
+- Fixed stale file cleanup to preserve FFX 2.2 SDK DLLs (still shipped in v0.9.x)
+- Range: **v0.7.0 → v0.9.2**
+
 
 ### 🚀 **Download Options**
 
 #### 🎯 **For End Users (Recommended)**
-**[📥 Download Portable Version v0.4.3](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.4.3)**
+**[📥 Download Portable Version v0.5.0](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.5.0)**
 
 | Package Type | Size | Checksum | Notes |
 |-------------|------|----------|-------|
@@ -266,7 +265,8 @@ python build.py                     # Creates portable .exe in dist/
 
 | GUI Version | Compatible OptiScaler Versions | Status |
 |-------------|--------------------------------|--------|
-| **v0.4.3** | v0.7.0 - v0.9.1 | ✅ Current |
+| **v0.5.0** | v0.7.0 - v0.9.2 | ✅ Current |
+| v0.4.3 | v0.7.0 - v0.9.1 | 🟡 Legacy |
 | v0.4.2 | v0.7.0 - v0.9.1 | 🟡 Legacy |
 | v0.3.6 | v0.7.0 - v0.7.9 | 🟡 Legacy |
 | v0.3.0 | v0.7.0 - v0.7.7-pre9 | 🟡 Legacy |
@@ -313,14 +313,14 @@ For full release notes and downloads, visit: [GitHub Releases](https://github.co
 **A:** Yes! After installation, launch your game and press **Insert** to access OptiScaler's built-in configuration overlay. This GUI doesn't replace that functionality.
 
 ### **Q: Which OptiScaler versions are supported?**
-**A:** Currently supports v0.7.0 through v0.9.1. The GUI automatically downloads from the official OptiScaler releases.
+**A:** Currently supports v0.7.0 through v0.9.2. The GUI automatically downloads from the official OptiScaler releases.
 
 ### **Q: Can I use this for games not on Steam?**
 **A:** Yes. The GUI can auto-detect several launchers, and you can manually browse and select any game directory.
 
 ## 🛣️ **Project Status & Roadmap**
 
-### **Current Status (v0.4.3)**
+### **Current Status (v0.5.0)**
 - ✅ **Stable Installation**: Reliable OptiScaler installation for most games
 - ✅ **Portable Distribution**: Self-contained Windows package with bundled `7z.exe`
 - ✅ **Multi-Launcher Detection**: Steam, Epic Games, GOG, Xbox Game Pass, and manual paths
