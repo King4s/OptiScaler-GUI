@@ -142,45 +142,121 @@ class GameScanner:
                 debug_log(f"Found Xbox path: {path}")
         return found_paths
 
-    def _find_heroic_paths(self):
-        """Find Heroic Launcher metadata directories."""
-        candidates = [
-            Path.home() / "AppData" / "Roaming" / "heroic",
-            Path.home() / "AppData" / "Local" / "heroic",
-        ]
-        found_paths = []
+    def _find_heroic_config_roots(self):
+        """Find Heroic Launcher config root directories (%APPDATA%/heroic)."""
+        candidates = []
+        for env_var in ("APPDATA", "LOCALAPPDATA"):
+            base = os.environ.get(env_var)
+            if base:
+                candidates.append(Path(base) / "heroic")
+        candidates.append(Path.home() / "AppData" / "Roaming" / "heroic")
+        candidates.append(Path.home() / "AppData" / "Local" / "heroic")
+
+        found_roots = []
+        seen = set()
         for base in candidates:
-            if not base.exists() or not base.is_dir():
+            key = str(base).lower()
+            if key in seen:
                 continue
-            for rel in ["GamesConfig", "legendaryConfig/legendary", "gog_store"]:
-                p = base / rel
-                if p.exists() and p.is_dir():
-                    found_paths.append(str(p))
-                    debug_log(f"Found Heroic path: {p}")
-        return found_paths
+            seen.add(key)
+            if base.is_dir():
+                found_roots.append(base)
+                debug_log(f"Found Heroic config root: {base}")
+        return found_roots
+
+    @staticmethod
+    def _read_json_file(path):
+        """Read a JSON file, returning None on any error."""
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            return None
+
+    def _heroic_installed_entries(self, root):
+        """Collect (title, install_path) pairs from a Heroic config root.
+
+        Heroic keeps one store file per backend:
+        - Epic:    legendaryConfig/legendary/installed.json — dict keyed by
+                   app_name, values carry title + install_path
+        - GOG:     gog_store/installed.json — {"installed": [{appName,
+                   install_path}]}; titles live in the library cache
+                   (store_cache/gog_library.json, older: gog_store/library.json)
+        - Amazon:  nile_config/nile/installed.json — [{id, path}]; titles in
+                   nile_config/nile/library.json
+        - Sideload: sideload_apps/library.json — {"games": [...]}
+        """
+        entries = []
+
+        data = self._read_json_file(root / "legendaryConfig" / "legendary" / "installed.json")
+        if isinstance(data, dict):
+            for meta in data.values():
+                if isinstance(meta, dict) and meta.get("install_path"):
+                    entries.append((meta.get("title"), meta["install_path"]))
+
+        gog_titles = {}
+        for lib_rel in (Path("store_cache") / "gog_library.json", Path("gog_store") / "library.json"):
+            lib = self._read_json_file(root / lib_rel)
+            if isinstance(lib, dict):
+                for game in lib.get("games") or []:
+                    if isinstance(game, dict):
+                        app = game.get("app_name") or game.get("appName")
+                        if app and game.get("title") and str(app) not in gog_titles:
+                            gog_titles[str(app)] = game["title"]
+        data = self._read_json_file(root / "gog_store" / "installed.json")
+        if isinstance(data, dict):
+            for meta in data.get("installed") or []:
+                if isinstance(meta, dict) and meta.get("install_path"):
+                    app = str(meta.get("appName") or meta.get("app_name") or "")
+                    entries.append((gog_titles.get(app), meta["install_path"]))
+
+        nile_dir = root / "nile_config" / "nile"
+        nile_titles = {}
+        lib = self._read_json_file(nile_dir / "library.json")
+        if isinstance(lib, list):
+            for game in lib:
+                if isinstance(game, dict):
+                    product = game.get("product") if isinstance(game.get("product"), dict) else {}
+                    title = game.get("title") or product.get("title")
+                    game_id = game.get("id") or product.get("id")
+                    if game_id and title:
+                        nile_titles[str(game_id)] = title
+        data = self._read_json_file(nile_dir / "installed.json")
+        if isinstance(data, list):
+            for meta in data:
+                if isinstance(meta, dict) and meta.get("path"):
+                    entries.append((nile_titles.get(str(meta.get("id"))), meta["path"]))
+
+        data = self._read_json_file(root / "sideload_apps" / "library.json")
+        if isinstance(data, dict):
+            for game in data.get("games") or []:
+                if not isinstance(game, dict) or game.get("is_installed") is False:
+                    continue
+                install = game.get("install") if isinstance(game.get("install"), dict) else {}
+                folder = game.get("folder_name")
+                if not folder and install.get("executable"):
+                    folder = str(Path(install["executable"]).parent)
+                if folder:
+                    entries.append((game.get("title"), folder))
+
+        return entries
 
     def _scan_heroic_games(self):
-        """Scan Heroic Launcher JSON configs for installed Epic/GOG games."""
+        """Scan Heroic Launcher configs for installed Epic/GOG/Amazon/sideloaded games."""
         games = []
+        seen_paths = set()
         try:
-            for root in self._find_heroic_paths():
-                root_path = Path(root)
-                for cfg in root_path.glob("*.json"):
+            for root in self._find_heroic_config_roots():
+                for title, install_path in self._heroic_installed_entries(root):
                     try:
-                        with open(cfg, "r", encoding="utf-8") as f:
-                            data = json.load(f)
-                        if not isinstance(data, dict):
-                            continue
-                        install = data.get("install") or {}
-                        install_path = install.get("install_path") or data.get("install_path")
-                        if not install_path:
-                            continue
-                        game_name = data.get("title") or data.get("name") or Path(install_path).name
-                        if not game_name:
-                            continue
                         p = Path(install_path)
-                        if not p.exists() or not self._is_game_folder(p):
+                        normalized = os.path.normpath(str(p)).lower()
+                        if normalized in seen_paths:
                             continue
+                        if not p.is_dir() or not self._is_game_folder(p):
+                            continue
+                        seen_paths.add(normalized)
+                        game_name = title or p.name.replace("_", " ").replace("-", " ")
                         image_path = self.fetch_game_image(game_name)
                         optiscaler_installed = self._detect_optiscaler(p)
                         safety = self.analyze_game_safety(Game(game_name, str(p)))
@@ -195,8 +271,9 @@ class GameScanner:
                             engine_supported=safety.get("engine_supported", True),
                             platform="Heroic"
                         ))
-                    except Exception:
-                        continue
+                        debug_log(f"Heroic: found '{game_name}' at {p}")
+                    except Exception as e:
+                        debug_log(f"Heroic: failed processing entry {install_path}: {e}")
         except Exception as e:
             debug_log(f"Heroic scan failed: {e}")
         return games
