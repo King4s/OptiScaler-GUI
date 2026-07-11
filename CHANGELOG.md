@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### v0.5.1 - 2026-07-12
+
+#### Fixes
+- Heroic Launcher games are now detected (#3). The scanner previously expected a store file format Heroic doesn't use and always came up empty; it now parses Heroic's real store files for Epic (legendary), GOG, Amazon (nile), and sideloaded apps, including title lookup from the GOG/nile library caches and dedup of entries pointing at the same install directory.
+
 ### v0.5.0 - 2026-06-01
 
 #### Compatibility
