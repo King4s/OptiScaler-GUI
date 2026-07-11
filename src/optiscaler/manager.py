@@ -118,6 +118,8 @@ class OptiScalerManager:
     - v0.9.0+: Major rewrite. Added XeFG, FSR4-FG, FG Input/Output split, FFX 2.2 SDK,
       DLSS Overrides folder removed, Fakenvapi bundled, setup_windows.bat/setup_linux.sh added
     - v0.9.2+: Updated to XeSS 3.0.1 SDK, Depth Aware sharpening, improved FG handling
+    - v0.9.3: Bugfix release, archive layout identical to v0.9.2a — no installer changes needed.
+      Adds LateAsiPluginsDelay INI option (picked up dynamically by the settings editor).
     """
     def __init__(self, download_dir=None):
         self.github_release_url = OptiScalerConfig.GITHUB_API_URL

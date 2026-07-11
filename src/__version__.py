@@ -9,6 +9,7 @@ __version_info__ = (0, 5, 1)
 # 0.5.1 - Heroic Launcher game detection fix
 #       - Heroic scanner now parses Heroic's actual store files (Epic/legendary,
 #         GOG, Amazon/nile, sideloaded apps) — previously it never found any games
+#       - Verified compatible with OptiScaler v0.9.3 (payload identical to v0.9.2a)
 # 0.5.0 - OptiScaler v0.9.2 compatibility update
 #       - Support OptiScaler v0.9.2 (latest: XeSS 3.0.1 SDK, Depth Aware sharpening)
 #       - Removed DlssOverrides from additional directories (removed upstream in v0.9)

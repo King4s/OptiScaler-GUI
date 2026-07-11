@@ -8,11 +8,12 @@
 
 | Feature             | Status     |
 |---------------------|------------|
-| 📦 Portable Version    | ✅ v0.5.0   |
+| 📦 Portable Version    | ✅ v0.5.1   |
 | 🎮 Steam Auto-Detection | ✅ Full    |
 | 🎮 Epic Games Auto-Detection | ✅ Full    |
 | 🎮 GOG Galaxy Auto-Detection | ✅ Full    |
 | 🎮 Xbox Game Pass Auto-Detection | ✅ Full    |
+| 🎮 Heroic Launcher Auto-Detection | ✅ Full    |
 | 📁 Manual Path Selection | ✅ All Platforms |
 | 🚀 FSR / DLSS / XeSS   | ✅ All 3    |
 | 🐍 Python Runtime      | ✅ Bundled  |
@@ -65,21 +66,21 @@
 
 **Think of it as**: A desktop installer/manager, like how Steam manages game installations.
 
-**Version: 0.5.0** | **Status: Release** | **🚀 Release: v0.5.0**
+**Version: 0.5.1** | **Status: Release** | **🚀 Release: v0.5.1**
 
-## 🆕 What's New in v0.5.0
+## 🆕 What's New in v0.5.1
 
-### 🔄 **OptiScaler v0.9.2 Compatibility**
-- Support for latest OptiScaler v0.9.2 (XeSS 3.0.1 SDK, Depth Aware sharpening, FSR 4.1 + FSR-FG 4.0.0)
-- `DlssOverrides` removed from payload (removed upstream in v0.9.0)
-- Fixed stale file cleanup to preserve FFX 2.2 SDK DLLs (still shipped in v0.9.x)
-- Range: **v0.7.0 → v0.9.2**
+### 🎮 **Heroic Launcher Detection Fixed**
+- Games installed via Heroic Launcher are now detected (#3)
+- Covers all Heroic backends: Epic (legendary), GOG, Amazon (nile), and sideloaded apps
+- Verified compatible with OptiScaler v0.9.3 (identical payload layout to v0.9.2)
+- Range: **v0.7.0 → v0.9.3**
 
 
 ### 🚀 **Download Options**
 
 #### 🎯 **For End Users (Recommended)**
-**[📥 Download Portable Version v0.5.0](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.5.0)**
+**[📥 Download Portable Version v0.5.1](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.5.1)**
 
 | Package Type | Size | Checksum | Notes |
 |-------------|------|----------|-------|
@@ -151,7 +152,7 @@ For implementation details, see [Technical Overview](docs/TECHNICAL_OVERVIEW.md)
 
 ### 🎯 **Option 1: Portable Version (Recommended for Users)**
 
-1. **[📥 Download the Portable Version](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.4.3)**
+1. **[📥 Download the Portable Version](https://github.com/King4s/OptiScaler-GUI/releases/latest)**
 2. **Extract** the ZIP file to your desired location
 3. **Run** `OptiScaler-GUI.exe` inside the extracted folder
 4. **Done!** No installation or Python setup required
@@ -256,7 +257,7 @@ python build.py                     # Creates portable .exe in dist/
 
 ## 📦 Release Information
 
-**Current Version**: 0.4.3 (Release)
+**Current Version**: 0.5.1 (Release)
 - **Portable Version Available**: Self-contained executable with all dependencies
 - **Size**: ~14 MB portable ZIP (includes Python runtime and bundled `7z.exe`)
 - **Compatibility**: Windows 10/11, no Python installation required
@@ -265,7 +266,8 @@ python build.py                     # Creates portable .exe in dist/
 
 | GUI Version | Compatible OptiScaler Versions | Status |
 |-------------|--------------------------------|--------|
-| **v0.5.0** | v0.7.0 - v0.9.2 | ✅ Current |
+| **v0.5.1** | v0.7.0 - v0.9.3 | ✅ Current |
+| v0.5.0 | v0.7.0 - v0.9.2 | 🟡 Legacy |
 | v0.4.3 | v0.7.0 - v0.9.1 | 🟡 Legacy |
 | v0.4.2 | v0.7.0 - v0.9.1 | 🟡 Legacy |
 | v0.3.6 | v0.7.0 - v0.7.9 | 🟡 Legacy |
@@ -313,17 +315,17 @@ For full release notes and downloads, visit: [GitHub Releases](https://github.co
 **A:** Yes! After installation, launch your game and press **Insert** to access OptiScaler's built-in configuration overlay. This GUI doesn't replace that functionality.
 
 ### **Q: Which OptiScaler versions are supported?**
-**A:** Currently supports v0.7.0 through v0.9.2. The GUI automatically downloads from the official OptiScaler releases.
+**A:** Currently supports v0.7.0 through v0.9.3. The GUI automatically downloads from the official OptiScaler releases.
 
 ### **Q: Can I use this for games not on Steam?**
 **A:** Yes. The GUI can auto-detect several launchers, and you can manually browse and select any game directory.
 
 ## 🛣️ **Project Status & Roadmap**
 
-### **Current Status (v0.5.0)**
+### **Current Status (v0.5.1)**
 - ✅ **Stable Installation**: Reliable OptiScaler installation for most games
 - ✅ **Portable Distribution**: Self-contained Windows package with bundled `7z.exe`
-- ✅ **Multi-Launcher Detection**: Steam, Epic Games, GOG, Xbox Game Pass, and manual paths
+- ✅ **Multi-Launcher Detection**: Steam, Epic Games, GOG, Xbox Game Pass, Heroic Launcher, and manual paths
 - ✅ **Multi-Language**: Danish, English, and Polish translations
 - ✅ **Error Recovery**: Robust fallback systems for edge cases
 
