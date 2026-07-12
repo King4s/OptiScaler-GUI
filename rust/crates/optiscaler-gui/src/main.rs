@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod chrome;
 mod fx;
 mod ops;
 mod screens;
@@ -14,6 +15,7 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("OptiScaler GUI")
+            .with_decorations(false)
             .with_inner_size([1100.0, 720.0])
             .with_min_inner_size([800.0, 600.0]),
         ..Default::default()

@@ -106,7 +106,9 @@ impl Ops {
         let name = game.name.clone();
         let appid = game.steam_appid;
         std::thread::spawn(move || {
-            let appid = appid.or_else(|| resolver.lookup(&name));
+            let appid = appid
+                .or_else(|| resolver.lookup(&name))
+                .or_else(|| resolver.lookup_online(&name));
             let event = match images.fetch(&name, appid) {
                 Some(path) => TaskEvent::ImageReady {
                     path_norm: key,
