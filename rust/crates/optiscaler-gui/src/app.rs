@@ -210,6 +210,10 @@ impl eframe::App for App {
             ctx.request_repaint_after(std::time::Duration::from_millis(33));
         }
 
+        // Frameless-window chrome: top drag strip + border resize zones
+        crate::chrome::top_strip(ctx, theme::palette(self.state.dark()), "OPTISCALER GUI");
+        crate::chrome::handle_resize(ctx);
+
         self.sidebar(ctx);
         match self.state.screen {
             Screen::Games => screens::games_grid::show(ctx, &mut self.state, &mut self.ops),

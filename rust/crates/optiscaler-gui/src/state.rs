@@ -22,8 +22,13 @@ pub struct EditorState {
     pub game_name: String,
     pub ini_path: PathBuf,
     pub doc: IniDocument,
+    /// Pristine upstream OptiScaler.ini from the cached release payload,
+    /// used for "Restore defaults" and per-key reset.
+    pub defaults: Option<IniDocument>,
     pub dirty: bool,
     pub status: Option<String>,
+    /// "Section.Key: old → new" lines from Auto Settings / Restore defaults.
+    pub applied_changes: Vec<String>,
     pub search: String,
     /// Set when Back was clicked with unsaved changes (second click discards).
     pub discard_armed: bool,
@@ -47,6 +52,24 @@ pub enum ArtState {
 
 const TEXTURE_CACHE_CAP: usize = 128;
 const LOG_CAP: usize = 2000;
+
+/// Pristine OptiScaler.ini from the newest cached release payload
+/// (cache/optiscaler_downloads/extracted/*/OptiScaler.ini).
+fn load_default_ini() -> Option<IniDocument> {
+    let extracted = crate::ops::base_dir()
+        .join("cache")
+        .join("optiscaler_downloads")
+        .join("extracted");
+    let mut candidates: Vec<PathBuf> = std::fs::read_dir(&extracted)
+        .ok()?
+        .flatten()
+        .map(|e| e.path().join("OptiScaler.ini"))
+        .filter(|p| p.exists())
+        .collect();
+    candidates.sort();
+    let newest = candidates.pop()?;
+    opticore::ini::read_file(&newest)
+}
 
 pub struct AppState {
     pub screen: Screen,
@@ -133,8 +156,10 @@ impl AppState {
                 game_name: game.name.clone(),
                 ini_path,
                 doc,
+                defaults: load_default_ini(),
                 dirty: false,
                 status: None,
+                applied_changes: Vec::new(),
                 search: String::new(),
                 discard_armed: false,
             });

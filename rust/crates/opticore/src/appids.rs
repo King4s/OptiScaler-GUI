@@ -195,6 +195,60 @@ impl AppIdResolver {
         result
     }
 
+    /// Online fallback via the Steam Store search API — used for games with
+    /// no local appid (typically Xbox/Game Pass titles) when the catalogue
+    /// lookup misses, e.g. before the SteamSpy download completes on first
+    /// run. The result is only accepted when the store item's name actually
+    /// matches the query (normalized equality or token-subset), so a wrong
+    /// game's artwork never wins. Memoized (positive and negative).
+    pub fn lookup_online(&self, game_name: &str) -> Option<u32> {
+        let memo_key = format!("storesearch:{}", game_name.to_lowercase());
+        if let Some(hit) = self.memo.lock().unwrap().get(&memo_key) {
+            return *hit;
+        }
+        let result = storesearch(game_name);
+        self.memo.lock().unwrap().insert(memo_key, result);
+        result
+    }
+}
+
+fn percent_encode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() * 3);
+    for byte in s.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char)
+            }
+            _ => out.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    out
+}
+
+fn storesearch(game_name: &str) -> Option<u32> {
+    let url = format!(
+        "https://store.steampowered.com/api/storesearch/?term={}&cc=us&l=en",
+        percent_encode(game_name)
+    );
+    let mut resp = crate::images::http_agent().get(&url).call().ok()?;
+    let body = resp.body_mut().read_to_string().ok()?;
+    let data: Value = serde_json::from_str(&body).ok()?;
+    let query_norm = normalize(game_name);
+    let query_tokens: HashSet<&str> = query_norm.split_whitespace().collect();
+    for item in data.get("items").and_then(Value::as_array)? {
+        let name = item.get("name").and_then(Value::as_str).unwrap_or("");
+        let item_norm = normalize(name);
+        let item_tokens: HashSet<&str> = item_norm.split_whitespace().collect();
+        let acceptable = item_norm == query_norm
+            || (!query_tokens.is_empty() && query_tokens.is_subset(&item_tokens));
+        if acceptable {
+            return item.get("id").and_then(Value::as_u64).map(|id| id as u32);
+        }
+    }
+    None
+}
+
+impl AppIdResolver {
     /// Download the SteamSpy catalogue (skipped when the disk cache is fresh)
     /// and swap in the enlarged index. Call from a background thread; returns
     /// true if the index changed.

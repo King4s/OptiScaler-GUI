@@ -55,17 +55,57 @@ pub fn show(ctx: &egui::Context, state: &mut AppState) {
                 .button(format!("✨ Auto Settings ({})", gpu_vendor.label()))
                 .clicked()
             {
-                let mut applied = 0;
+                let mut changes = Vec::new();
                 for (section, key, value) in auto_settings(gpu_vendor) {
-                    if editor.doc.set_value(section, key, value) {
-                        applied += 1;
+                    let old = editor.doc.get(section, key).map(|e| e.value.clone());
+                    match old {
+                        Some(old) if old != value => {
+                            editor.doc.set_value(section, key, value);
+                            changes.push(format!("{section}.{key}: {old} → {value}"));
+                        }
+                        _ => {}
                     }
                 }
-                editor.dirty = applied > 0;
+                editor.dirty = editor.dirty || !changes.is_empty();
                 editor.status = Some(format!(
-                    "Applied {applied} recommended settings for {} — review and Save",
-                    gpu_vendor.label()
+                    "Auto Settings ({}): {} changes — review below and Save",
+                    gpu_vendor.label(),
+                    changes.len()
                 ));
+                editor.applied_changes = changes;
+            }
+
+            // Restore upstream defaults from the cached release payload
+            let restore_button = egui::Button::new("↩ Restore defaults");
+            let restore = ui.add_enabled(editor.defaults.is_some(), restore_button);
+            let restore = restore.on_disabled_hover_text(
+                "Defaults come from the downloaded OptiScaler release — install or update once to enable",
+            );
+            if restore.clicked() {
+                if let Some(defaults) = editor.defaults.clone() {
+                    let mut changes = Vec::new();
+                    for section in &defaults.sections {
+                        for entry in &section.entries {
+                            let old = editor
+                                .doc
+                                .get(&section.name, &entry.key)
+                                .map(|e| e.value.clone());
+                            if let Some(old) = old {
+                                if old != entry.value {
+                                    editor.doc.set_value(&section.name, &entry.key, &entry.value);
+                                    changes.push(format!(
+                                        "{}.{}: {old} → {}",
+                                        section.name, entry.key, entry.value
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                    editor.dirty = editor.dirty || !changes.is_empty();
+                    editor.status =
+                        Some(format!("Restored defaults: {} changes — Save to keep", changes.len()));
+                    editor.applied_changes = changes;
+                }
             }
             let save = egui::Button::new(RichText::new("💾 Save").strong());
             if ui.add_enabled(editor.dirty, save).clicked() {
@@ -73,6 +113,7 @@ pub fn show(ctx: &egui::Context, state: &mut AppState) {
                     Ok(()) => {
                         editor.dirty = false;
                         editor.discard_armed = false;
+                        editor.applied_changes.clear();
                         editor.status = Some("Saved (previous file kept as .ini.backup)".into());
                     }
                     Err(e) => editor.status = Some(format!("Save failed: {e}")),
@@ -85,6 +126,21 @@ pub fn show(ctx: &egui::Context, state: &mut AppState) {
             });
         });
         ui.add_space(6.0);
+
+        // What Auto Settings / Restore defaults actually changed
+        if !editor.applied_changes.is_empty() {
+            egui::CollapsingHeader::new(
+                RichText::new(format!("Changes applied ({})", editor.applied_changes.len()))
+                    .color(pal.accent),
+            )
+            .default_open(true)
+            .show(ui, |ui| {
+                for change in &editor.applied_changes {
+                    ui.label(RichText::new(change).monospace().size(12.0));
+                }
+            });
+            ui.add_space(6.0);
+        }
 
         let needle = editor.search.to_lowercase();
         egui::ScrollArea::vertical()
@@ -122,10 +178,22 @@ pub fn show(ctx: &egui::Context, state: &mut AppState) {
                             {
                                 continue;
                             }
+                            let default_value = editor
+                                .defaults
+                                .as_ref()
+                                .and_then(|d| d.get(&section_name, &key))
+                                .map(|e| e.value.clone());
                             let value =
                                 &mut editor.doc.sections[section_idx].entries[entry_idx].value;
-                            let changed =
-                                entry_row(ui, &section_name, &key, &comment, &kind, value);
+                            let changed = entry_row(
+                                ui,
+                                &section_name,
+                                &key,
+                                &comment,
+                                &kind,
+                                value,
+                                default_value.as_deref(),
+                            );
                             if changed {
                                 editor.dirty = true;
                                 editor.discard_armed = false;
@@ -144,6 +212,7 @@ pub fn show(ctx: &egui::Context, state: &mut AppState) {
 }
 
 /// One setting row. Returns true if the value changed this frame.
+#[allow(clippy::too_many_arguments)]
 fn entry_row(
     ui: &mut egui::Ui,
     section: &str,
@@ -151,6 +220,7 @@ fn entry_row(
     comment: &str,
     kind: &ValueKind,
     value: &mut String,
+    default_value: Option<&str>,
 ) -> bool {
     let mut changed = false;
     ui.horizontal(|ui| {
@@ -159,6 +229,18 @@ fn entry_row(
             label.on_hover_text(comment);
         }
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            // Per-key reset when the value differs from the upstream default
+            if let Some(default) = default_value {
+                if default != value.as_str()
+                    && ui
+                        .small_button("↺")
+                        .on_hover_text(format!("Reset to default: {default}"))
+                        .clicked()
+                {
+                    *value = default.to_string();
+                    changed = true;
+                }
+            }
             let widget_id = format!("{section}.{key}");
             match kind {
                 ValueKind::BoolOptions => {
