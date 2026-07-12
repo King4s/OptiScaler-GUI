@@ -147,6 +147,29 @@ impl Ops {
         });
     }
 
+    /// Check for a newer GUI release (stable releases only — GitHub's
+    /// releases/latest endpoint excludes pre-releases).
+    pub fn spawn_gui_update_check(&self, ctx: &egui::Context) {
+        const GUI_RELEASES_LATEST: &str =
+            "https://api.github.com/repos/King4s/OptiScaler-GUI/releases/latest";
+        let tx = self.tx.clone();
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            if let Ok(release) = install::github::fetch_release_from(GUI_RELEASES_LATEST) {
+                let latest = release.version_label();
+                if install::is_update_available(opticore::VERSION, &latest) {
+                    let _ = tx.send(TaskEvent::GuiUpdateAvailable {
+                        version: latest,
+                        url: release.html_url.unwrap_or_else(|| {
+                            "https://github.com/King4s/OptiScaler-GUI/releases".to_string()
+                        }),
+                    });
+                    ctx.request_repaint();
+                }
+            }
+        });
+    }
+
     fn stage_label(stage: &InstallStage) -> String {
         match stage {
             InstallStage::FetchingRelease => "Fetching release…".into(),

@@ -43,6 +43,21 @@ pub fn show(ctx: &egui::Context, state: &mut AppState, ops: &mut Ops) {
     }
 
     egui::CentralPanel::default().show(ctx, |ui| {
+        // Animated GPU background behind the grid (single fullscreen-triangle
+        // pass; skipped entirely when effects are off or reduced motion is on)
+        if state.effects_active() {
+            let rect = ui.max_rect().expand(8.0);
+            ui.painter()
+                .add(eframe::egui_wgpu::Callback::new_paint_callback(
+                    rect,
+                    crate::fx::EffectsCallback {
+                        time: ui.input(|i| i.time) as f32,
+                        aspect: rect.aspect_ratio(),
+                        intensity: 1.0,
+                        dark: if state.dark() { 1.0 } else { 0.0 },
+                    },
+                ));
+        }
         toolbar(ui, ctx, state, ops);
         ui.add_space(4.0);
 
