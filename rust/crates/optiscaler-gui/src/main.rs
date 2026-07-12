@@ -1,5 +1,11 @@
-//! OptiScaler GUI (Rust rewrite) — M0 scaffold: dark GPU-rendered window.
+//! OptiScaler GUI (Rust rewrite) — GPU-rendered installer/manager for OptiScaler.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+mod app;
+mod ops;
+mod screens;
+mod state;
+mod theme;
 
 use eframe::egui;
 
@@ -14,23 +20,6 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "OptiScaler GUI",
         options,
-        Box::new(|cc| {
-            cc.egui_ctx.set_visuals(egui::Visuals::dark());
-            Ok(Box::new(App))
-        }),
+        Box::new(|cc| Ok(Box::new(app::App::new(cc)))),
     )
-}
-
-struct App;
-
-impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("OptiScaler GUI");
-            ui.label(format!(
-                "M0 scaffold — GPU-rendered via wgpu — core {}",
-                opticore::VERSION
-            ));
-        });
-    }
 }
