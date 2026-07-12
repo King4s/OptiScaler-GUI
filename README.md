@@ -38,8 +38,8 @@ The current release (v0.5.2) supports OptiScaler **v0.7.0 through v0.9.3** and a
 
 | Track | Where | Status |
 |---|---|---|
-| Python app (v0.x) | `src/` | ✅ Current release — maintenance mode |
-| Rust rewrite | `rust/` | 🚧 In development — GPU-rendered UI (egui/wgpu), single small exe, CalVer releases (`2026.x`) will replace the Python app at feature parity |
+| Python app (v0.x) | `src/` | ✅ Current stable release — maintenance mode |
+| Rust rewrite | `rust/` | 🧪 **Public prerelease available** — GPU-rendered UI (egui/wgpu), single ~7 MB exe, CalVer releases (`2026.x`). See [`rust/PARITY.md`](rust/PARITY.md) for the verified feature-parity status. Replaces the Python app at the first stable CalVer release. |
 
 ## Running from source
 
