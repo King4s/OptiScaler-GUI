@@ -34,7 +34,7 @@ pub fn show(ctx: &egui::Context, state: &mut AppState, ops: &mut Ops) {
         if let Some(game) = game {
             egui::SidePanel::right("game_detail")
                 .default_width(300.0)
-                .show(ctx, |ui| detail_panel(ui, ctx, state, &game));
+                .show(ctx, |ui| detail_panel(ui, ctx, state, ops, &game));
         } else {
             state.selected = None;
         }
@@ -305,7 +305,13 @@ fn badge(ui: &egui::Ui, pos: egui::Pos2, text: &str, color: Color32) -> egui::Po
     egui::pos2(rect.max.x + 6.0, pos.y)
 }
 
-fn detail_panel(ui: &mut egui::Ui, ctx: &egui::Context, state: &mut AppState, game: &Game) {
+fn detail_panel(
+    ui: &mut egui::Ui,
+    ctx: &egui::Context,
+    state: &mut AppState,
+    ops: &mut Ops,
+    game: &Game,
+) {
     ui.add_space(6.0);
     ui.horizontal(|ui| {
         ui.heading(&game.name);
@@ -349,14 +355,6 @@ fn detail_panel(ui: &mut egui::Ui, ctx: &egui::Context, state: &mut AppState, ga
             ui.end_row();
         });
 
-    if !game.anti_cheat.is_empty() {
-        ui.add_space(6.0);
-        ui.colored_label(
-            theme::BADGE_WARN,
-            format!("⚠ Anti-cheat detected: {:?}", game.anti_cheat),
-        );
-    }
-
     ui.add_space(8.0);
     ui.label(
         RichText::new(game.path.display().to_string())
@@ -364,14 +362,146 @@ fn detail_panel(ui: &mut egui::Ui, ctx: &egui::Context, state: &mut AppState, ga
             .color(theme::TEXT_DIM),
     );
     ui.add_space(8.0);
+    ui.separator();
 
-    ui.horizontal(|ui| {
-        if ui.button("📂 Open folder").clicked() {
-            let _ = std::process::Command::new("explorer")
-                .arg(&game.path)
-                .spawn();
+    install_section(ui, ctx, state, ops, game);
+
+    ui.add_space(8.0);
+    if ui.button("📂 Open folder").clicked() {
+        let _ = std::process::Command::new("explorer")
+            .arg(&game.path)
+            .spawn();
+    }
+}
+
+/// Install / Update / Uninstall actions with anti-cheat confirmation and
+/// per-game progress.
+fn install_section(
+    ui: &mut egui::Ui,
+    ctx: &egui::Context,
+    state: &mut AppState,
+    ops: &mut Ops,
+    game: &Game,
+) {
+    // Operation in flight → progress only
+    if let Some(label) = state.busy_ops.get(&game.key.path_norm) {
+        ui.horizontal(|ui| {
+            ui.spinner();
+            ui.label(label.clone());
+        });
+        return;
+    }
+
+    // Last operation result
+    if let Some((ok, message)) = state.op_results.get(&game.key.path_norm) {
+        let color = if *ok {
+            theme::BADGE_OK
+        } else {
+            theme::BADGE_DANGER
+        };
+        ui.colored_label(color, message.clone());
+        ui.add_space(4.0);
+    }
+
+    // Anti-cheat warning requires explicit confirmation before install/update
+    let needs_confirm = !game.anti_cheat.is_empty();
+    if needs_confirm {
+        ui.colored_label(
+            theme::BADGE_WARN,
+            format!(
+                "⚠ Anti-cheat detected ({}). Installing mods into online games can trigger bans.",
+                game.anti_cheat
+                    .iter()
+                    .map(|ac| format!("{ac:?}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        );
+        ui.checkbox(
+            &mut state.anticheat_confirmed,
+            "I understand the risk — continue anyway",
+        );
+        ui.add_space(4.0);
+    }
+    let allowed = !needs_confirm || state.anticheat_confirmed;
+
+    if game.optiscaler_installed {
+        // Update path: compare installed manifest version vs latest release
+        let installed = opticore::install::installed_version(&game.path);
+        if let (Some(installed), Some(latest)) =
+            (installed.as_deref(), state.latest_release.as_deref())
+        {
+            if opticore::install::is_update_available(installed, latest) {
+                ui.colored_label(
+                    theme::ACCENT,
+                    format!("Update available: {installed} → {latest}"),
+                );
+                if ui
+                    .add_enabled(
+                        allowed,
+                        egui::Button::new(RichText::new("⬆ Update OptiScaler").strong()),
+                    )
+                    .clicked()
+                {
+                    let target = opticore::install::installed_target_filename(&game.path)
+                        .unwrap_or_else(|| "dxgi.dll".to_string());
+                    let options = opticore::install::InstallOptions {
+                        target_filename: target,
+                        overwrite: true,
+                        ..Default::default()
+                    };
+                    state
+                        .busy_ops
+                        .insert(game.key.path_norm.clone(), "Starting update…".into());
+                    ops.spawn_install(ctx, game, options);
+                }
+                ui.add_space(4.0);
+            } else {
+                ui.label(
+                    RichText::new(format!("Installed: {installed} (up to date)"))
+                        .color(theme::TEXT_DIM),
+                );
+            }
+        } else if let Some(installed) = installed {
+            ui.label(RichText::new(format!("Installed: {installed}")).color(theme::TEXT_DIM));
         }
-        ui.add_enabled(false, egui::Button::new("Install OptiScaler"))
-            .on_disabled_hover_text("Coming in M3");
-    });
+
+        if ui
+            .add_enabled(allowed, egui::Button::new("🗑 Uninstall OptiScaler"))
+            .clicked()
+        {
+            state
+                .busy_ops
+                .insert(game.key.path_norm.clone(), "Uninstalling…".into());
+            ops.spawn_uninstall(ctx, game);
+        }
+    } else {
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("Install as").color(theme::TEXT_DIM));
+            egui::ComboBox::from_id_salt("proxy_choice")
+                .selected_text(state.proxy_choice.clone())
+                .show_ui(ui, |ui| {
+                    for name in opticore::install::payload::PROXY_FILENAMES {
+                        ui.selectable_value(&mut state.proxy_choice, name.to_string(), *name);
+                    }
+                });
+        });
+        if ui
+            .add_enabled(
+                allowed,
+                egui::Button::new(RichText::new("⬇ Install OptiScaler").strong()),
+            )
+            .clicked()
+        {
+            let options = opticore::install::InstallOptions {
+                target_filename: state.proxy_choice.clone(),
+                overwrite: false,
+                ..Default::default()
+            };
+            state
+                .busy_ops
+                .insert(game.key.path_norm.clone(), "Starting install…".into());
+            ops.spawn_install(ctx, game, options);
+        }
+    }
 }

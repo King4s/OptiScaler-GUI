@@ -19,6 +19,16 @@ pub enum TaskEvent {
     ImageMissing { path_norm: String },
     /// The SteamSpy catalogue finished loading — retry missing artwork.
     AppListReady,
+    /// Install/update/uninstall progress for one game.
+    OpProgress { path_norm: String, label: String },
+    /// Install/update/uninstall finished for one game.
+    OpFinished {
+        path_norm: String,
+        ok: bool,
+        message: String,
+    },
+    /// Latest OptiScaler release tag (for update badges).
+    LatestRelease { version: String },
     /// A log line for the log screen.
     Log(String),
 }

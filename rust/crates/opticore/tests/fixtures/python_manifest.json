@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "installed_by": "OptiScaler-GUI",
+  "installed_at": "2026-07-12T18:31:52.162486",
+  "target_filename": "dxgi.dll",
+  "optiscaler_version": "v0.9.3",
+  "release_url": "https://github.com/optiscaler/OptiScaler/releases/tag/v0.9.3",
+  "files": [
+    "D3D12_Optiscaler/plugin.dll",
+    "OptiScaler.ini",
+    "Remove OptiScaler.bat",
+    "dxgi.dll",
+    "fakenvapi.dll"
+  ],
+  "directories": [
+    "D3D12_Optiscaler",
+    "Licenses"
+  ]
+}
