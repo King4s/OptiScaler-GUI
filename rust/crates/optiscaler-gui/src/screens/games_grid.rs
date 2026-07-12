@@ -13,8 +13,9 @@ const CARD_H: f32 = 158.0;
 const ART_H: f32 = 92.0;
 const GRID_GAP: f32 = 10.0;
 
+// First entry's empty label is replaced with the translated "all platforms"
 const PLATFORM_FILTERS: &[(Option<Platform>, &str)] = &[
-    (None, "All platforms"),
+    (None, ""),
     (Some(Platform::Steam), "Steam"),
     (Some(Platform::Epic), "Epic"),
     (Some(Platform::Gog), "GOG"),
@@ -24,6 +25,7 @@ const PLATFORM_FILTERS: &[(Option<Platform>, &str)] = &[
 ];
 
 pub fn show(ctx: &egui::Context, state: &mut AppState, ops: &mut Ops) {
+    let pal = theme::palette(state.dark());
     // Detail side panel for the selected game
     if let Some(selected_key) = state.selected.clone() {
         let game = state
@@ -46,24 +48,21 @@ pub fn show(ctx: &egui::Context, state: &mut AppState, ops: &mut Ops) {
 
         match state.scan_state {
             ScanState::NotStarted => {
-                empty_state(
-                    ui,
-                    ctx,
-                    ops,
-                    "Welcome! Scan your system to find installed games.",
-                );
+                let message = state.i18n.tr("ui.welcome_scan");
+                empty_state(ui, ctx, state, ops, &message, pal);
             }
             ScanState::Running => {
                 ui.vertical_centered(|ui| {
                     ui.add_space(60.0);
                     ui.spinner();
-                    ui.label(RichText::new("Scanning for games…").color(theme::TEXT_DIM));
+                    ui.label(RichText::new(state.i18n.tr("ui.scanning_games")).color(pal.text_dim));
                 });
             }
             ScanState::Done => {
                 let indices = state.filtered_indices();
                 if indices.is_empty() {
-                    empty_state(ui, ctx, ops, "No games match the current search/filter.");
+                    let message = state.i18n.tr("ui.no_games_match");
+                    empty_state(ui, ctx, state, ops, &message, pal);
                 } else {
                     grid(ui, ctx, state, ops, &indices);
                 }
@@ -73,35 +72,50 @@ pub fn show(ctx: &egui::Context, state: &mut AppState, ops: &mut Ops) {
 }
 
 fn toolbar(ui: &mut egui::Ui, ctx: &egui::Context, state: &mut AppState, ops: &mut Ops) {
+    let pal = theme::palette(state.dark());
     ui.horizontal(|ui| {
+        let search_hint = state.i18n.tr("ui.search_games");
         ui.add(
             egui::TextEdit::singleline(&mut state.search)
-                .hint_text("Search games…")
+                .hint_text(search_hint)
                 .desired_width(220.0),
         );
 
+        let all_platforms = state.i18n.tr("ui.all_platforms");
         let current_label = PLATFORM_FILTERS
             .iter()
             .find(|(p, _)| *p == state.platform_filter)
-            .map(|(_, l)| *l)
-            .unwrap_or("All platforms");
+            .map(|(_, l)| l.to_string())
+            .filter(|l| !l.is_empty())
+            .unwrap_or_else(|| all_platforms.clone());
         egui::ComboBox::from_id_salt("platform_filter")
             .selected_text(current_label)
             .show_ui(ui, |ui| {
                 for (platform, label) in PLATFORM_FILTERS {
-                    ui.selectable_value(&mut state.platform_filter, *platform, *label);
+                    let label = if label.is_empty() {
+                        &all_platforms
+                    } else {
+                        *label
+                    };
+                    ui.selectable_value(&mut state.platform_filter, *platform, label);
                 }
             });
 
         if ui
-            .add_enabled(!ops.scan_running(), egui::Button::new("⟳ Rescan"))
+            .add_enabled(
+                !ops.scan_running(),
+                egui::Button::new(format!("⟳ {}", state.i18n.tr("ui.rescan"))),
+            )
             .clicked()
         {
             state.scan_state = ScanState::Running;
-            ops.spawn_scan(ctx);
+            ops.spawn_scan(ctx, state.config.excluded_drive_letters());
         }
 
-        if ui.button("📁 Add folder…").clicked() {
+        if ui
+            .button(format!("📁 {}", state.i18n.tr("ui.add_folder")))
+            .clicked()
+        {
             if let Some(folder) = rfd::FileDialog::new().pick_folder() {
                 match opticore::scan::scan_manual_folder(&folder) {
                     Some(game) => {
@@ -130,27 +144,39 @@ fn toolbar(ui: &mut egui::Ui, ctx: &egui::Context, state: &mut AppState, ops: &m
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             if state.scan_state == ScanState::Done {
                 ui.label(
-                    RichText::new(format!("{} games", state.filtered_indices().len()))
-                        .color(theme::TEXT_DIM),
+                    RichText::new(format!(
+                        "{} {}",
+                        state.filtered_indices().len(),
+                        state.i18n.tr("ui.games_found")
+                    ))
+                    .color(pal.text_dim),
                 );
             }
         });
     });
 }
 
-fn empty_state(ui: &mut egui::Ui, ctx: &egui::Context, ops: &mut Ops, message: &str) {
+fn empty_state(
+    ui: &mut egui::Ui,
+    ctx: &egui::Context,
+    state: &mut AppState,
+    ops: &mut Ops,
+    message: &str,
+    pal: theme::Palette,
+) {
     ui.vertical_centered(|ui| {
         ui.add_space(80.0);
-        ui.label(RichText::new(message).size(16.0).color(theme::TEXT_DIM));
+        ui.label(RichText::new(message).size(16.0).color(pal.text_dim));
         ui.add_space(12.0);
         if !ops.scan_running()
             && ui
                 .add(egui::Button::new(
-                    RichText::new("🔍 Scan for games").size(16.0),
+                    RichText::new(format!("🔍 {}", state.i18n.tr("ui.scan_for_games"))).size(16.0),
                 ))
                 .clicked()
         {
-            ops.spawn_scan(ctx);
+            state.scan_state = ScanState::Running;
+            ops.spawn_scan(ctx, state.config.excluded_drive_letters());
         }
     });
 }
@@ -185,6 +211,7 @@ fn grid(
 }
 
 fn card(ui: &mut egui::Ui, ctx: &egui::Context, state: &mut AppState, ops: &mut Ops, game: &Game) {
+    let pal = theme::palette(state.dark());
     let (rect, response) = ui.allocate_exact_size(Vec2::new(CARD_W, CARD_H), Sense::click());
     if !ui.is_rect_visible(rect) {
         return;
@@ -192,12 +219,12 @@ fn card(ui: &mut egui::Ui, ctx: &egui::Context, state: &mut AppState, ops: &mut 
 
     let selected = state.selected.as_deref() == Some(game.key.path_norm.as_str());
     let fill = if selected || response.hovered() {
-        theme::CARD_HOVER
+        pal.card_hover
     } else {
-        theme::CARD
+        pal.card
     };
     let stroke = if selected {
-        Stroke::new(1.5_f32, theme::ACCENT)
+        Stroke::new(1.5_f32, pal.accent)
     } else {
         Stroke::NONE
     };
@@ -230,10 +257,10 @@ fn card(ui: &mut egui::Ui, ctx: &egui::Context, state: &mut AppState, ops: &mut 
             state
                 .art
                 .insert(game.key.path_norm.clone(), ArtState::Fetching);
-            placeholder_art(ui, art_rect, "…");
+            placeholder_art(ui, art_rect, "…", pal);
         }
-        ArtState::Fetching => placeholder_art(ui, art_rect, "…"),
-        ArtState::Missing => placeholder_art(ui, art_rect, &game.name),
+        ArtState::Fetching => placeholder_art(ui, art_rect, "…", pal),
+        ArtState::Missing => placeholder_art(ui, art_rect, &game.name, pal),
     }
 
     // Name
@@ -254,15 +281,15 @@ fn card(ui: &mut egui::Ui, ctx: &egui::Context, state: &mut AppState, ops: &mut 
 
     // Badge row
     let mut badge_pos = egui::pos2(rect.min.x + 8.0, rect.max.y - 24.0);
-    badge_pos = badge(ui, badge_pos, game.platform.label(), theme::BADGE_PLATFORM);
+    badge_pos = badge(ui, badge_pos, game.platform.label(), pal.badge_platform);
     if game.optiscaler_installed {
-        badge_pos = badge(ui, badge_pos, "OptiScaler ✓", theme::BADGE_OK);
+        badge_pos = badge(ui, badge_pos, "OptiScaler ✓", pal.badge_ok);
     }
     if !game.anti_cheat.is_empty() {
-        badge_pos = badge(ui, badge_pos, "⚠ AC", theme::BADGE_WARN);
+        badge_pos = badge(ui, badge_pos, "⚠ AC", pal.badge_warn);
     }
     if !game.engine_supported && game.engine != Engine::Unknown {
-        badge(ui, badge_pos, "engine", theme::BADGE_DANGER);
+        badge(ui, badge_pos, "engine", pal.badge_danger);
     }
 
     if response.clicked() {
@@ -275,9 +302,9 @@ fn card(ui: &mut egui::Ui, ctx: &egui::Context, state: &mut AppState, ops: &mut 
     ui.add_space(GRID_GAP - ui.spacing().item_spacing.x);
 }
 
-fn placeholder_art(ui: &egui::Ui, rect: egui::Rect, label: &str) {
+fn placeholder_art(ui: &egui::Ui, rect: egui::Rect, label: &str, pal: theme::Palette) {
     ui.painter()
-        .rect_filled(rect, CornerRadius::same(6), theme::BG);
+        .rect_filled(rect, CornerRadius::same(6), pal.bg);
     let text = if label.chars().count() > 20 {
         label.chars().take(19).collect::<String>() + "…"
     } else {
@@ -288,7 +315,7 @@ fn placeholder_art(ui: &egui::Ui, rect: egui::Rect, label: &str) {
         egui::Align2::CENTER_CENTER,
         text,
         egui::FontId::proportional(12.0),
-        theme::TEXT_DIM,
+        pal.text_dim,
     );
 }
 
@@ -312,6 +339,7 @@ fn detail_panel(
     ops: &mut Ops,
     game: &Game,
 ) {
+    let pal = theme::palette(state.dark());
     ui.add_space(6.0);
     ui.horizontal(|ui| {
         ui.heading(&game.name);
@@ -335,18 +363,18 @@ fn detail_panel(
     egui::Grid::new("detail_grid")
         .num_columns(2)
         .show(ui, |ui| {
-            ui.label(RichText::new("Platform").color(theme::TEXT_DIM));
+            ui.label(RichText::new("Platform").color(pal.text_dim));
             ui.label(game.platform.label());
             ui.end_row();
-            ui.label(RichText::new("Engine").color(theme::TEXT_DIM));
+            ui.label(RichText::new("Engine").color(pal.text_dim));
             ui.label(format!("{:?}", game.engine));
             ui.end_row();
             if let Some(appid) = game.steam_appid {
-                ui.label(RichText::new("Steam AppID").color(theme::TEXT_DIM));
+                ui.label(RichText::new("Steam AppID").color(pal.text_dim));
                 ui.label(appid.to_string());
                 ui.end_row();
             }
-            ui.label(RichText::new("OptiScaler").color(theme::TEXT_DIM));
+            ui.label(RichText::new("OptiScaler").color(pal.text_dim));
             ui.label(if game.optiscaler_installed {
                 "Installed"
             } else {
@@ -359,7 +387,7 @@ fn detail_panel(
     ui.label(
         RichText::new(game.path.display().to_string())
             .small()
-            .color(theme::TEXT_DIM),
+            .color(pal.text_dim),
     );
     ui.add_space(8.0);
     ui.separator();
@@ -367,7 +395,10 @@ fn detail_panel(
     install_section(ui, ctx, state, ops, game);
 
     ui.add_space(8.0);
-    if ui.button("📂 Open folder").clicked() {
+    if ui
+        .button(format!("📂 {}", state.i18n.tr("ui.open_folder")))
+        .clicked()
+    {
         let _ = std::process::Command::new("explorer")
             .arg(&game.path)
             .spawn();
@@ -383,6 +414,7 @@ fn install_section(
     ops: &mut Ops,
     game: &Game,
 ) {
+    let pal = theme::palette(state.dark());
     // Operation in flight → progress only
     if let Some(label) = state.busy_ops.get(&game.key.path_norm) {
         ui.horizontal(|ui| {
@@ -394,11 +426,7 @@ fn install_section(
 
     // Last operation result
     if let Some((ok, message)) = state.op_results.get(&game.key.path_norm) {
-        let color = if *ok {
-            theme::BADGE_OK
-        } else {
-            theme::BADGE_DANGER
-        };
+        let color = if *ok { pal.badge_ok } else { pal.badge_danger };
         ui.colored_label(color, message.clone());
         ui.add_space(4.0);
     }
@@ -407,7 +435,7 @@ fn install_section(
     let needs_confirm = !game.anti_cheat.is_empty();
     if needs_confirm {
         ui.colored_label(
-            theme::BADGE_WARN,
+            pal.badge_warn,
             format!(
                 "⚠ Anti-cheat detected ({}). Installing mods into online games can trigger bans.",
                 game.anti_cheat
@@ -419,7 +447,7 @@ fn install_section(
         );
         ui.checkbox(
             &mut state.anticheat_confirmed,
-            "I understand the risk — continue anyway",
+            state.i18n.tr("ui.anticheat_confirm"),
         );
         ui.add_space(4.0);
     }
@@ -433,13 +461,16 @@ fn install_section(
         {
             if opticore::install::is_update_available(installed, latest) {
                 ui.colored_label(
-                    theme::ACCENT,
+                    pal.accent,
                     format!("Update available: {installed} → {latest}"),
                 );
                 if ui
                     .add_enabled(
                         allowed,
-                        egui::Button::new(RichText::new("⬆ Update OptiScaler").strong()),
+                        egui::Button::new(
+                            RichText::new(format!("⬆ {}", state.i18n.tr("ui.update_optiscaler")))
+                                .strong(),
+                        ),
                     )
                     .clicked()
                 {
@@ -459,19 +490,25 @@ fn install_section(
             } else {
                 ui.label(
                     RichText::new(format!("Installed: {installed} (up to date)"))
-                        .color(theme::TEXT_DIM),
+                        .color(pal.text_dim),
                 );
             }
         } else if let Some(installed) = installed {
-            ui.label(RichText::new(format!("Installed: {installed}")).color(theme::TEXT_DIM));
+            ui.label(RichText::new(format!("Installed: {installed}")).color(pal.text_dim));
         }
 
         ui.horizontal(|ui| {
-            if ui.button("⚙ Edit settings").clicked() {
+            if ui
+                .button(format!("⚙ {}", state.i18n.tr("ui.edit_settings")))
+                .clicked()
+            {
                 state.open_editor(game);
             }
             if ui
-                .add_enabled(allowed, egui::Button::new("🗑 Uninstall OptiScaler"))
+                .add_enabled(
+                    allowed,
+                    egui::Button::new(format!("🗑 {}", state.i18n.tr("ui.uninstall"))),
+                )
                 .clicked()
             {
                 state
@@ -482,7 +519,7 @@ fn install_section(
         });
     } else {
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Install as").color(theme::TEXT_DIM));
+            ui.label(RichText::new(state.i18n.tr("ui.install_as")).color(pal.text_dim));
             egui::ComboBox::from_id_salt("proxy_choice")
                 .selected_text(state.proxy_choice.clone())
                 .show_ui(ui, |ui| {
@@ -494,7 +531,9 @@ fn install_section(
         if ui
             .add_enabled(
                 allowed,
-                egui::Button::new(RichText::new("⬇ Install OptiScaler").strong()),
+                egui::Button::new(
+                    RichText::new(format!("⬇ {}", state.i18n.tr("ui.install_optiscaler"))).strong(),
+                ),
             )
             .clicked()
         {

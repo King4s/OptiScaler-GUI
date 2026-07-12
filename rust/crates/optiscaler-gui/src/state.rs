@@ -1,6 +1,8 @@
 //! GUI state: screens, game list + filters, texture cache, log ring.
 
 use eframe::egui::{self, TextureHandle};
+use opticore::config::AppConfig;
+use opticore::i18n::Translator;
 use opticore::ini::{GpuVendor, IniDocument};
 use opticore::model::{Game, Platform};
 use std::collections::{HashMap, VecDeque};
@@ -69,6 +71,12 @@ pub struct AppState {
     pub editor: Option<EditorState>,
     /// GPU vendor from the wgpu adapter, for Auto Settings.
     pub gpu_vendor: GpuVendor,
+    /// Persisted app configuration (cache/config.json, shared with Python).
+    pub config: AppConfig,
+    /// Path the config is saved to.
+    pub config_path: PathBuf,
+    /// Active translations.
+    pub i18n: Translator,
     textures: HashMap<String, TextureHandle>,
     texture_lru: VecDeque<String>,
 }
@@ -91,6 +99,9 @@ impl Default for AppState {
             proxy_choice: "dxgi.dll".to_string(),
             editor: None,
             gpu_vendor: GpuVendor::Unknown,
+            config: AppConfig::default(),
+            config_path: PathBuf::new(),
+            i18n: Translator::default(),
             textures: HashMap::new(),
             texture_lru: VecDeque::new(),
         }
@@ -98,6 +109,10 @@ impl Default for AppState {
 }
 
 impl AppState {
+    pub fn dark(&self) -> bool {
+        self.config.theme != "light"
+    }
+
     /// Open the INI editor for a game (install dir resolved like the installer).
     pub fn open_editor(&mut self, game: &Game) {
         let install_dir = opticore::install::payload::determine_install_directory(&game.path);

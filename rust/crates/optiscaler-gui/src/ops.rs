@@ -22,14 +22,17 @@ pub struct Ops {
     scan_running: bool,
 }
 
-/// Portable layout: cache lives next to the exe (falls back to cwd in dev),
-/// same `cache/game_images` naming as the Python app so caches carry over.
-fn cache_dir() -> PathBuf {
-    let base = std::env::current_exe()
+/// Portable layout root: the exe's directory (cwd fallback in dev). The
+/// cache/ subtree matches the Python app so caches and config carry over.
+pub fn base_dir() -> PathBuf {
+    std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-        .unwrap_or_else(|| PathBuf::from("."));
-    base.join("cache").join("game_images")
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+fn cache_dir() -> PathBuf {
+    base_dir().join("cache").join("game_images")
 }
 
 impl Ops {
@@ -68,7 +71,7 @@ impl Ops {
         self.scan_running = false;
     }
 
-    pub fn spawn_scan(&mut self, ctx: &egui::Context) {
+    pub fn spawn_scan(&mut self, ctx: &egui::Context, excluded_drives: Vec<char>) {
         if self.scan_running {
             return;
         }
@@ -77,7 +80,7 @@ impl Ops {
         let ctx = ctx.clone();
         std::thread::spawn(move || {
             let t0 = std::time::Instant::now();
-            let result = scan_all(&ScanConfig::default());
+            let result = scan_all(&ScanConfig { excluded_drives });
             let _ = tx.send(TaskEvent::Log(format!(
                 "Scan finished: {} games in {:.2}s",
                 result.games.len(),

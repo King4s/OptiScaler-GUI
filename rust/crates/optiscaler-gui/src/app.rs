@@ -15,8 +15,15 @@ pub struct App {
 
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        theme::apply(&cc.egui_ctx);
         let mut state = AppState::default();
+        // Load persisted config (cache/config.json — shared with the Python
+        // app; its language/excluded_drives are imported on first run)
+        state.config_path = opticore::config::AppConfig::config_path(&crate::ops::base_dir());
+        state.config = opticore::config::AppConfig::load(&state.config_path);
+        state.i18n = opticore::i18n::Translator::new(opticore::i18n::Lang::from_code(
+            &state.config.language,
+        ));
+        theme::apply(&cc.egui_ctx, state.dark());
         // GPU vendor from the running wgpu adapter (for Auto Settings) —
         // no WMI/PowerShell needed
         if let Some(render_state) = cc.wgpu_render_state.as_ref() {
@@ -104,6 +111,7 @@ impl App {
     }
 
     fn sidebar(&mut self, ctx: &egui::Context) {
+        let pal = theme::palette(self.state.dark());
         egui::SidePanel::left("sidebar")
             .exact_width(150.0)
             .resizable(false)
@@ -113,16 +121,28 @@ impl App {
                     RichText::new("OPTISCALER")
                         .strong()
                         .size(15.0)
-                        .color(theme::ACCENT),
+                        .color(pal.accent),
                 );
-                ui.label(RichText::new("GUI").size(12.0).color(theme::TEXT_DIM));
+                ui.label(RichText::new("GUI").size(12.0).color(pal.text_dim));
                 ui.add_space(16.0);
 
                 for (screen, label) in [
-                    (Screen::Games, "🎮  Games"),
-                    (Screen::Settings, "⚙  Settings"),
-                    (Screen::Log, "📜  Log"),
-                    (Screen::About, "ℹ  About"),
+                    (
+                        Screen::Games,
+                        format!("🎮  {}", self.state.i18n.tr("ui.games_tab")),
+                    ),
+                    (
+                        Screen::Settings,
+                        format!("⚙  {}", self.state.i18n.tr("ui.settings_tab")),
+                    ),
+                    (
+                        Screen::Log,
+                        format!("📜  {}", self.state.i18n.tr("ui.log_tab")),
+                    ),
+                    (
+                        Screen::About,
+                        format!("ℹ  {}", self.state.i18n.tr("ui.about_tab")),
+                    ),
                 ] {
                     let selected = self.state.screen == screen;
                     if ui
@@ -139,7 +159,7 @@ impl App {
                     ui.label(
                         RichText::new(format!("v{}", opticore::VERSION))
                             .small()
-                            .color(theme::TEXT_DIM),
+                            .color(pal.text_dim),
                     );
                 });
             });
@@ -156,7 +176,8 @@ impl eframe::App for App {
             self.ops.spawn_catalogue_load(ctx);
             self.ops.spawn_release_check(ctx);
             self.state.scan_state = ScanState::Running;
-            self.ops.spawn_scan(ctx);
+            self.ops
+                .spawn_scan(ctx, self.state.config.excluded_drive_letters());
         }
 
         self.sidebar(ctx);
