@@ -3,6 +3,7 @@
 
 pub mod archive;
 pub mod model;
+pub mod scan;
 
 /// App version (CalVer), single source of truth for the workspace.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
