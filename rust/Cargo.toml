@@ -1,0 +1,18 @@
+[workspace]
+resolver = "2"
+members = ["crates/opticore", "crates/optiscaler-gui"]
+
+[workspace.package]
+version = "2026.7.0-alpha.1"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/King4s/OptiScaler-GUI"
+
+# Small portable exe: size-optimized, fat LTO, stripped, abort on panic.
+# CI enforces a size budget (warn >9 MB, fail >12 MB).
+[profile.release]
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"

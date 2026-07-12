@@ -34,6 +34,13 @@ Requires Windows 10/11. The GUI downloads OptiScaler exclusively from the offici
 
 The current release (v0.5.2) supports OptiScaler **v0.7.0 through v0.9.3** and always downloads the latest official release. When a new OptiScaler version changes the payload layout, a compatibility update is released — see the [changelog](CHANGELOG.md) and [releases](https://github.com/King4s/OptiScaler-GUI/releases) for history.
 
+## Project status
+
+| Track | Where | Status |
+|---|---|---|
+| Python app (v0.x) | `src/` | ✅ Current release — maintenance mode |
+| Rust rewrite | `rust/` | 🚧 In development — GPU-rendered UI (egui/wgpu), single small exe, CalVer releases (`2026.x`) will replace the Python app at feature parity |
+
 ## Running from source
 
 ```bash

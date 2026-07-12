@@ -1,0 +1,25 @@
+[package]
+name = "optiscaler-gui"
+description = "OptiScaler GUI — GPU-rendered (egui + wgpu) installer/manager for OptiScaler"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+opticore = { path = "../opticore" }
+eframe = { version = "0.33", default-features = false, features = [
+    "wgpu",
+    "default_fonts",
+] }
+# eframe's slim wgpu feature enables no graphics backend by itself —
+# pick them explicitly (DX12 primary on Windows, Vulkan as fallback)
+wgpu = { version = "27", default-features = false, features = [
+    "dx12",
+    "vulkan",
+    "wgsl",
+] }
+
+[[bin]]
+name = "OptiScaler-GUI"
+path = "src/main.rs"
