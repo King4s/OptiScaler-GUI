@@ -197,7 +197,7 @@ fn card(ui: &mut egui::Ui, ctx: &egui::Context, state: &mut AppState, ops: &mut 
         theme::CARD
     };
     let stroke = if selected {
-        Stroke::new(1.5, theme::ACCENT)
+        Stroke::new(1.5_f32, theme::ACCENT)
     } else {
         Stroke::NONE
     };

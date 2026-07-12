@@ -26,7 +26,7 @@ pub fn apply(ctx: &egui::Context) {
     visuals.widgets.inactive.corner_radius = CornerRadius::same(6);
     visuals.widgets.hovered.corner_radius = CornerRadius::same(6);
     visuals.widgets.active.corner_radius = CornerRadius::same(6);
-    visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, ACCENT);
+    visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, ACCENT);
     ctx.set_visuals(visuals);
 
     let mut style = (*ctx.style()).clone();
