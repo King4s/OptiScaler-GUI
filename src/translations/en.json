@@ -143,7 +143,8 @@
     "effects_toggle": "GPU background effects",
     "excluded_drives": "Excluded drives (e.g. D,E)",
     "cache_size": "Cache size",
-    "about_tab": "About"
+    "about_tab": "About",
+    "effects_style": "Background style"
   },
   "sections": {
     "OptiScaler": "OptiScaler Main Settings",

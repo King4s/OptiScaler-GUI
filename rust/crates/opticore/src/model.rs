@@ -64,6 +64,9 @@ pub struct Game {
     pub anti_cheat: Vec<AntiCheat>,
     pub community_verified: bool,
     pub optiscaler_installed: bool,
+    /// Artwork URL supplied by the store's own metadata (e.g. Heroic
+    /// library art), tried before store-search fallbacks.
+    pub art_url: Option<String>,
 }
 
 impl Game {
@@ -84,6 +87,7 @@ impl Game {
             anti_cheat: Vec::new(),
             community_verified: false,
             optiscaler_installed: false,
+            art_url: None,
         }
     }
 }

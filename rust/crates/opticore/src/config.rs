@@ -12,6 +12,9 @@ pub struct AppConfig {
     pub theme: String,
     /// GPU background effects (M6) — on by default, off when reduced motion
     pub effects_enabled: bool,
+    /// Shader background style: "orbits" (default), "aurora", "synthwave",
+    /// or "nebula"
+    pub effects_style: String,
     /// Comma-separated uppercase drive letters, e.g. "D,E" (Python format)
     pub excluded_drives: String,
     pub check_updates: bool,
@@ -25,6 +28,7 @@ impl Default for AppConfig {
             language: "en".to_string(),
             theme: "dark".to_string(),
             effects_enabled: true,
+            effects_style: "orbits".to_string(),
             excluded_drives: String::new(),
             check_updates: true,
             passthrough: Map::new(),
@@ -69,6 +73,11 @@ impl AppConfig {
                         config.effects_enabled = b;
                     }
                 }
+                "effects_style" => {
+                    if let Some(s) = value.as_str() {
+                        config.effects_style = s.to_string();
+                    }
+                }
                 "excluded_drives" => {
                     if let Some(s) = value.as_str() {
                         config.excluded_drives = s.to_string();
@@ -96,6 +105,10 @@ impl AppConfig {
         map.insert("language".into(), Value::String(self.language.clone()));
         map.insert("theme".into(), Value::String(self.theme.clone()));
         map.insert("effects_enabled".into(), Value::Bool(self.effects_enabled));
+        map.insert(
+            "effects_style".into(),
+            Value::String(self.effects_style.clone()),
+        );
         map.insert(
             "excluded_drives".into(),
             Value::String(self.excluded_drives.clone()),

@@ -137,7 +137,8 @@
     "effects_toggle": "GPU-baggrundseffekter",
     "excluded_drives": "Ekskluderede drev (f.eks. D,E)",
     "cache_size": "Cache-størrelse",
-    "about_tab": "Om"
+    "about_tab": "Om",
+    "effects_style": "Baggrundsstil"
   },
   "sections": {
     "OptiScaler": "OptiScaler Hoved Indstillinger",

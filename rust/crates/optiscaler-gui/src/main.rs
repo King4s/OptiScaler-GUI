@@ -12,6 +12,18 @@ mod theme;
 use eframe::egui;
 
 fn main() -> eframe::Result {
+    // Crash log for tester bug reports: any panic lands in logs/crash.log
+    // next to the exe before the process dies.
+    let logs_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.join("logs")))
+        .unwrap_or_else(|| std::path::PathBuf::from("logs"));
+    let previous_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        opticore::logging::write_crash_log(&logs_dir, info);
+        previous_hook(info);
+    }));
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("OptiScaler GUI")
