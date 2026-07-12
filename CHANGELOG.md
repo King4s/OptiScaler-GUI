@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### v0.5.2 - 2026-07-12
+
+#### Performance
+- Full game scan is dramatically faster (measured ~9.5–17 s → ~0.8 s on a real library): each Steam library is now scanned exactly once instead of 2–3 times, Steam manifests are parsed once per library instead of once per game folder (O(N²) → O(N)), and each game folder is walked once for all detections (game/engine/anti-cheat/OptiScaler) instead of 3–4 times.
+- No network I/O during scanning — artwork loads in the background after the list renders.
+- Game list renders in chunks so large libraries no longer freeze the UI; Steam name lookups use a token index instead of scanning the 50k-entry catalogue per game; cache-size enforcement moved off the scan path; app startup no longer blocks on manifest/catalogue parsing.
+
+#### Fixes
+- Duplicate Steam list entries removed — games could previously appear twice (proper name + raw folder name) due to the overlapping scans.
+- GOG games without metadata files were tagged with platform "Epic".
+- Anti-cheat detection could report a false positive when a folder wasn't readable, and now also detects top-level anti-cheat folders (e.g. `EasyAntiCheat/`).
+
 ### v0.5.1 - 2026-07-12
 
 #### Fixes

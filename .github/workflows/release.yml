@@ -1,9 +1,11 @@
 name: Release
 
+# Python (v0.x) release line only — the Rust rewrite releases from its own
+# workflow on CalVer tags (v2026.* etc.)
 on:
   push:
     tags:
-      - 'v*'
+      - 'v0.*'
 
 permissions:
   contents: write
