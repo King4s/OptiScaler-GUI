@@ -19,6 +19,8 @@ wgpu = { version = "27", default-features = false, features = [
     "vulkan",
     "wgsl",
 ] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+rfd = { version = "0.15", default-features = false }
 
 [[bin]]
 name = "OptiScaler-GUI"
