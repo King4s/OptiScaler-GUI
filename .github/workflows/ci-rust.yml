@@ -1,0 +1,79 @@
+name: CI (Rust)
+
+on:
+  push:
+    branches: [main]
+    paths: ['rust/**', '.github/workflows/ci-rust.yml']
+  pull_request:
+    paths: ['rust/**', '.github/workflows/ci-rust.yml']
+
+defaults:
+  run:
+    working-directory: rust
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      - run: cargo fmt --all --check
+      - run: cargo clippy --all-targets --workspace -- -D warnings
+
+  test-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      - run: cargo test --workspace
+
+  build-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      - run: cargo build --release --workspace
+      - name: Check binary size budget
+        shell: pwsh
+        run: |
+          $exe = "target/release/OptiScaler-GUI.exe"
+          $mb = [math]::Round((Get-Item $exe).Length / 1MB, 2)
+          Write-Host "OptiScaler-GUI.exe: $mb MB"
+          if ($mb -gt 12) { Write-Error "Binary exceeds 12 MB budget ($mb MB)"; exit 1 }
+          if ($mb -gt 9)  { Write-Host "::warning::Binary above 9 MB soft budget ($mb MB)" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OptiScaler-GUI-dev
+          path: rust/target/release/OptiScaler-GUI.exe
+
+  # Weekly canary: extract the real latest OptiScaler release with sevenz-rust2
+  # so an upstream compression change is caught before users hit it.
+  extraction-canary:
+    if: github.event_name == 'push'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      - name: Download latest OptiScaler release asset
+        shell: pwsh
+        run: |
+          gh release download -R optiscaler/OptiScaler --pattern "*.7z" -D "$env:RUNNER_TEMP\opti"
+          $asset = Get-ChildItem "$env:RUNNER_TEMP\opti\*.7z" | Select-Object -First 1
+          "OPTISCALER_ARCHIVE=$($asset.FullName)" | Out-File -Append $env:GITHUB_ENV
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - run: cargo test -p opticore extracts_real_optiscaler_archive -- --ignored
