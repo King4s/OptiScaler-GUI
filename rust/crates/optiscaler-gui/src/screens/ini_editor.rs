@@ -7,6 +7,7 @@ use eframe::egui::{self, Align, Layout, RichText};
 use opticore::ini::{auto_settings, ValueKind};
 
 pub fn show(ctx: &egui::Context, state: &mut AppState) {
+    let pal = theme::palette(state.dark());
     let gpu_vendor = state.gpu_vendor;
     // Take ownership for the frame so the closure doesn't borrow `state`
     let Some(mut editor) = state.editor.take() else {
@@ -34,7 +35,7 @@ pub fn show(ctx: &egui::Context, state: &mut AppState) {
             if editor.discard_armed {
                 ui.label(
                     RichText::new("Unsaved changes — click Back again to discard")
-                        .color(theme::BADGE_WARN),
+                        .color(pal.badge_warn),
                 );
             }
             ui.heading(format!("Settings — {}", editor.game_name));
@@ -79,7 +80,7 @@ pub fn show(ctx: &egui::Context, state: &mut AppState) {
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if let Some(status) = &editor.status {
-                    ui.label(RichText::new(status).color(theme::TEXT_DIM));
+                    ui.label(RichText::new(status).color(pal.text_dim));
                 }
             });
         });
