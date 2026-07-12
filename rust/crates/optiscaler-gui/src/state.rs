@@ -1,6 +1,7 @@
 //! GUI state: screens, game list + filters, texture cache, log ring.
 
 use eframe::egui::{self, TextureHandle};
+use opticore::ini::{GpuVendor, IniDocument};
 use opticore::model::{Game, Platform};
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
@@ -8,9 +9,22 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
     Games,
+    IniEditor,
     Settings,
     Log,
     About,
+}
+
+/// Open OptiScaler.ini editing session for one game.
+pub struct EditorState {
+    pub game_name: String,
+    pub ini_path: PathBuf,
+    pub doc: IniDocument,
+    pub dirty: bool,
+    pub status: Option<String>,
+    pub search: String,
+    /// Set when Back was clicked with unsaved changes (second click discards).
+    pub discard_armed: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,6 +65,10 @@ pub struct AppState {
     pub anticheat_confirmed: bool,
     /// Selected proxy filename in the install flow.
     pub proxy_choice: String,
+    /// Open INI editing session (Screen::IniEditor).
+    pub editor: Option<EditorState>,
+    /// GPU vendor from the wgpu adapter, for Auto Settings.
+    pub gpu_vendor: GpuVendor,
     textures: HashMap<String, TextureHandle>,
     texture_lru: VecDeque<String>,
 }
@@ -71,8 +89,32 @@ impl Default for AppState {
             op_results: HashMap::new(),
             anticheat_confirmed: false,
             proxy_choice: "dxgi.dll".to_string(),
+            editor: None,
+            gpu_vendor: GpuVendor::Unknown,
             textures: HashMap::new(),
             texture_lru: VecDeque::new(),
+        }
+    }
+}
+
+impl AppState {
+    /// Open the INI editor for a game (install dir resolved like the installer).
+    pub fn open_editor(&mut self, game: &Game) {
+        let install_dir = opticore::install::payload::determine_install_directory(&game.path);
+        let ini_path = install_dir.join("OptiScaler.ini");
+        if let Some(doc) = opticore::ini::read_file(&ini_path) {
+            self.editor = Some(EditorState {
+                game_name: game.name.clone(),
+                ini_path,
+                doc,
+                dirty: false,
+                status: None,
+                search: String::new(),
+                discard_armed: false,
+            });
+            self.screen = Screen::IniEditor;
+        } else {
+            self.push_log(format!("Could not read {}", ini_path.display()));
         }
     }
 }

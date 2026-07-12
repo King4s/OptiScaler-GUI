@@ -1,4 +1,5 @@
 pub mod games_grid;
+pub mod ini_editor;
 
 use crate::state::AppState;
 use crate::theme;

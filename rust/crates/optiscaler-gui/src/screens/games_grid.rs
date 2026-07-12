@@ -466,15 +466,20 @@ fn install_section(
             ui.label(RichText::new(format!("Installed: {installed}")).color(theme::TEXT_DIM));
         }
 
-        if ui
-            .add_enabled(allowed, egui::Button::new("🗑 Uninstall OptiScaler"))
-            .clicked()
-        {
-            state
-                .busy_ops
-                .insert(game.key.path_norm.clone(), "Uninstalling…".into());
-            ops.spawn_uninstall(ctx, game);
-        }
+        ui.horizontal(|ui| {
+            if ui.button("⚙ Edit settings").clicked() {
+                state.open_editor(game);
+            }
+            if ui
+                .add_enabled(allowed, egui::Button::new("🗑 Uninstall OptiScaler"))
+                .clicked()
+            {
+                state
+                    .busy_ops
+                    .insert(game.key.path_norm.clone(), "Uninstalling…".into());
+                ops.spawn_uninstall(ctx, game);
+            }
+        });
     } else {
         ui.horizontal(|ui| {
             ui.label(RichText::new("Install as").color(theme::TEXT_DIM));

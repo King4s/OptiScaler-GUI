@@ -16,8 +16,15 @@ pub struct App {
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         theme::apply(&cc.egui_ctx);
+        let mut state = AppState::default();
+        // GPU vendor from the running wgpu adapter (for Auto Settings) —
+        // no WMI/PowerShell needed
+        if let Some(render_state) = cc.wgpu_render_state.as_ref() {
+            let info = render_state.adapter.get_info();
+            state.gpu_vendor = opticore::ini::GpuVendor::from_pci_vendor_id(info.vendor);
+        }
         Self {
-            state: AppState::default(),
+            state,
             ops: Ops::new(),
             started: false,
         }
@@ -155,6 +162,7 @@ impl eframe::App for App {
         self.sidebar(ctx);
         match self.state.screen {
             Screen::Games => screens::games_grid::show(ctx, &mut self.state, &mut self.ops),
+            Screen::IniEditor => screens::ini_editor::show(ctx, &mut self.state),
             Screen::Settings => screens::show_settings(ctx, &mut self.state),
             Screen::Log => screens::show_log(ctx, &mut self.state),
             Screen::About => screens::show_about(ctx, &mut self.state),
