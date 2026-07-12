@@ -4,6 +4,7 @@
 use eframe::egui;
 use opticore::appids::AppIdResolver;
 use opticore::images::ImageCache;
+use opticore::install::{self, InstallOptions, InstallStage, Installer};
 use opticore::model::Game;
 use opticore::progress::TaskEvent;
 use opticore::scan::{scan_all, ScanConfig};
@@ -118,5 +119,101 @@ impl Ops {
     /// Allow re-requesting images (after AppListReady retry-reset).
     pub fn clear_inflight(&mut self) {
         self.inflight_images.clear();
+    }
+
+    fn downloads_dir(&self) -> PathBuf {
+        // sibling of cache/game_images → cache/optiscaler_downloads (Python layout)
+        let base = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+            .unwrap_or_else(|| PathBuf::from("."));
+        base.join("cache").join("optiscaler_downloads")
+    }
+
+    /// Check the latest OptiScaler release for update badges.
+    pub fn spawn_release_check(&self, ctx: &egui::Context) {
+        let tx = self.tx.clone();
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            if let Ok(release) = install::github::fetch_latest_release() {
+                let _ = tx.send(TaskEvent::LatestRelease {
+                    version: release.version_label(),
+                });
+                ctx.request_repaint();
+            }
+        });
+    }
+
+    fn stage_label(stage: &InstallStage) -> String {
+        match stage {
+            InstallStage::FetchingRelease => "Fetching release…".into(),
+            InstallStage::Downloading { done, total } if *total > 0 => {
+                format!("Downloading… {}%", done * 100 / total)
+            }
+            InstallStage::Downloading { .. } => "Downloading…".into(),
+            InstallStage::Extracting => "Extracting…".into(),
+            InstallStage::CopyingPayload { done, total } => {
+                format!("Installing files… {done}/{total}")
+            }
+            InstallStage::Finalizing => "Finalizing…".into(),
+        }
+    }
+
+    /// Install or update OptiScaler for one game on a worker thread.
+    pub fn spawn_install(&self, ctx: &egui::Context, game: &Game, options: InstallOptions) {
+        let tx = self.tx.clone();
+        let ctx = ctx.clone();
+        let key = game.key.path_norm.clone();
+        let game_path = game.path.clone();
+        let downloads = self.downloads_dir();
+        std::thread::spawn(move || {
+            let installer = Installer::new(&downloads);
+            let progress_tx = tx.clone();
+            let progress_ctx = ctx.clone();
+            let progress_key = key.clone();
+            let result = installer.install(&game_path, &options, move |stage| {
+                let _ = progress_tx.send(TaskEvent::OpProgress {
+                    path_norm: progress_key.clone(),
+                    label: Self::stage_label(&stage),
+                });
+                progress_ctx.request_repaint();
+            });
+            let (ok, message) = match result {
+                Ok(m) => (
+                    true,
+                    format!("Installed OptiScaler {}", m.optiscaler_version),
+                ),
+                Err(e) => (false, e.to_string()),
+            };
+            let _ = tx.send(TaskEvent::OpFinished {
+                path_norm: key,
+                ok,
+                message,
+            });
+            ctx.request_repaint();
+        });
+    }
+
+    /// Uninstall OptiScaler from one game on a worker thread.
+    pub fn spawn_uninstall(&self, ctx: &egui::Context, game: &Game) {
+        let tx = self.tx.clone();
+        let ctx = ctx.clone();
+        let key = game.key.path_norm.clone();
+        let game_path = game.path.clone();
+        std::thread::spawn(move || {
+            let (ok, message) = match install::uninstall(&game_path) {
+                Ok((files, dirs)) => (
+                    true,
+                    format!("Removed {} files, {} directories", files.len(), dirs.len()),
+                ),
+                Err(e) => (false, e.to_string()),
+            };
+            let _ = tx.send(TaskEvent::OpFinished {
+                path_norm: key,
+                ok,
+                message,
+            });
+            ctx.request_repaint();
+        });
     }
 }

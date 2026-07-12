@@ -52,6 +52,45 @@ impl App {
                     self.state
                         .push_log("App list ready — retrying missing artwork".into());
                 }
+                TaskEvent::OpProgress { path_norm, label } => {
+                    self.state.busy_ops.insert(path_norm, label);
+                }
+                TaskEvent::OpFinished {
+                    path_norm,
+                    ok,
+                    message,
+                } => {
+                    self.state.busy_ops.remove(&path_norm);
+                    self.state.push_log(format!(
+                        "{}: {}",
+                        if ok { "Done" } else { "Failed" },
+                        message
+                    ));
+                    self.state
+                        .op_results
+                        .insert(path_norm.clone(), (ok, message));
+                    if ok {
+                        // Refresh install state for the affected game
+                        if let Some(game) = self
+                            .state
+                            .games
+                            .iter_mut()
+                            .find(|g| g.key.path_norm == path_norm)
+                        {
+                            if let Some(facts) = opticore::scan::folder_facts::collect(&game.path) {
+                                game.optiscaler_installed =
+                                    opticore::scan::folder_facts::detect_optiscaler(
+                                        &game.path, &facts,
+                                    );
+                            }
+                        }
+                    }
+                }
+                TaskEvent::LatestRelease { version } => {
+                    self.state
+                        .push_log(format!("Latest OptiScaler release: {version}"));
+                    self.state.latest_release = Some(version);
+                }
                 TaskEvent::Log(line) => self.state.push_log(line),
             }
         }
@@ -108,6 +147,7 @@ impl eframe::App for App {
         if !self.started {
             self.started = true;
             self.ops.spawn_catalogue_load(ctx);
+            self.ops.spawn_release_check(ctx);
             self.state.scan_state = ScanState::Running;
             self.ops.spawn_scan(ctx);
         }

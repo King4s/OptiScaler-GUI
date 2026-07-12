@@ -41,6 +41,16 @@ pub struct AppState {
     pub selected: Option<String>, // path_norm of selected game
     pub art: HashMap<String, ArtState>,
     pub log: VecDeque<String>,
+    /// Latest OptiScaler release tag (for update badges), once checked.
+    pub latest_release: Option<String>,
+    /// Games with an install/uninstall running: path_norm → progress label.
+    pub busy_ops: HashMap<String, String>,
+    /// Last finished operation result per game: (ok, message).
+    pub op_results: HashMap<String, (bool, String)>,
+    /// Anti-cheat confirmation checkbox state in the detail panel.
+    pub anticheat_confirmed: bool,
+    /// Selected proxy filename in the install flow.
+    pub proxy_choice: String,
     textures: HashMap<String, TextureHandle>,
     texture_lru: VecDeque<String>,
 }
@@ -56,6 +66,11 @@ impl Default for AppState {
             selected: None,
             art: HashMap::new(),
             log: VecDeque::new(),
+            latest_release: None,
+            busy_ops: HashMap::new(),
+            op_results: HashMap::new(),
+            anticheat_confirmed: false,
+            proxy_choice: "dxgi.dll".to_string(),
             textures: HashMap::new(),
             texture_lru: VecDeque::new(),
         }
