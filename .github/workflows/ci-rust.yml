@@ -12,8 +12,10 @@ defaults:
     working-directory: rust
 
 jobs:
+  # Windows runner: the GUI crate is Windows-only (winit is built without
+  # X11/Wayland features), so clippy can't compile it on Linux.
   lint:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
