@@ -4,6 +4,7 @@
 pub mod appids;
 pub mod archive;
 pub mod images;
+pub mod ini;
 pub mod install;
 pub mod model;
 pub mod progress;
