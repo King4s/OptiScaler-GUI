@@ -10,6 +10,9 @@ import tkinter as tk
 from optiscaler.manager import OptiScalerManager
 from CTkMessagebox import CTkMessagebox
 import concurrent.futures
+import subprocess
+import threading
+import time
 from utils.config import config as app_config
 from utils.translation_manager import t
 from utils.progress import progress_manager
@@ -158,8 +161,13 @@ class GameListFrame(ctk.CTkScrollableFrame):
         self._update_check_cache = None
         self._cache_timestamp = None
 
+        # Pending after() callback for chunked rendering (cancelled on destroy/refresh)
+        self._render_after_id = None
+        # Warm the update-check cache off the main thread so the first installed
+        # game row doesn't block the UI on a network call
+        self._executor.submit(self._get_update_info)
+
         self._display_games()
-        self._schedule_fetch_game_images()
 
         # When the background SteamSpy download finishes, retry thumbnails for
         # any games that still have the placeholder (no_image or grey square).
@@ -177,7 +185,7 @@ class GameListFrame(ctk.CTkScrollableFrame):
 
     def _get_update_info(self):
         """Get update information with caching to avoid multiple API calls"""
-        import time
+        # import time  # hoisted to module top
         
         # Cache for 5 minutes
         cache_duration = 300  # seconds
@@ -203,22 +211,48 @@ class GameListFrame(ctk.CTkScrollableFrame):
                 return self._update_check_cache
             return {"available": False}
 
+    # Number of game rows built per after() slice — keeps the UI responsive
+    # while long lists render (item 7 of the perf audit)
+    _RENDER_CHUNK_SIZE = 20
+
     def _display_games(self):
-        debug_log(f"_display_games: rendering {len(self.games)} games")
-        for i, game in enumerate(self.games):
+        debug_log(f"_display_games: rendering {len(self.games)} games in chunks of {self._RENDER_CHUNK_SIZE}")
+        # One shared placeholder CTkImage for every row instead of a fresh
+        # PIL image + CTkImage per game (item 9 of the perf audit)
+        target_height = 80
+        placeholder_width = int(target_height * 16 / 9)
+        placeholder_img = self._create_placeholder_pil_image(placeholder_width, target_height)
+        self._shared_placeholder_image = ctk.CTkImage(light_image=placeholder_img, dark_image=placeholder_img,
+                                                      size=(placeholder_width, target_height))
+        self._render_chunk(0)
+
+    def _render_chunk(self, start):
+        """Build one chunk of game rows, then yield to the event loop."""
+        self._render_after_id = None
+        end = min(start + self._RENDER_CHUNK_SIZE, len(self.games))
+        for i in range(start, end):
+            try:
+                self._build_game_row(i, self.games[i])
+            except Exception as e:
+                debug_log(f"Failed building row for {self.games[i].name}: {e}")
+        # Fetch artwork for just-rendered rows so thumbnails appear with them
+        self._schedule_fetch_game_images(self.games[start:end])
+        if end < len(self.games):
+            try:
+                self._render_after_id = self.after(1, lambda: self._render_chunk(end))
+            except Exception:
+                pass
+        else:
+            debug_log(f"_display_games: done rendering {len(self.games)} games")
+
+    def _build_game_row(self, i, game):
             game_frame = ctk.CTkFrame(self)
             game_frame.grid(row=i, column=0, padx=5, pady=5, sticky="ew")
             game_frame.grid_columnconfigure(0, weight=0)
             game_frame.grid_columnconfigure(1, weight=1)
 
-            # Placeholder image — replaced in background by _schedule_fetch_game_images
-            target_height = 80
-            placeholder_width = int(target_height * 16 / 9)
-            placeholder_img = self._create_placeholder_pil_image(placeholder_width, target_height)
-            ctk_placeholder_image = ctk.CTkImage(light_image=placeholder_img, dark_image=placeholder_img,
-                                                  size=(placeholder_width, target_height))
-            placeholder_label = ctk.CTkLabel(game_frame, image=ctk_placeholder_image)
-            setattr(placeholder_label, '_ctk_image_ref', ctk_placeholder_image)
+            # Shared placeholder image — replaced in background by _schedule_fetch_game_images
+            placeholder_label = ctk.CTkLabel(game_frame, image=self._shared_placeholder_image, text='')
             placeholder_label.grid(row=0, column=0, sticky="w")
             self._image_label_map[game.path] = placeholder_label
 
@@ -306,8 +340,6 @@ class GameListFrame(ctk.CTkScrollableFrame):
                 command=lambda p=game.path: self._open_game_folder(p))
             open_folder_button.grid(row=button_row, column=0, padx=5, pady=2, sticky="e")
 
-        debug_log(f"_display_games: done rendering {len(self.games)} games")
-
     def _create_placeholder_pil_image(self, width, height, text=None):
         """Return a plain PIL image used as a placeholder before the real thumbnail loads."""
         try:
@@ -334,8 +366,9 @@ class GameListFrame(ctk.CTkScrollableFrame):
             except Exception:
                 return Image.new('RGB', (1, 1), color='gray')
 
-    def _schedule_fetch_game_images(self):
-        """Schedule background tasks to fetch images for games that are missing one."""
+    def _schedule_fetch_game_images(self, games=None):
+        """Schedule background tasks to fetch images for the given games
+        (defaults to all games)."""
         target_height = 80
 
         def fetch_and_update(game):
@@ -404,7 +437,7 @@ class GameListFrame(ctk.CTkScrollableFrame):
                 except Exception:
                     _set_placeholder()
 
-        for game in self.games:
+        for game in (games if games is not None else self.games):
             # Always schedule image load/optimize in background to avoid main-thread workload
             try:
                 self._executor.submit(fetch_and_update, game)
@@ -603,7 +636,7 @@ class GameListFrame(ctk.CTkScrollableFrame):
                     progress_callback("install_error", {"message": f"All installation methods failed: {e}, {fallback_error}"})
         
         # Start installation in background
-        import threading
+        # import threading  # hoisted to module top
         install_thread = threading.Thread(target=install_threaded, daemon=True)
         install_thread.start()
 
@@ -739,7 +772,7 @@ class GameListFrame(ctk.CTkScrollableFrame):
                     self.after(0, lambda: self._handle_update_result(game, False, str(e), latest_str))
             
             # Start update in background
-            import threading
+            # import threading  # hoisted to module top
             update_thread = threading.Thread(target=update_threaded, daemon=True)
             update_thread.start()
     
@@ -807,7 +840,7 @@ class GameListFrame(ctk.CTkScrollableFrame):
                         self.after(0, lambda: self._handle_uninstall_result(game, False, error_message))
             
             # Start uninstall in background
-            import threading
+            # import threading  # hoisted to module top
             uninstall_thread = threading.Thread(target=uninstall_threaded, daemon=True)
             uninstall_thread.start()
     
@@ -826,39 +859,61 @@ class GameListFrame(ctk.CTkScrollableFrame):
             CTkMessagebox(title=t("ui.error"), message=f"{t('ui.failed_to_uninstall')}: {message}")
 
     def _refresh_display(self):
-        """Refresh the game list display to update button states"""
+        """Refresh the game list display to update button states.
+        OptiScaler re-detection (file I/O per game) runs on a worker thread;
+        only the widget rebuild happens on the UI thread."""
         # Clear update cache to force fresh check
         self._update_check_cache = None
         self._cache_timestamp = None
-        
-        # Update OptiScaler status for all games to get current state
-        for game in self.games:
-            try:
-                game.optiscaler_installed = self.game_scanner._detect_optiscaler(game.path)
-                debug_log(f"Updated OptiScaler status for {game.name}: {game.optiscaler_installed}")
-            except Exception as e:
-                debug_log(f"Failed to update OptiScaler status for {game.name}: {e}")
-                game.optiscaler_installed = False
-        
-        # Clear current display; schedule destruction to avoid mid-draw Tcl errors
-        for widget in self.winfo_children():
-            try:
-                self.after(0, lambda w=widget: w.destroy())
-            except Exception:
-                try:
-                    widget.destroy()
-                except Exception:
-                    pass
-        # Recreate the display
-        self._display_games()
-        # Schedule image fetch/update for the recreated display
+        # Warm it again off-thread before rows need it
         try:
-            self._schedule_fetch_game_images()
+            self._executor.submit(self._get_update_info)
         except Exception:
             pass
 
+        def _detect_then_rebuild():
+            # Update OptiScaler status for all games to get current state
+            for game in self.games:
+                try:
+                    game.optiscaler_installed = self.game_scanner._detect_optiscaler(game.path)
+                    debug_log(f"Updated OptiScaler status for {game.name}: {game.optiscaler_installed}")
+                except Exception as e:
+                    debug_log(f"Failed to update OptiScaler status for {game.name}: {e}")
+                    game.optiscaler_installed = False
+            try:
+                self.after(0, _rebuild)
+            except Exception:
+                pass
+
+        def _rebuild():
+            # Cancel any in-flight chunked render before rebuilding
+            if self._render_after_id is not None:
+                try:
+                    self.after_cancel(self._render_after_id)
+                except Exception:
+                    pass
+                self._render_after_id = None
+            # Clear current display; schedule destruction to avoid mid-draw Tcl errors
+            for widget in self.winfo_children():
+                try:
+                    self.after(0, lambda w=widget: w.destroy())
+                except Exception:
+                    try:
+                        widget.destroy()
+                    except Exception:
+                        pass
+            self._image_label_map = {}
+            # Recreate the display (chunks schedule their own image fetches)
+            self._display_games()
+
+        try:
+            self._executor.submit(_detect_then_rebuild)
+        except Exception:
+            # Fallback: run synchronously rather than not at all
+            _detect_then_rebuild()
+
     def _open_game_folder(self, path):
-        import subprocess
+        # import subprocess  # hoisted to module top
         if Path(path).exists():
             subprocess.Popen(f'explorer \"{path}\"')
         else:
@@ -866,6 +921,12 @@ class GameListFrame(ctk.CTkScrollableFrame):
 
     def destroy(self):
         """Ensure executor is shutdown when frame is destroyed to prevent background threads from lingering."""
+        if getattr(self, '_render_after_id', None) is not None:
+            try:
+                self.after_cancel(self._render_after_id)
+            except Exception:
+                pass
+            self._render_after_id = None
         try:
             if hasattr(self, '_executor') and self._executor:
                 self._executor.shutdown(wait=False)

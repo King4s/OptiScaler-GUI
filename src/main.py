@@ -143,9 +143,16 @@ def main():
         ctk.set_appearance_mode("system")
         ctk.set_default_color_theme("blue")
         
-        from utils.performance import performance_monitor
-        # Start background performance monitoring
-        performance_monitor.start_monitoring()
+        # Start background performance monitoring only in debug mode —
+        # it wakes a psutil polling thread every 5s for diagnostics nobody
+        # sees in normal use
+        try:
+            from utils.config import get_config_value
+            if bool(get_config_value('debug', False)):
+                from utils.performance import performance_monitor
+                performance_monitor.start_monitoring()
+        except Exception:
+            pass
 
         # Create and run the application
         app = MainWindow()
