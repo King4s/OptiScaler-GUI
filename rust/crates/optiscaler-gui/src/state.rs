@@ -71,6 +71,10 @@ pub struct AppState {
     pub editor: Option<EditorState>,
     /// GPU vendor from the wgpu adapter, for Auto Settings.
     pub gpu_vendor: GpuVendor,
+    /// System accessibility: animations disabled → effects stay off.
+    pub reduced_motion: bool,
+    /// Newer GUI release available: (version, url).
+    pub gui_update: Option<(String, String)>,
     /// Persisted app configuration (cache/config.json, shared with Python).
     pub config: AppConfig,
     /// Path the config is saved to.
@@ -99,6 +103,8 @@ impl Default for AppState {
             proxy_choice: "dxgi.dll".to_string(),
             editor: None,
             gpu_vendor: GpuVendor::Unknown,
+            reduced_motion: false,
+            gui_update: None,
             config: AppConfig::default(),
             config_path: PathBuf::new(),
             i18n: Translator::default(),
@@ -111,6 +117,11 @@ impl Default for AppState {
 impl AppState {
     pub fn dark(&self) -> bool {
         self.config.theme != "light"
+    }
+
+    /// Effects render only when enabled and the system allows animations.
+    pub fn effects_active(&self) -> bool {
+        self.config.effects_enabled && !self.reduced_motion
     }
 
     /// Open the INI editor for a game (install dir resolved like the installer).

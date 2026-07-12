@@ -29,7 +29,11 @@ impl App {
         if let Some(render_state) = cc.wgpu_render_state.as_ref() {
             let info = render_state.adapter.get_info();
             state.gpu_vendor = opticore::ini::GpuVendor::from_pci_vendor_id(info.vendor);
+            crate::fx::EffectsRenderer::register(render_state);
         }
+        // Respect the system accessibility setting: animations disabled →
+        // background effects stay off regardless of the config toggle
+        state.reduced_motion = crate::fx::reduced_motion();
         Self {
             state,
             ops: Ops::new(),
@@ -105,6 +109,11 @@ impl App {
                         .push_log(format!("Latest OptiScaler release: {version}"));
                     self.state.latest_release = Some(version);
                 }
+                TaskEvent::GuiUpdateAvailable { version, url } => {
+                    self.state
+                        .push_log(format!("GUI update available: {version}"));
+                    self.state.gui_update = Some((version, url));
+                }
                 TaskEvent::Log(line) => self.state.push_log(line),
             }
         }
@@ -161,6 +170,17 @@ impl App {
                             .small()
                             .color(pal.text_dim),
                     );
+                    if let Some((version, url)) = self.state.gui_update.clone() {
+                        ui.hyperlink_to(
+                            RichText::new(format!(
+                                "⬆ {} {version}",
+                                self.state.i18n.tr("ui.update_available")
+                            ))
+                            .small()
+                            .color(pal.accent),
+                            url,
+                        );
+                    }
                 });
             });
     }
@@ -174,10 +194,20 @@ impl eframe::App for App {
         if !self.started {
             self.started = true;
             self.ops.spawn_catalogue_load(ctx);
-            self.ops.spawn_release_check(ctx);
+            if self.state.config.check_updates {
+                self.ops.spawn_release_check(ctx);
+                self.ops.spawn_gui_update_check(ctx);
+            }
             self.state.scan_state = ScanState::Running;
             self.ops
                 .spawn_scan(ctx, self.state.config.excluded_drive_letters());
+        }
+
+        // Repaint pacing for the animated background: ~30 fps while effects
+        // are on and the window is focused; otherwise purely event-driven
+        // (zero idle GPU/CPU cost — the toggle's real value).
+        if self.state.effects_active() && ctx.input(|i| i.focused) {
+            ctx.request_repaint_after(std::time::Duration::from_millis(33));
         }
 
         self.sidebar(ctx);

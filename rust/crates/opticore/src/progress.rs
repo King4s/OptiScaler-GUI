@@ -29,6 +29,8 @@ pub enum TaskEvent {
     },
     /// Latest OptiScaler release tag (for update badges).
     LatestRelease { version: String },
+    /// A newer GUI release exists (version, html url).
+    GuiUpdateAvailable { version: String, url: String },
     /// A log line for the log screen.
     Log(String),
 }
