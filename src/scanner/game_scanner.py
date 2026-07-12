@@ -1,3 +1,4 @@
+import concurrent.futures
 import os
 import threading
 import vdf
@@ -29,6 +30,27 @@ class Game:
         self.anti_cheat_list = anti_cheat_list or []
         self.community_verified = community_verified
 
+class FolderFacts:
+    """Facts gathered in one bounded directory walk, shared by all per-game detectors
+    (game-folder check, engine detection, anti-cheat detection, OptiScaler detection)
+    so each game folder is traversed exactly once per scan."""
+    __slots__ = ("root", "top_files", "top_dirs", "depth1_files", "file_count",
+                 "found_exe", "found_game_content")
+
+    def __init__(self, root):
+        self.root = Path(root)
+        self.top_files = []      # lowercase file names directly in the folder
+        self.top_dirs = []       # lowercase directory names directly in the folder
+        self.depth1_files = []   # lowercase file names in direct child directories
+        self.file_count = 0
+        self.found_exe = False
+        self.found_game_content = False
+
+
+# File suffixes that indicate significant game content (see _is_game_folder)
+_GAME_CONTENT_SUFFIXES = (".pak", ".uasset", ".dll", ".bin", ".unity3d")
+
+
 class GameScanner:
     def __init__(self):
         self.steam_paths = self._find_steam_paths()
@@ -56,10 +78,21 @@ class GameScanner:
         # Callback invoked after the background Steam app list load completes.
         # Set by game_list_frame to schedule a thumbnail retry pass.
         self.on_app_list_ready = None
-        # Build app list from local manifests immediately (fast, no network needed)
-        self.steam_app_list = self._build_local_steam_app_list()
-        # Kick off a background download of the full SteamSpy catalogue
-        threading.Thread(target=self._load_steamspy_app_list_async, daemon=True).start()
+        # Token index over steam_app_list for _get_appid_from_name subset matching.
+        # Built lazily on first lookup (off the main thread) and rebuilt when the
+        # app list changes (dirty flag).
+        self._steam_index_lock = threading.Lock()
+        self._steam_index_dirty = True
+        self._steam_token_index = {}
+        self._steam_key_token_counts = {}
+        self._appid_lookup_cache = {}
+        # App list starts empty and is filled by a background thread so app
+        # startup never blocks on manifest parsing or the 50k-entry disk cache.
+        # Image lookups before it's ready get placeholders; the on_app_list_ready
+        # retry pass fills them in.
+        self.steam_app_list = {}
+        self._normalized_steam_app_map = {}
+        threading.Thread(target=self._init_app_list_async, daemon=True).start()
         # Summary and timing info for last library discovery
         self.last_library_summary = None
         self.last_library_scan_seconds = None
@@ -72,12 +105,17 @@ class GameScanner:
             "Soundtrack", "ArtBook", "Manuals", "BonusContent", "Support", "Installer"
         ]
         # Common game executable patterns
+        # (previously written with double backslashes, which made them match a
+        # literal "\" and never fire — kept for API compat, fixed escaping)
         self.game_exe_patterns = [
-            r".*\\.exe$",
-            r".*game\\.exe$",
-            r".*launcher\\.exe$",
-            r".*\\d+\\.exe$", # e.g., game_1.exe
+            r".*\.exe$",
+            r".*game\.exe$",
+            r".*launcher\.exe$",
+            r".*\d+\.exe$",  # e.g., game_1.exe
         ]
+        # Steam common/ roots already scanned this scan pass (normalized paths),
+        # so overlapping discovery sources never scan the same library twice
+        self._scanned_steam_roots = set()
 
     def _find_steam_paths(self):
         """Find Steam installation paths using Path objects"""
@@ -253,17 +291,19 @@ class GameScanner:
                         normalized = os.path.normpath(str(p)).lower()
                         if normalized in seen_paths:
                             continue
-                        if not p.is_dir() or not self._is_game_folder(p):
+                        if not p.is_dir():
+                            continue
+                        facts = self._collect_folder_facts(p)
+                        if not self._is_game_folder(p, facts):
                             continue
                         seen_paths.add(normalized)
                         game_name = title or p.name.replace("_", " ").replace("-", " ")
-                        image_path = self.fetch_game_image(game_name)
-                        optiscaler_installed = self._detect_optiscaler(p)
-                        safety = self.analyze_game_safety(Game(game_name, str(p)))
+                        optiscaler_installed = self._detect_optiscaler(p, facts)
+                        safety = self.analyze_game_safety(Game(game_name, str(p)), facts)
                         games.append(Game(
                             name=game_name,
                             path=str(p),
-                            image_path=image_path,
+                            image_path=None,
                             optiscaler_installed=optiscaler_installed,
                             engine=safety["engine"],
                             anti_cheat_list=safety["anti_cheat_list"],
@@ -278,132 +318,130 @@ class GameScanner:
             debug_log(f"Heroic scan failed: {e}")
         return games
 
-    def _detect_optiscaler(self, game_path):
-        """Detect if OptiScaler is installed in a game directory"""
+    # OptiScaler indicator files checked by _detect_optiscaler
+    OPTISCALER_INDICATOR_FILES = [
+        'nvngx_dlss.dll',     # Common OptiScaler DLL
+        'nvngx_dlssg.dll',    # DLSS-G version
+        'OptiScaler.dll',     # Direct OptiScaler
+        'nvngx.dll',          # NVIDIA proxy
+        'dxgi.dll',           # DirectX proxy
+        'winmm.dll',          # Windows multimedia proxy
+    ]
+    OPTISCALER_SUBDIRS = ["D3D12_Optiscaler", "OptiScaler", "mods", "plugins"]
+
+    def _detect_optiscaler(self, game_path, facts=None):
+        """Detect if OptiScaler is installed in a game directory.
+        When FolderFacts are provided, root-level checks use the already-collected
+        file listing instead of per-file exists() probes."""
         try:
             game_path = Path(game_path)
-            
-            # OptiScaler indicator files
-            optiscaler_files = [
-                'nvngx_dlss.dll',     # Common OptiScaler DLL
-                'nvngx_dlssg.dll',    # DLSS-G version
-                'OptiScaler.dll',     # Direct OptiScaler
-                'nvngx.dll',          # NVIDIA proxy
-                'dxgi.dll',           # DirectX proxy
-                'winmm.dll',          # Windows multimedia proxy
-            ]
-            
-            # Check directories to scan for OptiScaler files
-            check_directories = [game_path]  # Start with main directory
-            
-            # Add Unreal Engine directory if it exists (critical for UE games!)
-            unreal_engine_dir = game_path / "Engine" / "Binaries" / "Win64"
-            if unreal_engine_dir.exists() and unreal_engine_dir.is_dir():
-                check_directories.append(unreal_engine_dir)
-                debug_log(f"Added Unreal Engine directory to OptiScaler detection: {unreal_engine_dir}")
-            
-            # Check for indicator files in all relevant directories
-            for check_dir in check_directories:
+            optiscaler_files = self.OPTISCALER_INDICATOR_FILES
+
+            # Root-level indicator files (from facts when available)
+            if facts is not None:
+                if any(f.lower() in facts.top_files for f in optiscaler_files):
+                    debug_log(f"Found OptiScaler indicator file in {game_path}")
+                    return True
+                subdirs_present = [s for s in self.OPTISCALER_SUBDIRS if s.lower() in facts.top_dirs]
+            else:
                 for file_name in optiscaler_files:
-                    if (check_dir / file_name).exists():
-                        debug_log(f"Found OptiScaler indicator file: {file_name} in {check_dir}")
+                    if (game_path / file_name).exists():
+                        debug_log(f"Found OptiScaler indicator file: {file_name} in {game_path}")
                         return True
-                
-                # Check in common OptiScaler subdirectories within each directory
-                optiscaler_subdirs = ["D3D12_Optiscaler", "OptiScaler", "mods", "plugins"]
-                for subdir in optiscaler_subdirs:
-                    subdir_path = check_dir / subdir
-                    if subdir_path.exists() and subdir_path.is_dir():
-                        # Check for OptiScaler files in subdirectory
+                subdirs_present = self.OPTISCALER_SUBDIRS
+
+            # Check common OptiScaler subdirectories in the game root
+            for subdir in subdirs_present:
+                subdir_path = game_path / subdir
+                if subdir_path.is_dir():
+                    for file_name in optiscaler_files:
+                        if (subdir_path / file_name).exists():
+                            debug_log(f"Found OptiScaler in subdirectory: {game_path}/{subdir}/{file_name}")
+                            return True
+
+            # Unreal Engine directory (critical for UE games!)
+            unreal_engine_dir = game_path / "Engine" / "Binaries" / "Win64"
+            if unreal_engine_dir.is_dir():
+                for file_name in optiscaler_files:
+                    if (unreal_engine_dir / file_name).exists():
+                        debug_log(f"Found OptiScaler indicator file: {file_name} in {unreal_engine_dir}")
+                        return True
+                for subdir in self.OPTISCALER_SUBDIRS:
+                    subdir_path = unreal_engine_dir / subdir
+                    if subdir_path.is_dir():
                         for file_name in optiscaler_files:
                             if (subdir_path / file_name).exists():
-                                debug_log(f"Found OptiScaler in subdirectory: {check_dir}/{subdir}/{file_name}")
+                                debug_log(f"Found OptiScaler in subdirectory: {unreal_engine_dir}/{subdir}/{file_name}")
                                 return True
-            
+
             return False
-            
+
         except Exception as e:
             debug_log(f"Error detecting OptiScaler in {game_path}: {e}")
             return False
 
-    def _detect_engine_type(self, game_path: Path) -> str:
-        """Detect common engine types for a game folder (Unreal, Unity, Custom)."""
+    def _detect_engine_type(self, game_path: Path, facts=None) -> str:
+        """Detect common engine types for a game folder (Unreal, Unity, Custom).
+        Reuses a FolderFacts walk when the caller has one."""
         try:
             game_path = Path(game_path)
             # Unreal Engine detection
             if (game_path / 'Engine' / 'Binaries' / 'Win64').exists():
                 return 'Unreal'
+            if facts is None:
+                facts = self._collect_folder_facts(game_path)
+            if facts is None:
+                return 'Unknown'
             # Unity detection: presence of UnityPlayer.dll or Assets folder
-            if (game_path / 'UnityPlayer.dll').exists() or (game_path / 'Assets').exists():
+            if 'unityplayer.dll' in facts.top_files or 'assets' in facts.top_dirs:
                 return 'Unity'
-            # Godot detection: .import/gui or project file
-            if any(game_path.glob('*.godot')) or (game_path / '.import').exists():
+            # Godot detection: project file or .import folder
+            if any(f.endswith('.godot') for f in facts.top_files) or '.import' in facts.top_dirs:
                 return 'Godot'
             # Prism3D detection: check top-level exes, dlls and known SCS/EU/ATS patterns
-            try:
-                # Check .exe names
-                for p in game_path.glob('*.exe'):
-                    name = p.name.lower()
+            for name in facts.top_files:
+                if name.endswith('.exe'):
                     if 'prism' in name or ('euro' in name and 'truck' in name) or 'ats' in name or 'eurotruck' in name.replace(' ', ''):
                         return 'Prism3D'
-                # Check top-level dlls
-                for d in game_path.glob('*.dll'):
-                    dname = d.name.lower()
-                    if 'prism' in dname or 'prism3d' in dname or 'scs' in dname:
+                elif name.endswith('.dll'):
+                    if 'prism' in name or 'prism3d' in name or 'scs' in name:
                         return 'Prism3D'
-                # Check for common SCS files or engine config names in top-level
-                for cfg in ('prismengine.ini', 'engine.ini', 'scs_game.ini', 'scs_game.txt'):
-                    if (game_path / cfg).exists():
-                        return 'Prism3D'
-            except Exception:
-                pass
+            # Check for common SCS files or engine config names in top-level
+            for cfg in ('prismengine.ini', 'engine.ini', 'scs_game.ini', 'scs_game.txt'):
+                if cfg in facts.top_files:
+                    return 'Prism3D'
             return 'Unknown'
         except Exception as e:
             debug_log(f"Engine detection failed for {game_path}: {e}")
             return 'Unknown'
 
-    def _detect_anti_cheat(self, game_path: Path) -> list:
+    def _detect_anti_cheat(self, game_path: Path, facts=None) -> list:
         """Detect presence of common anti-cheat software in the game folder.
-        Returns a list of detected anti-cheat names.
+        Returns a list of detected anti-cheat names. Checks top-level file and
+        folder names plus files in direct child directories, from FolderFacts.
         """
-        ac_list = []
         try:
+            if facts is None:
+                facts = self._collect_folder_facts(Path(game_path))
+            if facts is None:
+                return []
+            candidate_names = facts.top_files + facts.top_dirs + facts.depth1_files
             indicators = {
                 'EasyAntiCheat': ['EasyAntiCheat.sys', 'EasyAntiCheat.exe', 'EasyAntiCheat'],
                 'BattlEye': ['beclient.dll', 'BEService.exe', 'BattleEye'],
                 'Vanguard': ['vgc.sys', 'vgtray.exe', 'Vanguard'],
                 'Easy Anti-Cheat': ['EasyAntiCheat'],
-                'BattleEye (BE)':[ 'BEService.exe', 'BattleEye']
+                'BattleEye (BE)': ['BEService.exe', 'BattleEye']
             }
+            ac_list = []
             for name, patterns in indicators.items():
-                for pattern in patterns:
-                    # Look for files or folders containing the pattern
-                    # Prefers top-level check and limited depth to avoid full recursive traversal
-                    try:
-                        # Check top-level
-                        if any(p.name.lower() == pattern.lower() or pattern.lower() in p.name.lower() for p in game_path.iterdir() if p.is_file()):
-                            ac_list.append(name)
-                            break
-                        # Check a shallow depth: direct children directories' files
-                        for sub in (game_path.iterdir() if game_path.exists() else []):
-                            if sub.is_dir():
-                                for p in sub.iterdir():
-                                    if p.is_file() and (p.name.lower() == pattern.lower() or pattern.lower() in p.name.lower()):
-                                        ac_list.append(name)
-                                        raise StopIteration
-                        # As a final fallback, check a limited set of files via glob patterns
-                    except StopIteration:
-                        break
-                    except Exception:
-                        pass
-                        ac_list.append(name)
-                        break
+                if any(pattern.lower() in candidate for pattern in patterns for candidate in candidate_names):
+                    ac_list.append(name)
             # Filter duplicates
-            ac_list = list(dict.fromkeys(ac_list))
-            return ac_list
+            return list(dict.fromkeys(ac_list))
         except Exception as e:
             debug_log(f"Anti-cheat detection failed for {game_path}: {e}")
-            return ac_list
+            return []
 
     def _detect_anti_cheat_shallow(self, game_path: Path) -> list:
         """Shallow anti-cheat detection for registry/appx scans to avoid expensive recursive scans."""
@@ -442,14 +480,15 @@ class GameScanner:
             return True
         return False
 
-    def analyze_game_safety(self, game: Game) -> dict:
+    def analyze_game_safety(self, game: Game, facts=None) -> dict:
         """Return safety analysis info for a game (engine, anti_cheat_list, community_verified)
         This does lightweight checks without doing a deep scan.
+        Pass the game folder's FolderFacts when available to avoid re-walking it.
         """
         try:
             gp = Path(game.path)
-            engine = self._detect_engine_type(gp)
-            anti_cheat_list = self._detect_anti_cheat(gp)
+            engine = self._detect_engine_type(gp, facts)
+            anti_cheat_list = self._detect_anti_cheat(gp, facts)
             community_verified = self._is_community_verified(game.name, str(game.appid or ''))
             engine_supported = compatibility_checker.is_engine_supported(engine)
             return {
@@ -462,51 +501,62 @@ class GameScanner:
             debug_log(f"Failed to analyze safety for {game}: {e}")
             return {'engine': 'Unknown', 'anti_cheat_list': [], 'community_verified': False}
 
-    def _is_game_folder(self, path):
-        """Enhanced game folder detection with improved performance"""
+    def _collect_folder_facts(self, path):
+        """Walk a game folder once (bounded by max_scan_depth / 1000 files) and
+        gather everything the per-game detectors need. Returns None on access errors."""
+        facts = FolderFacts(path)
+        max_files_to_check = 1000
+        try:
+            for root, dirs, files in os.walk(facts.root):
+                rel = os.path.relpath(root, facts.root)
+                at_top = rel == "."
+                current_depth = 0 if at_top else rel.count(os.sep)
+                if current_depth >= config.max_scan_depth:
+                    dirs[:] = []  # Don't recurse further
+                    continue
+                at_depth1 = not at_top and os.sep not in rel
+
+                if at_top:
+                    facts.top_dirs = [d.lower() for d in dirs]
+                in_unreal_dir = "unrealengine" in root.lower()
+                for file in files:
+                    facts.file_count += 1
+                    if facts.file_count > max_files_to_check:
+                        break
+                    file_lower = file.lower()
+                    if at_top:
+                        facts.top_files.append(file_lower)
+                    elif at_depth1:
+                        facts.depth1_files.append(file_lower)
+                    if file_lower.endswith(".exe"):
+                        facts.found_exe = True
+                    if file_lower.endswith(_GAME_CONTENT_SUFFIXES) or in_unreal_dir:
+                        facts.found_game_content = True
+
+                if facts.file_count > max_files_to_check:
+                    break
+        except (PermissionError, OSError) as e:
+            debug_log(f"Access denied or error scanning {facts.root}: {e}")
+            return None
+        return facts
+
+    def _is_game_folder(self, path, facts=None):
+        """Game folder detection; reuses a FolderFacts walk when the caller has one."""
         path = Path(path)
         folder_name = path.name.lower()
-        
+
         # Exclude common non-game folders
         if any(exclude_name.lower() in folder_name for exclude_name in self.exclude_folders):
             return False
 
-        # Check for common game executables or significant game content
-        found_exe = False
-        found_game_content = False
-        file_count = 0
-        max_files_to_check = 1000  # Limit file checks for performance
-
-        try:
-            for root, dirs, files in os.walk(path):
-                # Limit scan depth for performance
-                current_depth = os.path.relpath(root, path).count(os.sep)
-                if current_depth >= config.max_scan_depth:
-                    dirs[:] = []  # Don't recurse further
-                    continue
-                
-                for file in files:
-                    file_count += 1
-                    if file_count > max_files_to_check:
-                        break  # Stop if we've checked too many files
-                    
-                    file_lower = file.lower()
-                    if any(re.match(pattern, file_lower) for pattern in self.game_exe_patterns):
-                        found_exe = True
-                    if file_lower.endswith((".pak", ".uasset", ".dll", ".bin", ".unity3d")) or \
-                       "unityplayer.dll" in file_lower or "unrealengine" in root.lower():
-                        found_game_content = True
-                
-                if file_count > max_files_to_check:
-                    break
-                
-        except (PermissionError, OSError) as e:
-            debug_log(f"Access denied or error scanning {path}: {e}")
+        if facts is None:
+            facts = self._collect_folder_facts(path)
+        if facts is None:
             return False
 
         # A folder is considered a game if it has an executable or significant game content
         # and a reasonable number of files (to filter out empty or very small folders)
-        return (found_exe or found_game_content) and file_count > 5
+        return (facts.found_exe or facts.found_game_content) and facts.file_count > 5
 
     def _scan_installed_programs(self):
         """Scan Windows registry for installed programs and return Game objects.
@@ -635,9 +685,9 @@ class GameScanner:
                 return list(self._cached_games)
         except Exception:
             pass
-        # Perform cache cleanup before scanning
-        cache_manager.cleanup_large_cache()
-        
+        # Fresh scan pass: forget which Steam libraries were covered last time
+        self._scanned_steam_roots = set()
+
         all_games = []
         all_games.extend(self._scan_steam_games())
         all_games.extend(self._scan_epic_games())
@@ -666,29 +716,29 @@ class GameScanner:
                         continue
                     p = Path(lib_path)
                     if launcher == 'Steam' and (p.exists() and p.is_dir()):
-                        # Steam library - normally steamapps/common
-                        common = p
-                        library_path = common.parent
+                        # Steam library root discovered as .../steamapps/common.
+                        # _scan_steam_library skips it if _scan_steam_games already
+                        # covered this library, and gets manifest names right by
+                        # passing the true library root (not steamapps).
                         try:
-                            st_games = self._scan_steam_common_folder(common, library_path)
-                            all_games.extend(st_games)
+                            all_games.extend(self._scan_steam_library(p.parent.parent))
                         except Exception as e:
-                            debug_log(f"Failed scanning Steam library {common}: {e}")
+                            debug_log(f"Failed scanning Steam library {p}: {e}")
                     elif launcher == 'Epic' and p.exists() and p.is_dir():
                         # Adapt the Epic scanning: process directories under the root
                         try:
                             for gf in p.iterdir():
                                 if not gf.is_dir():
                                     continue
-                                if self._is_game_folder(gf):
+                                facts = self._collect_folder_facts(gf)
+                                if self._is_game_folder(gf, facts):
                                     game_name = self._read_epic_game_name(gf)
                                     if not game_name:
                                         raw = gf.name.replace("_", " ").replace("-", " ")
                                         game_name = self._split_camel_case(raw).title()
-                                    image_path = self.fetch_game_image(game_name)
-                                    optiscaler_installed = self._detect_optiscaler(gf)
-                                    safety = self.analyze_game_safety(Game(game_name, str(gf)))
-                                    all_games.append(Game(name=game_name, path=str(gf), image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Epic'))
+                                    optiscaler_installed = self._detect_optiscaler(gf, facts)
+                                    safety = self.analyze_game_safety(Game(game_name, str(gf)), facts)
+                                    all_games.append(Game(name=game_name, path=str(gf), image_path=None, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Epic'))
                         except Exception as e:
                             debug_log(f"Failed scanning Epic root {p}: {e}")
                     elif launcher == 'GOG' and p.exists() and p.is_dir():
@@ -696,7 +746,8 @@ class GameScanner:
                             for gf in p.iterdir():
                                 if not gf.is_dir():
                                     continue
-                                if self._is_game_folder(gf):
+                                facts = self._collect_folder_facts(gf)
+                                if self._is_game_folder(gf, facts):
                                     # Use GOG metadata for proper name
                                     game_name = gf.name.replace("_", " ").replace("-", " ").title()
                                     info_files = list(gf.glob("goggame-*.info"))
@@ -707,10 +758,9 @@ class GameScanner:
                                             game_name = _gi.get("gameTitle", game_name)
                                         except Exception:
                                             pass
-                                    image_path = self.fetch_game_image(game_name)
-                                    optiscaler_installed = self._detect_optiscaler(gf)
-                                    safety = self.analyze_game_safety(Game(game_name, str(gf)))
-                                    all_games.append(Game(name=game_name, path=str(gf), image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='GOG'))
+                                    optiscaler_installed = self._detect_optiscaler(gf, facts)
+                                    safety = self.analyze_game_safety(Game(game_name, str(gf)), facts)
+                                    all_games.append(Game(name=game_name, path=str(gf), image_path=None, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='GOG'))
                         except Exception as e:
                             debug_log(f"Failed scanning GOG root {p}: {e}")
                     elif launcher == 'Xbox' and p.exists() and p.is_dir():
@@ -720,27 +770,28 @@ class GameScanner:
                             for gf in p.iterdir():
                                 if not gf.is_dir():
                                     continue
+                                if is_wapps and not self._is_appx_game_candidate(gf.name):
+                                    # Cheap name filter first — don't walk non-game packages
+                                    continue
+                                facts = self._collect_folder_facts(gf)
                                 if is_xbx:
-                                    is_game = self._is_game_folder(gf) or self._is_xbox_game_folder(gf)
+                                    is_game = self._is_game_folder(gf, facts) or self._is_xbox_game_folder(gf)
                                     if not is_game:
                                         continue
                                     game_name = gf.name.replace("_", " ").replace("-", " ").title()
                                 elif is_wapps:
-                                    if not self._is_appx_game_candidate(gf.name):
-                                        continue
-                                    if not self._is_game_folder(gf):
+                                    if not self._is_game_folder(gf, facts):
                                         continue
                                     game_name = self._parse_appx_package_name(gf.name).title()
                                     if not game_name or len(game_name) < 2:
                                         continue
                                 else:
-                                    if not self._is_game_folder(gf):
+                                    if not self._is_game_folder(gf, facts):
                                         continue
                                     game_name = gf.name.replace("_", " ").replace("-", " ").title()
-                                image_path = self.fetch_game_image(game_name)
-                                optiscaler_installed = self._detect_optiscaler(gf)
-                                safety = self.analyze_game_safety(Game(game_name, str(gf)))
-                                all_games.append(Game(name=game_name, path=str(gf), image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Xbox'))
+                                optiscaler_installed = self._detect_optiscaler(gf, facts)
+                                safety = self.analyze_game_safety(Game(game_name, str(gf)), facts)
+                                all_games.append(Game(name=game_name, path=str(gf), image_path=None, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Xbox'))
                         except Exception as e:
                             debug_log(f"Failed scanning Xbox root {p}: {e}")
                 except Exception as e:
@@ -789,6 +840,8 @@ class GameScanner:
             self._cached_games = list(result)
         except Exception:
             self._cached_games = None
+        # Enforce the cache size limit once per session, off the scan path
+        threading.Thread(target=cache_manager.cleanup_large_cache_once, daemon=True).start()
         return result
 
     def clear_cached_games(self):
@@ -803,36 +856,45 @@ class GameScanner:
         return list(self._cached_games) if self._cached_games is not None else None
 
     def _scan_steam_games(self):
-        """Enhanced Steam game scanning with Path objects and improved error handling"""
+        """Enhanced Steam game scanning with Path objects and improved error handling.
+        Each Steam library is scanned exactly once per scan pass (see _scan_steam_library)."""
         steam_games = []
         for steam_path_str in self.steam_paths:
             steam_path = Path(steam_path_str)
             steamapps_path = steam_path / "steamapps"
             if not steamapps_path.exists():
                 continue
-                
-            debug_log(f"Scanning Steam library: {steamapps_path}")
-            
-            try:
-                # Parse .acf files for installed games
-                for acf_file in steamapps_path.glob("appmanifest_*.acf"):
-                    try:
-                        game = self._parse_steam_acf(acf_file, steamapps_path)
-                        if game:
-                            steam_games.append(game)
-                            debug_log(f"Found Steam game: {game.name} at {game.path}")
-                    except Exception as e:
-                        debug_log(f"Error parsing Steam ACF {acf_file.name}: {e}")
 
-                # Scan additional library folders
+            debug_log(f"Scanning Steam library: {steamapps_path}")
+
+            try:
+                # Main library
+                steam_games.extend(self._scan_steam_library(steam_path))
+
+                # Additional library folders from libraryfolders.vdf
                 library_folders_file = steamapps_path / "libraryfolders.vdf"
                 if library_folders_file.exists():
                     steam_games.extend(self._scan_steam_library_folders(library_folders_file))
-                    
+
             except Exception as e:
                 debug_log(f"Error scanning Steam path {steam_path}: {e}")
-        
+
         return steam_games
+
+    def _scan_steam_library(self, library_path):
+        """Scan one Steam library root exactly once per scan pass.
+        Overlapping sources (main path, libraryfolders.vdf, PowerShell discovery)
+        all funnel through here, guarded by _scanned_steam_roots."""
+        library_path = Path(library_path)
+        common_path = library_path / "steamapps" / "common"
+        if not common_path.exists():
+            return []
+        key = os.path.normpath(str(common_path)).lower()
+        if key in self._scanned_steam_roots:
+            debug_log(f"Skipping already-scanned Steam library: {common_path}")
+            return []
+        self._scanned_steam_roots.add(key)
+        return self._scan_steam_common_folder(common_path, library_path)
 
     def _parse_steam_acf(self, acf_file, steamapps_path):
         """Parse a Steam ACF file to extract game information"""
@@ -853,12 +915,13 @@ class GameScanner:
             installdir = installdir_match.group(1)
 
             game_path = steamapps_path / "common" / installdir
-            if game_path.exists() and self._is_game_folder(game_path):
-                    image_path = self.fetch_game_image(name, appid)
-                    optiscaler_installed = self._detect_optiscaler(game_path)
-                    safety = self.analyze_game_safety(Game(name, str(game_path), appid=appid))
+            if game_path.exists():
+                facts = self._collect_folder_facts(game_path)
+                if self._is_game_folder(game_path, facts):
+                    optiscaler_installed = self._detect_optiscaler(game_path, facts)
+                    safety = self.analyze_game_safety(Game(name, str(game_path), appid=appid), facts)
                     # Ensure platform is set so UI shows the correct launcher tag
-                    return Game(name=name, path=str(game_path), appid=appid, image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Steam')
+                    return Game(name=name, path=str(game_path), appid=appid, image_path=None, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Steam')
             
         except Exception as e:
             debug_log(f"Error parsing ACF file {acf_file}: {e}")
@@ -875,18 +938,16 @@ class GameScanner:
             for key, lib_data in library_data.get('libraryfolders', {}).items():
                 if not key.isdigit():
                     continue
-                    
+
                 library_path = Path(lib_data.get('path', ''))
                 if not library_path.exists():
                     continue
-                    
-                common_path = library_path / "steamapps" / "common"
-                if common_path.exists():
-                    games.extend(self._scan_steam_common_folder(common_path, library_path))
-                    
+
+                games.extend(self._scan_steam_library(library_path))
+
         except Exception as e:
             debug_log(f"Error scanning Steam library folders: {e}")
-        
+
         return games
 
     @timed("scan_steam_common_folder")
@@ -894,28 +955,27 @@ class GameScanner:
         """Scan a Steam common folder for games"""
         games = []
         steamapps_path = library_path / "steamapps"
+        # Parse every appmanifest once for this library (O(N) instead of O(N²))
+        manifest_map = self._build_steam_manifest_map(steamapps_path)
         # Process game folders concurrently to utilize multiple cores for I/O-bound operations
-        # Determine reasonable worker count
-        import concurrent.futures, os
         max_workers = getattr(config, 'max_workers', min(8, (os.cpu_count() or 1) * 4))
 
         def process_game_folder(game_folder):
             try:
-                if not game_folder.is_dir() or not self._is_game_folder(game_folder):
+                if not game_folder.is_dir():
+                    return None
+                facts = self._collect_folder_facts(game_folder)
+                if not self._is_game_folder(game_folder, facts):
                     return None
 
-                game_info = self._find_steam_game_info(game_folder.name, steamapps_path)
+                game_info = manifest_map.get(game_folder.name.lower())
                 if game_info:
                     name, appid = game_info
-                    image_path = self.fetch_game_image(name, appid)
-                    optiscaler_installed = self._detect_optiscaler(game_folder)
-                    safety = self.analyze_game_safety(Game(name, str(game_folder), appid=appid))
-                    return Game(name=name, path=str(game_folder), appid=appid, image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Steam')
                 else:
-                    image_path = self.fetch_game_image(game_folder.name)
-                    optiscaler_installed = self._detect_optiscaler(game_folder)
-                    safety = self.analyze_game_safety(Game(game_folder.name, str(game_folder)))
-                    return Game(name=game_folder.name, path=str(game_folder), image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Steam')
+                    name, appid = game_folder.name, None
+                optiscaler_installed = self._detect_optiscaler(game_folder, facts)
+                safety = self.analyze_game_safety(Game(name, str(game_folder), appid=appid), facts)
+                return Game(name=name, path=str(game_folder), appid=appid, image_path=None, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Steam')
             except Exception as e:
                 debug_log(f"Error processing game folder {game_folder}: {e}")
                 return None
@@ -926,29 +986,35 @@ class GameScanner:
                 game = future.result()
                 if game:
                     games.append(game)
-        
+
         return games
+
+    def _build_steam_manifest_map(self, steamapps_path):
+        """Parse all appmanifest_*.acf files once: installdir (lowercased) → (name, appid)."""
+        mapping = {}
+        try:
+            for acf_file in Path(steamapps_path).glob("appmanifest_*.acf"):
+                try:
+                    with open(acf_file, 'r', encoding='utf-8', errors='ignore') as f:
+                        content = f.read()
+                    installdir_match = re.search(r'"installdir"\s+"([^"]+?)"', content)
+                    name_match = re.search(r'"name"\s+"([^"]+?)"', content)
+                    if not (installdir_match and name_match):
+                        continue
+                    appid_match = re.search(r'"appid"\s+"([^"]+?)"', content)
+                    mapping[installdir_match.group(1).lower()] = (
+                        name_match.group(1),
+                        appid_match.group(1) if appid_match else None,
+                    )
+                except Exception:
+                    continue
+        except Exception as e:
+            debug_log(f"Failed building Steam manifest map for {steamapps_path}: {e}")
+        return mapping
 
     def _find_steam_game_info(self, folder_name, steamapps_path):
         """Find Steam game info by matching install directory"""
-        for acf_file in steamapps_path.glob("appmanifest_*.acf"):
-            try:
-                with open(acf_file, 'r', encoding='utf-8', errors='ignore') as f:
-                    content = f.read()
-                    
-                installdir_match = re.search(r'"installdir"\s+"([^"]+?)"', content)
-                if installdir_match and installdir_match.group(1) == folder_name:
-                    appid_match = re.search(r'"appid"\s+"([^"]+?)"', content)
-                    name_match = re.search(r'"name"\s+"([^"]+?)"', content)
-                    
-                    if name_match:
-                        appid = appid_match.group(1) if appid_match else None
-                        return name_match.group(1), appid
-                        
-            except Exception:
-                continue
-        
-        return None
+        return self._build_steam_manifest_map(steamapps_path).get(str(folder_name).lower())
 
     @timed("scan_epic_games")
     def _scan_epic_games(self):
@@ -960,12 +1026,14 @@ class GameScanner:
                 if not epic_path.exists():
                     continue
 
-                import concurrent.futures, os
                 max_workers = getattr(config, 'max_workers', min(8, (os.cpu_count() or 1) * 4))
 
                 def process_epic_folder(game_folder):
                     try:
-                        if not game_folder.is_dir() or not self._is_game_folder(str(game_folder)):
+                        if not game_folder.is_dir():
+                            return None
+                        facts = self._collect_folder_facts(game_folder)
+                        if not self._is_game_folder(game_folder, facts):
                             return None
                         has_egstore = (game_folder / ".egstore").exists()
                         has_manifest = any(f.suffix == ".mancfg" for f in game_folder.glob("*.mancfg"))
@@ -976,10 +1044,9 @@ class GameScanner:
                                 # Fallback: split CamelCase folder name then title-case it
                                 raw = game_folder.name.replace("_", " ").replace("-", " ")
                                 game_name = self._split_camel_case(raw).title()
-                            image_path = self.fetch_game_image(game_name)
-                            optiscaler_installed = self._detect_optiscaler(game_folder)
-                            safety = self.analyze_game_safety(Game(game_name, str(game_folder)))
-                            return Game(name=game_name, path=str(game_folder), image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Epic')
+                            optiscaler_installed = self._detect_optiscaler(game_folder, facts)
+                            safety = self.analyze_game_safety(Game(game_name, str(game_folder)), facts)
+                            return Game(name=game_name, path=str(game_folder), image_path=None, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Epic')
                         return None
                     except Exception as e:
                         debug_log(f"Error processing Epic folder {game_folder}: {e}")
@@ -1009,13 +1076,17 @@ class GameScanner:
                     continue
                     
                 # Parallelize GOG folder scanning
-                import concurrent.futures, os
                 max_workers = getattr(config, 'max_workers', min(8, (os.cpu_count() or 1) * 4))
 
                 def process_gog_folder(game_folder):
                     try:
-                        if not game_folder.is_dir() or not self._is_game_folder(str(game_folder)):
+                        if not game_folder.is_dir():
                             return None
+                        facts = self._collect_folder_facts(game_folder)
+                        if not self._is_game_folder(game_folder, facts):
+                            return None
+
+                        optiscaler_installed = self._detect_optiscaler(game_folder, facts)
 
                         # Look for goggame-*.info files
                         info_files = list(game_folder.glob("goggame-*.info"))
@@ -1024,18 +1095,16 @@ class GameScanner:
                                 with open(info_files[0], 'r', encoding='utf-8') as f:
                                     game_info = json.load(f)
                                     game_name = game_info.get("gameTitle", game_folder.name.replace("_", " ").replace("-", " ").title())
-                                    image_path = self.fetch_game_image(game_name)
-                                    optiscaler_installed = self._detect_optiscaler(game_folder)
-                                    safety = self.analyze_game_safety(Game(game_name, str(game_folder)))
-                                    return Game(name=game_name, path=str(game_folder), image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='GOG')
+                                    safety = self.analyze_game_safety(Game(game_name, str(game_folder)), facts)
+                                    return Game(name=game_name, path=str(game_folder), image_path=None, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='GOG')
                             except (json.JSONDecodeError, UnicodeDecodeError, KeyError) as e:
                                 debug_log(f"Error parsing GOG info file {info_files[0].name}: {e}")
 
                         # Fallback: use folder name
+                        # (platform was mistakenly 'Epic' here before — copy-paste bug)
                         game_name = game_folder.name.replace("_", " ").replace("-", " ").title()
-                        optiscaler_installed = self._detect_optiscaler(game_folder)
-                        safety = self.analyze_game_safety(Game(game_name, str(game_folder)))
-                        return Game(name=game_name, path=str(game_folder), optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Epic')
+                        safety = self.analyze_game_safety(Game(game_name, str(game_folder)), facts)
+                        return Game(name=game_name, path=str(game_folder), optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='GOG')
                     except Exception as e:
                         debug_log(f"Error processing GOG folder {game_folder}: {e}")
                         return None
@@ -1083,7 +1152,6 @@ class GameScanner:
                 if not xbox_path.exists():
                     continue
 
-                import concurrent.futures, os
                 max_workers = getattr(config, 'max_workers', min(8, (os.cpu_count() or 1) * 4))
                 is_xboxgames_root = xbox_path.name.lower() == 'xboxgames'
                 is_windowsapps = xbox_path.name.lower() == 'windowsapps'
@@ -1092,35 +1160,33 @@ class GameScanner:
                     try:
                         if not game_folder.is_dir():
                             return None
+                        if _is_wapps and not self._is_appx_game_candidate(game_folder.name):
+                            # Skip known non-game packages before walking the folder
+                            return None
 
+                        facts = self._collect_folder_facts(game_folder)
                         if _is_xbx:
                             # C:\XboxGames — accept folders that pass standard check OR Xbox packaging check
-                            is_game = self._is_game_folder(str(game_folder)) or self._is_xbox_game_folder(game_folder)
+                            is_game = self._is_game_folder(game_folder, facts) or self._is_xbox_game_folder(game_folder)
                             if not is_game:
                                 return None
                             game_name = game_folder.name.replace("_", " ").replace("-", " ").title()
                         elif _is_wapps:
                             # C:\Program Files\WindowsApps — Appx package folder names
-                            folder_name = game_folder.name
-                            # Skip known non-game packages quickly
-                            if not self._is_appx_game_candidate(folder_name):
-                                return None
-                            # Require at least a standard game folder check
-                            if not self._is_game_folder(str(game_folder)):
+                            if not self._is_game_folder(game_folder, facts):
                                 return None
                             # Parse readable name from Publisher.AppName_Version_Arch_Hash
-                            game_name = self._parse_appx_package_name(folder_name).title()
+                            game_name = self._parse_appx_package_name(game_folder.name).title()
                             if not game_name or len(game_name) < 2:
                                 return None
                         else:
-                            if not self._is_game_folder(str(game_folder)):
+                            if not self._is_game_folder(game_folder, facts):
                                 return None
                             game_name = game_folder.name.replace("_", " ").replace("-", " ").title()
 
-                        image_path = self.fetch_game_image(game_name)
-                        optiscaler_installed = self._detect_optiscaler(game_folder)
-                        safety = self.analyze_game_safety(Game(game_name, str(game_folder)))
-                        return Game(name=game_name, path=str(game_folder), image_path=image_path, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Xbox')
+                        optiscaler_installed = self._detect_optiscaler(game_folder, facts)
+                        safety = self.analyze_game_safety(Game(game_name, str(game_folder)), facts)
+                        return Game(name=game_name, path=str(game_folder), image_path=None, optiscaler_installed=optiscaler_installed, engine=safety['engine'], anti_cheat_list=safety['anti_cheat_list'], community_verified=safety['community_verified'], engine_supported=safety.get('engine_supported', True), platform='Xbox')
                     except Exception as e:
                         debug_log(f"Error processing Xbox folder {game_folder}: {e}")
                         return None
@@ -1222,6 +1288,23 @@ class GameScanner:
 
         # Return placeholder if no image found
         return str(self.no_image_path)
+
+    def _init_app_list_async(self):
+        """Background thread: build the app list (local manifests / disk cache),
+        then top it up from SteamSpy, then let the UI retry missing thumbnails."""
+        try:
+            self.steam_app_list = self._build_local_steam_app_list()
+            self._steam_index_dirty = True
+            self._load_steamspy_app_list_async()
+        except Exception as e:
+            debug_log(f"App list initialization failed: {e}")
+        # Fire the retry callback on every path (fresh cache included), not just
+        # after a SteamSpy download
+        if callable(self.on_app_list_ready):
+            try:
+                self.on_app_list_ready()
+            except Exception as e:
+                debug_log(f"on_app_list_ready callback failed: {e}")
 
     def _build_local_steam_app_list(self):
         """Build a name→AppID map from locally installed Steam manifest files.
@@ -1344,14 +1427,11 @@ class GameScanner:
         # Update in-memory maps atomically
         self.steam_app_list = apps
         self._normalized_steam_app_map = normalized_apps
+        self._steam_index_dirty = True
         debug_log("Steam app list ready — notifying UI for thumbnail retry")
 
-        # Notify the UI so it can re-fetch images for games that were missing them
-        if callable(self.on_app_list_ready):
-            try:
-                self.on_app_list_ready()
-            except Exception as e:
-                debug_log(f"on_app_list_ready callback error: {e}")
+        # (UI notification happens in _init_app_list_async so it fires on every
+        # completion path, including the fresh-disk-cache early return)
 
     def _read_epic_game_name(self, game_folder: Path) -> str:
         """Try to read the real game title from Epic Games metadata files.
@@ -1471,11 +1551,46 @@ class GameScanner:
         re.IGNORECASE,
     )
 
+    def _ensure_steam_app_index(self):
+        """Build the token index for subset matching (lazily, thread-safe).
+        Maps each name token → set of app-list keys containing it, so a lookup
+        intersects a few small sets instead of regex-scanning 50k entries."""
+        if not self._steam_index_dirty:
+            return
+        with self._steam_index_lock:
+            if not self._steam_index_dirty:
+                return
+            token_index = {}
+            key_token_counts = {}
+            for name_key in (self.steam_app_list or {}):
+                key_norm = re.sub(r'[^a-z0-9\s]', ' ', name_key).strip()
+                key_tokens = set(key_norm.split())
+                if not key_tokens:
+                    continue
+                key_token_counts[name_key] = len(key_tokens)
+                for tok in key_tokens:
+                    token_index.setdefault(tok, set()).add(name_key)
+            self._steam_token_index = token_index
+            self._steam_key_token_counts = key_token_counts
+            self._appid_lookup_cache = {}
+            self._steam_index_dirty = False
+            debug_log(f"Steam app token index built: {len(key_token_counts)} names, {len(token_index)} tokens")
+
     def _get_appid_from_name(self, game_name):
-        """Get Steam AppID from game name with fallback handling"""
+        """Get Steam AppID from game name (memoized per app-list generation)."""
         normalized_game_name = (game_name or '').lower().strip()
         if not normalized_game_name:
             return None
+        self._ensure_steam_app_index()
+        cache = self._appid_lookup_cache
+        if normalized_game_name in cache:
+            return cache[normalized_game_name]
+        result = self._get_appid_from_name_uncached(game_name, normalized_game_name)
+        cache[normalized_game_name] = result
+        return result
+
+    def _get_appid_from_name_uncached(self, game_name, normalized_game_name):
+        """Get Steam AppID from game name with fallback handling"""
 
         # Build the list of name variants to try (strip platform/edition suffixes progressively)
         variants = [normalized_game_name]
@@ -1497,23 +1612,25 @@ class GameScanner:
             if hasattr(self, '_normalized_steam_app_map') and norm in self._normalized_steam_app_map:
                 return self._normalized_steam_app_map[norm]
 
-            # 3. Token-subset match: all query tokens must appear in the Steam name
+            # 3. Token-subset match via the token index: all query tokens must
+            # appear in the Steam name; prefer the name with fewest tokens.
             tokens = set(norm.split())
             if not tokens:
                 continue
+            candidate_keys = None
+            for tok in tokens:
+                keys = self._steam_token_index.get(tok)
+                if not keys:
+                    candidate_keys = set()
+                    break
+                candidate_keys = set(keys) if candidate_keys is None else (candidate_keys & keys)
             best_match = None
             best_score = 0
-            for name_key, appid in (self.steam_app_list.items() if self.steam_app_list else []):
-                key_norm = re.sub(r'[^a-z0-9\s]', ' ', name_key).strip()
-                key_tokens = set(key_norm.split())
-                if not key_tokens:
-                    continue
-                if not tokens.issubset(key_tokens):
-                    continue
-                score = len(key_tokens)
+            for name_key in (candidate_keys or ()):
+                score = self._steam_key_token_counts.get(name_key, 0)
                 if best_match is None or score < best_score:
                     best_score = score
-                    best_match = appid
+                    best_match = self.steam_app_list.get(name_key)
             if best_match:
                 return best_match
 

@@ -32,7 +32,7 @@ Requires Windows 10/11. The GUI downloads OptiScaler exclusively from the offici
 
 ## OptiScaler compatibility
 
-The current release (v0.5.1) supports OptiScaler **v0.7.0 through v0.9.3** and always downloads the latest official release. When a new OptiScaler version changes the payload layout, a compatibility update is released — see the [changelog](CHANGELOG.md) and [releases](https://github.com/King4s/OptiScaler-GUI/releases) for history.
+The current release (v0.5.2) supports OptiScaler **v0.7.0 through v0.9.3** and always downloads the latest official release. When a new OptiScaler version changes the payload layout, a compatibility update is released — see the [changelog](CHANGELOG.md) and [releases](https://github.com/King4s/OptiScaler-GUI/releases) for history.
 
 ## Running from source
 

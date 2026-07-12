@@ -2,10 +2,16 @@
 Version information for OptiScaler-GUI
 """
 
-__version__ = "0.5.1"
-__version_info__ = (0, 5, 1)
+__version__ = "0.5.2"
+__version_info__ = (0, 5, 2)
 
 # Version history:
+# 0.5.2 - Scan performance overhaul
+#       - Steam libraries scanned once (was 2-3x), O(N) manifest lookup,
+#         one directory walk per game (was 3-4), no network I/O during scan
+#       - Real-world full scan: ~9.5-17s -> ~0.8s; also removes duplicate
+#         Steam list entries caused by the overlapping scans
+#       - Chunked list rendering, background app-list init, faster startup
 # 0.5.1 - Heroic Launcher game detection fix
 #       - Heroic scanner now parses Heroic's actual store files (Epic/legendary,
 #         GOG, Amazon/nile, sideloaded apps) — previously it never found any games

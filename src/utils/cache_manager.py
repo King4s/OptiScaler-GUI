@@ -13,6 +13,7 @@ class CacheManager:
     def __init__(self):
         self.cache_dir = Path(config.cache_dir)
         self.game_cache_dir = Path(config.game_cache_dir)
+        self._session_cleanup_done = False
     
     def get_cache_size(self):
         """Get total cache size in MB"""
@@ -76,6 +77,15 @@ class CacheManager:
         
         return removed_count, removed_size / (1024 * 1024)
     
+    def cleanup_large_cache_once(self):
+        """Run the size-limit cleanup at most once per app session.
+        Called on a background thread after a scan completes, so the full
+        cache-dir stat sweep never sits on the scan hot path."""
+        if self._session_cleanup_done:
+            return
+        self._session_cleanup_done = True
+        self.cleanup_large_cache()
+
     def cleanup_large_cache(self):
         """Clean up cache if it exceeds size limit"""
         current_size = self.get_cache_size()
@@ -104,19 +114,22 @@ class CacheManager:
             
             # Sort by modification time (oldest first)
             image_files.sort()
-            
+
             removed_count = 0
             removed_size = 0
-            
+
+            # Compute the size once and keep a running total — re-scanning the
+            # whole cache dir per deleted file made this O(N²)
+            current_size = self.get_cache_size()
             for mtime, image_file in image_files:
-                current_size = self.get_cache_size()
                 if current_size <= config.max_cache_size_mb * 0.8:  # Leave some margin
                     break
-                
+
                 size = image_file.stat().st_size
                 image_file.unlink()
                 removed_count += 1
                 removed_size += size
+                current_size -= size / (1024 * 1024)
             
             if removed_count > 0:
                 print(f"Removed {removed_count} oldest images ({removed_size / (1024 * 1024):.1f} MB)")
