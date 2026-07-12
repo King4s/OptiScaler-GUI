@@ -5,6 +5,25 @@
 
 use eframe::egui_wgpu::{self, wgpu};
 
+/// Selectable background styles: (config value, display label). Labels are
+/// proper names shared across languages.
+pub const STYLES: [(&str, &str); 4] = [
+    ("orbits", "Orbits"),
+    ("aurora", "Aurora"),
+    ("synthwave", "Synthwave"),
+    ("nebula", "Nebula"),
+];
+
+/// Map a config style value to the WGSL style branch index.
+pub fn style_index(name: &str) -> f32 {
+    match name {
+        "aurora" => 1.0,
+        "synthwave" => 2.0,
+        "nebula" => 3.0,
+        _ => 0.0,
+    }
+}
+
 pub struct EffectsRenderer {
     pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
@@ -18,6 +37,8 @@ struct Uniforms {
     aspect: f32,
     intensity: f32,
     dark: f32,
+    style: f32,
+    _pad: [f32; 3],
 }
 
 impl EffectsRenderer {
@@ -101,6 +122,8 @@ pub struct EffectsCallback {
     pub aspect: f32,
     pub intensity: f32,
     pub dark: f32,
+    /// Matches the WGSL style branch: 0 orbits, 1 aurora, 2 synthwave, 3 nebula.
+    pub style: f32,
 }
 
 impl egui_wgpu::CallbackTrait for EffectsCallback {
@@ -118,6 +141,8 @@ impl egui_wgpu::CallbackTrait for EffectsCallback {
                 aspect: self.aspect,
                 intensity: self.intensity,
                 dark: self.dark,
+                style: self.style,
+                _pad: [0.0; 3],
             };
             let bytes = unsafe {
                 std::slice::from_raw_parts(

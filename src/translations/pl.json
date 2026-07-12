@@ -134,7 +134,8 @@
     "excluded_drives": "Wykluczone dyski (np. D,E)",
     "cache_size": "Rozmiar cache",
     "log_tab": "Log",
-    "about_tab": "O programie"
+    "about_tab": "O programie",
+    "effects_style": "Styl tła"
   },
   "sections": {
     "OptiScaler": "OptiScaler Główne Ustawienia",

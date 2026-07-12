@@ -55,6 +55,7 @@ pub fn show(ctx: &egui::Context, state: &mut AppState, ops: &mut Ops) {
                         aspect: rect.aspect_ratio(),
                         intensity: 1.0,
                         dark: if state.dark() { 1.0 } else { 0.0 },
+                        style: crate::fx::style_index(&state.config.effects_style),
                     },
                 ));
         }

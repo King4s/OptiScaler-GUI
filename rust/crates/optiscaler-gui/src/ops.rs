@@ -3,9 +3,9 @@
 
 use eframe::egui;
 use opticore::appids::AppIdResolver;
-use opticore::images::ImageCache;
+use opticore::images::{ArtRequest, ImageCache};
 use opticore::install::{self, InstallOptions, InstallStage, Installer};
-use opticore::model::Game;
+use opticore::model::{Game, Platform};
 use opticore::progress::TaskEvent;
 use opticore::scan::{scan_all, ScanConfig};
 use std::collections::HashSet;
@@ -105,11 +105,21 @@ impl Ops {
         let images = self.images.clone();
         let name = game.name.clone();
         let appid = game.steam_appid;
+        let art_url = game.art_url.clone();
+        let platform_is_gog = game.platform == Platform::Gog;
+        let game_path = game.path.clone();
         std::thread::spawn(move || {
             let appid = appid
                 .or_else(|| resolver.lookup(&name))
                 .or_else(|| resolver.lookup_online(&name));
-            let event = match images.fetch(&name, appid) {
+            let request = ArtRequest {
+                name,
+                appid,
+                art_url,
+                platform_is_gog,
+                game_path: Some(game_path),
+            };
+            let event = match images.fetch(&request) {
                 Some(path) => TaskEvent::ImageReady {
                     path_norm: key,
                     image_path: path,

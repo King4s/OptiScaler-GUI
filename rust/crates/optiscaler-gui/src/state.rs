@@ -104,6 +104,8 @@ pub struct AppState {
     pub config_path: PathBuf,
     /// Active translations.
     pub i18n: Translator,
+    /// On-disk app log (logs/optiscaler-gui.log next to the exe).
+    pub file_log: Option<opticore::logging::FileLog>,
     textures: HashMap<String, TextureHandle>,
     texture_lru: VecDeque<String>,
 }
@@ -131,6 +133,7 @@ impl Default for AppState {
             config: AppConfig::default(),
             config_path: PathBuf::new(),
             i18n: Translator::default(),
+            file_log: None,
             textures: HashMap::new(),
             texture_lru: VecDeque::new(),
         }
@@ -172,6 +175,9 @@ impl AppState {
 
 impl AppState {
     pub fn push_log(&mut self, line: String) {
+        if let Some(file_log) = &self.file_log {
+            file_log.append(&line);
+        }
         if self.log.len() >= LOG_CAP {
             self.log.pop_front();
         }

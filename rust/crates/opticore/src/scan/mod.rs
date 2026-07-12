@@ -91,6 +91,7 @@ fn build_game(
         anti_cheat: folder_facts::detect_anti_cheat(facts),
         community_verified: false, // filled by caller (needs final name)
         optiscaler_installed: folder_facts::detect_optiscaler(path, facts),
+        art_url: None,
     }
     .tap_verify(verified)
 }
@@ -244,7 +245,8 @@ fn scan_xbox_root(root: &Path, verified: &VerifiedList, games: &mut Vec<Game>) {
 fn scan_heroic(verified: &VerifiedList, games: &mut Vec<Game>) {
     let mut seen_paths = HashSet::new();
     for root in heroic::config_roots() {
-        for (title, install_path) in heroic::installed_entries(&root) {
+        for entry in heroic::installed_entries(&root) {
+            let install_path = entry.install_path;
             let norm = install_path.to_string_lossy().to_lowercase();
             if seen_paths.contains(&norm) || !install_path.is_dir() {
                 continue;
@@ -256,20 +258,22 @@ fn scan_heroic(verified: &VerifiedList, games: &mut Vec<Game>) {
                 continue;
             }
             seen_paths.insert(norm);
-            let name = title.unwrap_or_else(|| {
+            let name = entry.title.unwrap_or_else(|| {
                 install_path
                     .file_name()
                     .map(|n| n.to_string_lossy().replace(['_', '-'], " "))
                     .unwrap_or_default()
             });
-            games.push(build_game(
+            let mut game = build_game(
                 name,
                 None,
                 &install_path,
                 Platform::Heroic,
                 &facts,
                 verified,
-            ));
+            );
+            game.art_url = entry.art_url;
+            games.push(game);
         }
     }
 }

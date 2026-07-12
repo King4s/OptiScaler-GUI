@@ -11,8 +11,14 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// (title, install_path) — title is None when only the folder name is known.
-pub type HeroicEntry = (Option<String>, PathBuf);
+/// One installed game from a Heroic store file.
+pub struct HeroicEntry {
+    /// None when only the folder name is known.
+    pub title: Option<String>,
+    pub install_path: PathBuf,
+    /// Store-supplied artwork URL when the library metadata has one.
+    pub art_url: Option<String>,
+}
 
 fn read_json(path: &Path) -> Option<Value> {
     let content = fs::read_to_string(path).ok()?;
@@ -46,16 +52,20 @@ pub fn installed_entries(root: &Path) -> Vec<HeroicEntry> {
             .join("legendary")
             .join("installed.json"),
     ) {
-        for meta in map.values() {
+        for (app_name, meta) in &map {
             if let Some(install_path) = meta.get("install_path").and_then(Value::as_str) {
                 let title = meta.get("title").and_then(Value::as_str).map(String::from);
-                entries.push((title, PathBuf::from(install_path)));
+                entries.push(HeroicEntry {
+                    title,
+                    install_path: PathBuf::from(install_path),
+                    art_url: legendary_art(root, app_name),
+                });
             }
         }
     }
 
-    // GOG titles from the library cache (newer then older location)
-    let mut gog_titles: HashMap<String, String> = HashMap::new();
+    // GOG titles + art from the library cache (newer then older location)
+    let mut gog_meta: HashMap<String, (String, Option<String>)> = HashMap::new();
     for lib_rel in [
         root.join("store_cache").join("gog_library.json"),
         root.join("gog_store").join("library.json"),
@@ -71,10 +81,15 @@ pub fn installed_entries(root: &Path) -> Vec<HeroicEntry> {
                     .or_else(|| game.get("appName"))
                     .and_then(Value::as_str);
                 let title = game.get("title").and_then(Value::as_str);
+                let art = game
+                    .get("art_cover")
+                    .or_else(|| game.get("art_square"))
+                    .and_then(Value::as_str)
+                    .map(String::from);
                 if let (Some(app), Some(title)) = (app, title) {
-                    gog_titles
+                    gog_meta
                         .entry(app.to_string())
-                        .or_insert_with(|| title.to_string());
+                        .or_insert_with(|| (title.to_string(), art));
                 }
             }
         }
@@ -91,7 +106,15 @@ pub fn installed_entries(root: &Path) -> Vec<HeroicEntry> {
                     .or_else(|| meta.get("app_name"))
                     .and_then(Value::as_str)
                     .unwrap_or("");
-                entries.push((gog_titles.get(app).cloned(), PathBuf::from(install_path)));
+                let (title, art_url) = match gog_meta.get(app) {
+                    Some((title, art)) => (Some(title.clone()), art.clone()),
+                    None => (None, None),
+                };
+                entries.push(HeroicEntry {
+                    title,
+                    install_path: PathBuf::from(install_path),
+                    art_url,
+                });
             }
         }
     }
@@ -122,7 +145,11 @@ pub fn installed_entries(root: &Path) -> Vec<HeroicEntry> {
                     .get("id")
                     .and_then(Value::as_str)
                     .and_then(|id| nile_titles.get(id).cloned());
-                entries.push((title, PathBuf::from(path)));
+                entries.push(HeroicEntry {
+                    title,
+                    install_path: PathBuf::from(path),
+                    art_url: None,
+                });
             }
         }
     }
@@ -149,12 +176,48 @@ pub fn installed_entries(root: &Path) -> Vec<HeroicEntry> {
                 });
             if let Some(folder) = folder {
                 let title = game.get("title").and_then(Value::as_str).map(String::from);
-                entries.push((title, folder));
+                let art_url = game
+                    .get("art_cover")
+                    .or_else(|| game.get("art_square"))
+                    .and_then(Value::as_str)
+                    .map(String::from);
+                entries.push(HeroicEntry {
+                    title,
+                    install_path: folder,
+                    art_url,
+                });
             }
         }
     }
 
     entries
+}
+
+/// Legendary keeps per-game metadata (incl. keyImages) in
+/// legendaryConfig/legendary/metadata/<app_name>.json.
+fn legendary_art(root: &Path, app_name: &str) -> Option<String> {
+    let meta = read_json(
+        &root
+            .join("legendaryConfig")
+            .join("legendary")
+            .join("metadata")
+            .join(format!("{app_name}.json")),
+    )?;
+    let images = meta
+        .get("metadata")
+        .and_then(|m| m.get("keyImages"))
+        .or_else(|| meta.get("keyImages"))?
+        .as_array()?;
+    for wanted in ["DieselGameBoxTall", "DieselGameBox", "OfferImageTall"] {
+        for image in images {
+            if image.get("type").and_then(Value::as_str) == Some(wanted) {
+                if let Some(url) = image.get("url").and_then(Value::as_str) {
+                    return Some(url.to_string());
+                }
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -201,7 +264,7 @@ mod tests {
 
         let mut titles: Vec<Option<String>> = installed_entries(&root)
             .into_iter()
-            .map(|(t, _)| t)
+            .map(|e| e.title)
             .collect();
         titles.sort();
         assert_eq!(titles.len(), 4);
@@ -221,7 +284,7 @@ mod tests {
         );
         let entries = installed_entries(&root);
         assert_eq!(entries.len(), 1);
-        assert!(entries[0].0.is_none());
+        assert!(entries[0].title.is_none());
     }
 
     #[test]

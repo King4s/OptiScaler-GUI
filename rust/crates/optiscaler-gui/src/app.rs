@@ -34,6 +34,13 @@ impl App {
         // Respect the system accessibility setting: animations disabled →
         // background effects stay off regardless of the config toggle
         state.reduced_motion = crate::fx::reduced_motion();
+        // On-disk log for tester bug reports (logs/ next to the exe)
+        state.file_log = opticore::logging::FileLog::new(&crate::ops::base_dir().join("logs"));
+        state.push_log(format!(
+            "OptiScaler GUI {} started (GPU vendor: {})",
+            opticore::VERSION,
+            state.gpu_vendor.label()
+        ));
         Self {
             state,
             ops: Ops::new(),

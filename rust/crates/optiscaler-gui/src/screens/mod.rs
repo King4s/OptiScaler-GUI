@@ -74,6 +74,32 @@ pub fn show_settings(ctx: &egui::Context, state: &mut AppState) {
             config_changed = true;
         }
 
+        // Background style picker
+        if state.config.effects_enabled {
+            ui.horizontal(|ui| {
+                ui.label(state.i18n.tr("ui.effects_style"));
+                let current_label = crate::fx::STYLES
+                    .iter()
+                    .find(|(value, _)| *value == state.config.effects_style)
+                    .map(|(_, label)| *label)
+                    .unwrap_or("Orbits");
+                egui::ComboBox::from_id_salt("effects_style")
+                    .selected_text(current_label)
+                    .show_ui(ui, |ui| {
+                        for (value, label) in crate::fx::STYLES {
+                            if ui
+                                .selectable_label(state.config.effects_style == value, label)
+                                .clicked()
+                                && state.config.effects_style != value
+                            {
+                                state.config.effects_style = value.to_string();
+                                config_changed = true;
+                            }
+                        }
+                    });
+            });
+        }
+
         // Update check opt-in
         if ui
             .checkbox(
@@ -156,6 +182,11 @@ pub fn show_log(ctx: &egui::Context, state: &mut AppState) {
             if ui.button(state.i18n.tr("ui.copy_all")).clicked() {
                 let all: String = state.log.iter().cloned().collect::<Vec<_>>().join("\n");
                 ctx.copy_text(all);
+            }
+            if let Some(dir) = state.file_log.as_ref().and_then(|l| l.dir()) {
+                if ui.button("📂 logs").clicked() {
+                    let _ = std::process::Command::new("explorer").arg(dir).spawn();
+                }
             }
         });
         ui.add_space(4.0);

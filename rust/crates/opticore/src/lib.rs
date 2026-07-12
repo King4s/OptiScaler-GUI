@@ -8,6 +8,7 @@ pub mod i18n;
 pub mod images;
 pub mod ini;
 pub mod install;
+pub mod logging;
 pub mod model;
 pub mod progress;
 pub mod scan;
