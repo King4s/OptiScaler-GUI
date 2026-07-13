@@ -105,7 +105,9 @@ pub fn show(ctx: &egui::Context, state: &mut AppState, ops: &mut Ops) {
                                 .map(|e| e.value.clone());
                             if let Some(old) = old {
                                 if old != entry.value {
-                                    editor.doc.set_value(&section.name, &entry.key, &entry.value);
+                                    editor
+                                        .doc
+                                        .set_value(&section.name, &entry.key, &entry.value);
                                     changes.push(format!(
                                         "{}.{}: {old} → {}",
                                         section.name, entry.key, entry.value
@@ -115,8 +117,10 @@ pub fn show(ctx: &egui::Context, state: &mut AppState, ops: &mut Ops) {
                         }
                     }
                     editor.dirty = editor.dirty || !changes.is_empty();
-                    editor.status =
-                        Some(format!("Restored defaults: {} changes — Save to keep", changes.len()));
+                    editor.status = Some(format!(
+                        "Restored defaults: {} changes — Save to keep",
+                        changes.len()
+                    ));
                     editor.applied_changes = changes;
                 }
             }
@@ -143,8 +147,11 @@ pub fn show(ctx: &egui::Context, state: &mut AppState, ops: &mut Ops) {
         // What Auto Settings / Restore defaults actually changed
         if !editor.applied_changes.is_empty() {
             egui::CollapsingHeader::new(
-                RichText::new(format!("Changes applied ({})", editor.applied_changes.len()))
-                    .color(pal.accent),
+                RichText::new(format!(
+                    "Changes applied ({})",
+                    editor.applied_changes.len()
+                ))
+                .color(pal.accent),
             )
             .default_open(true)
             .show(ui, |ui| {
