@@ -145,6 +145,44 @@ impl Ops {
         base.join("cache").join("optiscaler_downloads")
     }
 
+    /// Download + extract the latest OptiScaler release into the cache so the
+    /// INI editor's "Restore defaults" has a pristine OptiScaler.ini. Reuses
+    /// the already-extracted payload when present (e.g. right after an
+    /// install); only needed when the download cache was cleared.
+    pub fn spawn_fetch_defaults(&self, ctx: &egui::Context) {
+        let tx = self.tx.clone();
+        let ctx = ctx.clone();
+        let downloads = self.downloads_dir();
+        std::thread::spawn(move || {
+            let installer = Installer::new(&downloads);
+            let event = match installer.prepare_payload(|_| {}) {
+                Ok((extracted, release)) => {
+                    let ini_path = extracted.join("OptiScaler.ini");
+                    if ini_path.exists() {
+                        TaskEvent::DefaultsFetched {
+                            ini_path: Some(ini_path),
+                            message: format!(
+                                "Defaults loaded from OptiScaler {}",
+                                release.version_label()
+                            ),
+                        }
+                    } else {
+                        TaskEvent::DefaultsFetched {
+                            ini_path: None,
+                            message: "OptiScaler.ini missing in the release payload".into(),
+                        }
+                    }
+                }
+                Err(e) => TaskEvent::DefaultsFetched {
+                    ini_path: None,
+                    message: format!("Could not fetch defaults: {e}"),
+                },
+            };
+            let _ = tx.send(event);
+            ctx.request_repaint();
+        });
+    }
+
     /// Check the latest OptiScaler release for update badges.
     pub fn spawn_release_check(&self, ctx: &egui::Context) {
         let tx = self.tx.clone();

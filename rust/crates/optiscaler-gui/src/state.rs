@@ -32,6 +32,8 @@ pub struct EditorState {
     pub search: String,
     /// Set when Back was clicked with unsaved changes (second click discards).
     pub discard_armed: bool,
+    /// A background download of the release payload (for defaults) is running.
+    pub fetching_defaults: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -256,6 +258,7 @@ impl AppState {
                 applied_changes: Vec::new(),
                 search: String::new(),
                 discard_armed: false,
+                fetching_defaults: false,
             });
             self.screen = Screen::IniEditor;
         } else {

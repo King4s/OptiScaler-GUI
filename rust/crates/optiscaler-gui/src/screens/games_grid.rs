@@ -447,7 +447,10 @@ fn card(
     }
 
     let selected = state.selected.as_deref() == Some(game.key.path_norm.as_str());
-    let fill = if selected || response.hovered() {
+    // Pointer-based hover: the play overlay sits on top of the card, so
+    // response.hovered() would flicker off while the pointer is on it.
+    let hovered = ui.rect_contains_pointer(rect);
+    let fill = if selected || hovered {
         pal.card_hover
     } else {
         pal.card
@@ -471,6 +474,30 @@ fn card(
         Vec2::new(dims.w - 8.0, dims.art_h),
     );
     paint_art(ui, ctx, state, ops, game, art_rect, pal);
+
+    // Play button on the artwork itself, shown on hover/selection. Registered
+    // after the card's click sense, so it wins the hit test on top of it.
+    if hovered || selected {
+        let size = Vec2::new(36.0, 28.0);
+        let btn_rect = egui::Rect::from_min_size(
+            egui::pos2(art_rect.max.x - size.x - 6.0, art_rect.max.y - size.y - 6.0),
+            size,
+        );
+        let play = ui
+            .put(
+                btn_rect,
+                egui::Button::new(RichText::new("▶").size(15.0).strong())
+                    .fill(pal.accent)
+                    .corner_radius(CornerRadius::same(14)),
+            )
+            .on_hover_text(state.i18n.tr("ui.play"));
+        if play.clicked() {
+            match opticore::launch::launch(game, true) {
+                Ok(message) => state.push_log(message),
+                Err(error) => state.push_log(format!("Launch failed: {error}")),
+            }
+        }
+    }
 
     // Name
     let name_pos = egui::pos2(rect.min.x + 8.0, art_rect.max.y + 8.0);
