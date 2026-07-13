@@ -16,6 +16,21 @@ pub fn top_strip(ctx: &egui::Context, pal: Palette, title: &str) {
         .show(ctx, |ui| {
             let strip_rect = ui.max_rect();
 
+            // Register the drag area FIRST so the window buttons added after it
+            // sit on top in egui's hit test; registered last, it swallows their clicks.
+            let drag_response = ui.interact(
+                strip_rect,
+                egui::Id::new("window_drag_area"),
+                Sense::click_and_drag(),
+            );
+            if drag_response.drag_started() {
+                ctx.send_viewport_cmd(ViewportCommand::StartDrag);
+            }
+            if drag_response.double_clicked() {
+                let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
+                ctx.send_viewport_cmd(ViewportCommand::Maximized(!maximized));
+            }
+
             ui.horizontal_centered(|ui| {
                 ui.add_space(10.0);
                 ui.label(RichText::new(title).size(12.0).strong().color(pal.text_dim));
@@ -39,20 +54,6 @@ pub fn top_strip(ctx: &egui::Context, pal: Palette, title: &str) {
                     }
                 });
             });
-
-            // Everything in the strip that isn't a button drags the window
-            let drag_response = ui.interact(
-                strip_rect,
-                egui::Id::new("window_drag_area"),
-                Sense::click_and_drag(),
-            );
-            if drag_response.drag_started() {
-                ctx.send_viewport_cmd(ViewportCommand::StartDrag);
-            }
-            if drag_response.double_clicked() {
-                let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
-                ctx.send_viewport_cmd(ViewportCommand::Maximized(!maximized));
-            }
         });
 }
 
@@ -67,6 +68,11 @@ pub fn handle_resize(ctx: &egui::Context) {
     let Some(pos) = ctx.input(|i| i.pointer.interact_pos()) else {
         return;
     };
+    // The title strip owns the top of the window (drag + window buttons);
+    // an east-edge resize zone there would steal clicks from the ✕ button.
+    if pos.y <= screen.min.y + TOP_STRIP_HEIGHT {
+        return;
+    }
     let east = pos.x >= screen.max.x - RESIZE_MARGIN;
     let west = pos.x <= screen.min.x + RESIZE_MARGIN;
     let south = pos.y >= screen.max.y - RESIZE_MARGIN;
