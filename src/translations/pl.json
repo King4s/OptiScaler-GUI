@@ -157,7 +157,11 @@
     "filter": "Filtr",
     "all_label": "Wszystkie",
     "ascending": "Rosnąco",
-    "descending": "Malejąco"
+    "descending": "Malejąco",
+    "play": "Graj",
+    "play_with": "Graj z OptiScaler",
+    "play_without": "Graj bez OptiScaler",
+    "optiscaler_bypassed": "OptiScaler jest obecnie wyłączony (proxy zmienione). 'Graj z OptiScaler' włączy go ponownie."
   },
   "sections": {
     "OptiScaler": "OptiScaler Główne Ustawienia",

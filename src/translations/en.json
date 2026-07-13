@@ -166,7 +166,11 @@
     "filter": "Filter",
     "all_label": "All",
     "ascending": "Ascending",
-    "descending": "Descending"
+    "descending": "Descending",
+    "play": "Play",
+    "play_with": "Play with OptiScaler",
+    "play_without": "Play without OptiScaler",
+    "optiscaler_bypassed": "OptiScaler is currently disabled (proxy renamed). 'Play with OptiScaler' re-enables it."
   },
   "sections": {
     "OptiScaler": "OptiScaler Main Settings",
