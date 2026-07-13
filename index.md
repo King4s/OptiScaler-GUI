@@ -9,7 +9,8 @@
 
 All upscaling technology — FSR, XeSS, DLSS integration, frame generation, the in-game overlay — is the work of the [OptiScaler team](https://github.com/optiscaler/OptiScaler). This project does one thing: it makes installing their mod easy. It detects your games, downloads the latest official OptiScaler release, and copies the right files into the right place — no manual extraction, renaming, or INI editing.
 
-> This is a community project, not affiliated with or endorsed by the OptiScaler developers. For questions about OptiScaler itself, use the [official repository](https://github.com/optiscaler/OptiScaler).
+> **This is a community project, not affiliated with or endorsed by the OptiScaler developers.**
+> Support and bug reports for this tool go to [this repository's issues](https://github.com/King4s/OptiScaler-GUI/issues) only — **please don't ask the OptiScaler team about this tool.** For questions about OptiScaler itself, use the [official repository](https://github.com/optiscaler/OptiScaler).
 
 ## Features
 
