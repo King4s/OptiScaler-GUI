@@ -12,6 +12,8 @@ All upscaling technology — FSR, XeSS, DLSS integration, frame generation, the 
 > **This is a community project, not affiliated with or endorsed by the OptiScaler developers.**
 > Support and bug reports for this tool go to [this repository's issues](https://github.com/King4s/OptiScaler-GUI/issues) only — **please don't ask the OptiScaler team about this tool.** For questions about OptiScaler itself, use the [official repository](https://github.com/optiscaler/OptiScaler).
 
+![Game library — auto-detected games with artwork and one-click play](docs/screenshots/library-cards.png)
+
 ## Features
 
 - **One-click install, update, and uninstall** of official OptiScaler releases
@@ -24,6 +26,8 @@ All upscaling technology — FSR, XeSS, DLSS integration, frame generation, the 
 - **GPU-rendered UI** (egui/wgpu) with selectable animated backgrounds — and zero idle cost when disabled
 - **Portable** — one ~7.5 MB native exe, nothing to install, no runtime dependencies
 - **Languages:** English, Danish, Polish
+
+![Details view — sortable columns, filters, and animated background](docs/screenshots/library-details.png)
 
 ## Getting started
 
