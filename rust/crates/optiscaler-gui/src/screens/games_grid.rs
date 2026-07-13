@@ -475,20 +475,21 @@ fn card(
     );
     paint_art(ui, ctx, state, ops, game, art_rect, pal);
 
-    // Play button on the artwork itself, shown on hover/selection. Registered
-    // after the card's click sense, so it wins the hit test on top of it.
+    // Play button below the artwork (bottom-right of the card), shown on
+    // hover/selection. Registered after the card's click sense, so it wins
+    // the hit test on top of it.
     if hovered || selected {
-        let size = Vec2::new(36.0, 28.0);
+        let size = Vec2::new(34.0, 22.0);
         let btn_rect = egui::Rect::from_min_size(
-            egui::pos2(art_rect.max.x - size.x - 6.0, art_rect.max.y - size.y - 6.0),
+            egui::pos2(rect.max.x - size.x - 6.0, rect.max.y - size.y - 6.0),
             size,
         );
         let play = ui
             .put(
                 btn_rect,
-                egui::Button::new(RichText::new("▶").size(15.0).strong())
+                egui::Button::new(RichText::new("▶").size(13.0).strong())
                     .fill(pal.accent)
-                    .corner_radius(CornerRadius::same(14)),
+                    .corner_radius(CornerRadius::same(11)),
             )
             .on_hover_text(state.i18n.tr("ui.play"));
         if play.clicked() {
