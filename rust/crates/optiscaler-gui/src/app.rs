@@ -23,6 +23,9 @@ impl App {
         state.i18n = opticore::i18n::Translator::new(opticore::i18n::Lang::from_code(
             &state.config.language,
         ));
+        state.sort_key = crate::state::SortKey::from_code(&state.config.sort_key);
+        state.sort_ascending = state.config.sort_ascending;
+        state.view_mode = crate::state::ViewMode::from_code(&state.config.view_mode);
         theme::apply(&cc.egui_ctx, state.dark());
         // GPU vendor from the running wgpu adapter (for Auto Settings) —
         // no WMI/PowerShell needed

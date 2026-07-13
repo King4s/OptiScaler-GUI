@@ -1,17 +1,39 @@
-//! Games screen: toolbar (search / platform filter / rescan / add folder),
-//! virtualized responsive card grid, and a detail side panel.
+//! Games screen: toolbar (search / filters / sort / view mode), four
+//! Explorer-style presentations (large cards, small cards, list, details),
+//! and a detail side panel. Everything is virtualized via show_rows.
 
 use crate::ops::Ops;
-use crate::state::{AppState, ArtState, ScanState};
+use crate::state::{AppState, ArtState, ScanState, SortKey, ViewMode};
 use crate::theme;
 use eframe::egui::{self, Align, Color32, CornerRadius, Layout, RichText, Sense, Stroke, Vec2};
 use opticore::model::{Engine, Game, Platform};
 use opticore::progress::TaskEvent;
 
-const CARD_W: f32 = 210.0;
-const CARD_H: f32 = 158.0;
-const ART_H: f32 = 92.0;
+/// Card geometry per view mode.
+struct CardDims {
+    w: f32,
+    h: f32,
+    art_h: f32,
+    name_font: f32,
+    name_chars: usize,
+}
+
+const CARD_LARGE: CardDims = CardDims {
+    w: 210.0,
+    h: 158.0,
+    art_h: 92.0,
+    name_font: 13.0,
+    name_chars: 26,
+};
+const CARD_SMALL: CardDims = CardDims {
+    w: 150.0,
+    h: 118.0,
+    art_h: 62.0,
+    name_font: 11.5,
+    name_chars: 19,
+};
 const GRID_GAP: f32 = 10.0;
+const LIST_ROW_H: f32 = 30.0;
 
 // First entry's empty label is replaced with the translated "all platforms"
 const PLATFORM_FILTERS: &[(Option<Platform>, &str)] = &[
@@ -80,42 +102,53 @@ pub fn show(ctx: &egui::Context, state: &mut AppState, ops: &mut Ops) {
                     let message = state.i18n.tr("ui.no_games_match");
                     empty_state(ui, ctx, state, ops, &message, pal);
                 } else {
-                    grid(ui, ctx, state, ops, &indices);
+                    match state.view_mode {
+                        ViewMode::CardsLarge => grid(ui, ctx, state, ops, &indices, &CARD_LARGE),
+                        ViewMode::CardsSmall => grid(ui, ctx, state, ops, &indices, &CARD_SMALL),
+                        ViewMode::List => list_view(ui, ctx, state, ops, &indices),
+                        ViewMode::Details => details_view(ui, ctx, state, ops, &indices),
+                    }
                 }
             }
         }
     });
 }
 
+/// Icon + translation key per view mode (Explorer's View menu).
+const VIEW_MODES: [(ViewMode, &str, &str); 4] = [
+    (ViewMode::CardsLarge, "🔳", "ui.view_large"),
+    (ViewMode::CardsSmall, "▦", "ui.view_small"),
+    (ViewMode::List, "📄", "ui.view_list"),
+    (ViewMode::Details, "☰", "ui.view_details"),
+];
+
 fn toolbar(ui: &mut egui::Ui, ctx: &egui::Context, state: &mut AppState, ops: &mut Ops) {
     let pal = theme::palette(state.dark());
+
+    // Single row, Explorer-style: search + actions left, count right.
+    // Filters, sort, and view each live behind one menu button.
     ui.horizontal(|ui| {
         let search_hint = state.i18n.tr("ui.search_games");
         ui.add(
             egui::TextEdit::singleline(&mut state.search)
                 .hint_text(search_hint)
-                .desired_width(220.0),
+                .desired_width(200.0),
         );
 
-        let all_platforms = state.i18n.tr("ui.all_platforms");
-        let current_label = PLATFORM_FILTERS
-            .iter()
-            .find(|(p, _)| *p == state.platform_filter)
-            .map(|(_, l)| l.to_string())
-            .filter(|l| !l.is_empty())
-            .unwrap_or_else(|| all_platforms.clone());
-        egui::ComboBox::from_id_salt("platform_filter")
-            .selected_text(current_label)
-            .show_ui(ui, |ui| {
-                for (platform, label) in PLATFORM_FILTERS {
-                    let label = if label.is_empty() {
-                        &all_platforms
-                    } else {
-                        *label
-                    };
-                    ui.selectable_value(&mut state.platform_filter, *platform, label);
-                }
-            });
+        filter_menu(ui, state);
+        sort_menu(ui, state);
+        view_menu(ui, state);
+
+        if state.filters_active()
+            && ui
+                .button("✕")
+                .on_hover_text(state.i18n.tr("ui.clear_filters"))
+                .clicked()
+        {
+            state.clear_filters();
+        }
+
+        ui.separator();
 
         if ui
             .add_enabled(
@@ -172,6 +205,178 @@ fn toolbar(ui: &mut egui::Ui, ctx: &egui::Context, state: &mut AppState, ops: &m
     });
 }
 
+/// One "Filter" button expanding to per-category submenus. The button label
+/// shows how many filters are active (search box not counted — it's visible).
+fn filter_menu(ui: &mut egui::Ui, state: &mut AppState) {
+    let active = [
+        state.platform_filter.is_some(),
+        state.engine_filter.is_some(),
+        state.optiscaler_filter.is_some(),
+        state.anticheat_filter.is_some(),
+    ]
+    .iter()
+    .filter(|on| **on)
+    .count();
+    let label = if active > 0 {
+        format!("🔽 {} ({active})", state.i18n.tr("ui.filter"))
+    } else {
+        format!("🔽 {}", state.i18n.tr("ui.filter"))
+    };
+
+    ui.menu_button(label, |ui| {
+        // Platform
+        let all_platforms = state.i18n.tr("ui.all_platforms");
+        let platform_now = state
+            .platform_filter
+            .map(|p| p.label().to_string())
+            .unwrap_or_else(|| all_platforms.clone());
+        ui.menu_button(
+            format!("{}: {platform_now}", state.i18n.tr("ui.sort_platform")),
+            |ui| {
+                ui.selectable_value(&mut state.platform_filter, None, &all_platforms);
+                for (platform, label) in PLATFORM_FILTERS.iter().skip(1) {
+                    ui.selectable_value(&mut state.platform_filter, *platform, *label);
+                }
+            },
+        );
+
+        // Engine
+        let all_engines = state.i18n.tr("ui.all_engines");
+        let engine_now = state
+            .engine_filter
+            .map(|e| e.label().to_string())
+            .unwrap_or_else(|| all_engines.clone());
+        ui.menu_button(
+            format!("{}: {engine_now}", state.i18n.tr("ui.sort_engine")),
+            |ui| {
+                ui.selectable_value(&mut state.engine_filter, None, &all_engines);
+                for engine in Engine::ALL {
+                    ui.selectable_value(&mut state.engine_filter, Some(engine), engine.label());
+                }
+            },
+        );
+
+        // OptiScaler status
+        let opti_now = match state.optiscaler_filter {
+            Some(true) => state.i18n.tr("ui.filter_installed"),
+            Some(false) => state.i18n.tr("ui.filter_not_installed"),
+            None => state.i18n.tr("ui.all_label"),
+        };
+        ui.menu_button(format!("OptiScaler: {opti_now}"), |ui| {
+            ui.selectable_value(
+                &mut state.optiscaler_filter,
+                None,
+                state.i18n.tr("ui.all_label"),
+            );
+            ui.selectable_value(
+                &mut state.optiscaler_filter,
+                Some(true),
+                state.i18n.tr("ui.filter_installed"),
+            );
+            ui.selectable_value(
+                &mut state.optiscaler_filter,
+                Some(false),
+                state.i18n.tr("ui.filter_not_installed"),
+            );
+        });
+
+        // Anti-cheat
+        let ac_now = match state.anticheat_filter {
+            Some(true) => state.i18n.tr("ui.ac_with"),
+            Some(false) => state.i18n.tr("ui.ac_without"),
+            None => state.i18n.tr("ui.all_label"),
+        };
+        ui.menu_button(format!("Anti-cheat: {ac_now}"), |ui| {
+            ui.selectable_value(
+                &mut state.anticheat_filter,
+                None,
+                state.i18n.tr("ui.all_label"),
+            );
+            ui.selectable_value(
+                &mut state.anticheat_filter,
+                Some(true),
+                state.i18n.tr("ui.ac_with"),
+            );
+            ui.selectable_value(
+                &mut state.anticheat_filter,
+                Some(false),
+                state.i18n.tr("ui.ac_without"),
+            );
+        });
+
+        ui.separator();
+        if ui
+            .button(format!("✕ {}", state.i18n.tr("ui.clear_filters")))
+            .clicked()
+        {
+            state.clear_filters();
+        }
+    });
+}
+
+/// One "Sort" button: column list + direction, Explorer's Sort menu.
+fn sort_menu(ui: &mut egui::Ui, state: &mut AppState) {
+    let arrow = if state.sort_ascending { "⬆" } else { "⬇" };
+    let label = format!(
+        "{} {} {arrow}",
+        state.i18n.tr("ui.sort_by"),
+        state.i18n.tr(state.sort_key.tr_key())
+    );
+    ui.menu_button(label, |ui| {
+        for key in SortKey::ALL {
+            if ui
+                .selectable_label(state.sort_key == key, state.i18n.tr(key.tr_key()))
+                .clicked()
+                && state.sort_key != key
+            {
+                state.set_sort(key);
+            }
+        }
+        ui.separator();
+        if ui
+            .selectable_label(
+                state.sort_ascending,
+                format!("⬆ {}", state.i18n.tr("ui.ascending")),
+            )
+            .clicked()
+            && !state.sort_ascending
+        {
+            state.set_sort(state.sort_key); // same key → flips direction
+        }
+        if ui
+            .selectable_label(
+                !state.sort_ascending,
+                format!("⬇ {}", state.i18n.tr("ui.descending")),
+            )
+            .clicked()
+            && state.sort_ascending
+        {
+            state.set_sort(state.sort_key);
+        }
+    });
+}
+
+/// One "View" button listing the four presentations, Explorer's View menu.
+fn view_menu(ui: &mut egui::Ui, state: &mut AppState) {
+    let (_, icon, tr_key) = VIEW_MODES
+        .iter()
+        .find(|(mode, _, _)| *mode == state.view_mode)
+        .unwrap_or(&VIEW_MODES[0]);
+    ui.menu_button(format!("{icon} {}", state.i18n.tr(tr_key)), |ui| {
+        for (mode, icon, tr_key) in VIEW_MODES {
+            if ui
+                .selectable_label(
+                    state.view_mode == mode,
+                    format!("{icon} {}", state.i18n.tr(tr_key)),
+                )
+                .clicked()
+            {
+                state.set_view_mode(mode);
+            }
+        }
+    });
+}
+
 fn empty_state(
     ui: &mut egui::Ui,
     ctx: &egui::Context,
@@ -203,11 +408,12 @@ fn grid(
     state: &mut AppState,
     ops: &mut Ops,
     indices: &[usize],
+    dims: &CardDims,
 ) {
     let avail = ui.available_width();
-    let cols = ((avail + GRID_GAP) / (CARD_W + GRID_GAP)).floor().max(1.0) as usize;
+    let cols = ((avail + GRID_GAP) / (dims.w + GRID_GAP)).floor().max(1.0) as usize;
     let rows = indices.len().div_ceil(cols);
-    let row_height = CARD_H + GRID_GAP;
+    let row_height = dims.h + GRID_GAP;
 
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
@@ -219,16 +425,23 @@ fn grid(
                             break;
                         };
                         let game = state.games[game_idx].clone();
-                        card(ui, ctx, state, ops, &game);
+                        card(ui, ctx, state, ops, &game, dims);
                     }
                 });
             }
         });
 }
 
-fn card(ui: &mut egui::Ui, ctx: &egui::Context, state: &mut AppState, ops: &mut Ops, game: &Game) {
+fn card(
+    ui: &mut egui::Ui,
+    ctx: &egui::Context,
+    state: &mut AppState,
+    ops: &mut Ops,
+    game: &Game,
+    dims: &CardDims,
+) {
     let pal = theme::palette(state.dark());
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(CARD_W, CARD_H), Sense::click());
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(dims.w, dims.h), Sense::click());
     if !ui.is_rect_visible(rect) {
         return;
     }
@@ -255,8 +468,59 @@ fn card(ui: &mut egui::Ui, ctx: &egui::Context, state: &mut AppState, ops: &mut 
     // Artwork area
     let art_rect = egui::Rect::from_min_size(
         rect.min + Vec2::new(4.0, 4.0),
-        Vec2::new(CARD_W - 8.0, ART_H),
+        Vec2::new(dims.w - 8.0, dims.art_h),
     );
+    paint_art(ui, ctx, state, ops, game, art_rect, pal);
+
+    // Name
+    let name_pos = egui::pos2(rect.min.x + 8.0, art_rect.max.y + 8.0);
+    let name = truncate(&game.name, dims.name_chars);
+    ui.painter().text(
+        name_pos,
+        egui::Align2::LEFT_TOP,
+        name,
+        egui::FontId::proportional(dims.name_font),
+        ui.visuals().text_color(),
+    );
+
+    // Badge row
+    let mut badge_pos = egui::pos2(rect.min.x + 8.0, rect.max.y - 24.0);
+    badge_pos = badge(ui, badge_pos, game.platform.label(), pal.badge_platform);
+    if game.optiscaler_installed {
+        let label = if dims.w < 180.0 {
+            "✓"
+        } else {
+            "OptiScaler ✓"
+        };
+        badge_pos = badge(ui, badge_pos, label, pal.badge_ok);
+    }
+    if !game.anti_cheat.is_empty() {
+        badge_pos = badge(ui, badge_pos, "⚠ AC", pal.badge_warn);
+    }
+    if !game.engine_supported && game.engine != Engine::Unknown {
+        badge(ui, badge_pos, "engine", pal.badge_danger);
+    }
+
+    if response.clicked() {
+        state.selected = if selected {
+            None
+        } else {
+            Some(game.key.path_norm.clone())
+        };
+    }
+    ui.add_space(GRID_GAP - ui.spacing().item_spacing.x);
+}
+
+/// Draw a game's artwork into `art_rect` (requesting a fetch when unknown).
+fn paint_art(
+    ui: &egui::Ui,
+    ctx: &egui::Context,
+    state: &mut AppState,
+    ops: &mut Ops,
+    game: &Game,
+    art_rect: egui::Rect,
+    pal: theme::Palette,
+) {
     match state.art_state(&game.key.path_norm) {
         ArtState::Ready(image_path) => {
             if let Some(texture) = state.texture_for(ctx, &image_path) {
@@ -278,44 +542,202 @@ fn card(ui: &mut egui::Ui, ctx: &egui::Context, state: &mut AppState, ops: &mut 
         ArtState::Fetching => placeholder_art(ui, art_rect, "…", pal),
         ArtState::Missing => placeholder_art(ui, art_rect, &game.name, pal),
     }
+}
 
-    // Name
-    let name_pos = egui::pos2(rect.min.x + 8.0, art_rect.max.y + 8.0);
-    let name = if game.name.chars().count() > 26 {
-        let truncated: String = game.name.chars().take(25).collect();
+fn truncate(name: &str, max_chars: usize) -> String {
+    if name.chars().count() > max_chars {
+        let truncated: String = name.chars().take(max_chars - 1).collect();
         format!("{truncated}…")
     } else {
-        game.name.clone()
-    };
-    ui.painter().text(
-        name_pos,
-        egui::Align2::LEFT_TOP,
-        name,
-        egui::FontId::proportional(13.0),
-        ui.visuals().text_color(),
-    );
+        name.to_string()
+    }
+}
 
-    // Badge row
-    let mut badge_pos = egui::pos2(rect.min.x + 8.0, rect.max.y - 24.0);
-    badge_pos = badge(ui, badge_pos, game.platform.label(), pal.badge_platform);
-    if game.optiscaler_installed {
-        badge_pos = badge(ui, badge_pos, "OptiScaler ✓", pal.badge_ok);
-    }
-    if !game.anti_cheat.is_empty() {
-        badge_pos = badge(ui, badge_pos, "⚠ AC", pal.badge_warn);
-    }
-    if !game.engine_supported && game.engine != Engine::Unknown {
-        badge(ui, badge_pos, "engine", pal.badge_danger);
-    }
+/// Compact rows: thumbnail, name, badges. Explorer's "List".
+fn list_view(
+    ui: &mut egui::Ui,
+    ctx: &egui::Context,
+    state: &mut AppState,
+    ops: &mut Ops,
+    indices: &[usize],
+) {
+    let pal = theme::palette(state.dark());
+    egui::ScrollArea::vertical()
+        .auto_shrink([false, false])
+        .show_rows(ui, LIST_ROW_H, indices.len(), |ui, row_range| {
+            for row in row_range {
+                let game = state.games[indices[row]].clone();
+                let (rect, response) = ui.allocate_exact_size(
+                    Vec2::new(ui.available_width(), LIST_ROW_H - 2.0),
+                    Sense::click(),
+                );
+                if !ui.is_rect_visible(rect) {
+                    continue;
+                }
+                let selected = state.selected.as_deref() == Some(game.key.path_norm.as_str());
+                if selected || response.hovered() {
+                    ui.painter()
+                        .rect_filled(rect, CornerRadius::same(4), pal.card_hover);
+                }
 
-    if response.clicked() {
-        state.selected = if selected {
-            None
-        } else {
-            Some(game.key.path_norm.clone())
-        };
-    }
-    ui.add_space(GRID_GAP - ui.spacing().item_spacing.x);
+                let art_rect = egui::Rect::from_min_size(
+                    rect.min + Vec2::new(4.0, 2.0),
+                    Vec2::new(42.0, LIST_ROW_H - 6.0),
+                );
+                paint_art(ui, ctx, state, ops, &game, art_rect, pal);
+
+                ui.painter().text(
+                    egui::pos2(art_rect.max.x + 10.0, rect.center().y),
+                    egui::Align2::LEFT_CENTER,
+                    &game.name,
+                    egui::FontId::proportional(13.0),
+                    ui.visuals().text_color(),
+                );
+
+                let mut badge_pos = egui::pos2(rect.max.x - 170.0, rect.min.y + 6.0);
+                badge_pos = badge(ui, badge_pos, game.platform.label(), pal.badge_platform);
+                if game.optiscaler_installed {
+                    badge_pos = badge(ui, badge_pos, "✓", pal.badge_ok);
+                }
+                if !game.anti_cheat.is_empty() {
+                    badge(ui, badge_pos, "⚠", pal.badge_warn);
+                }
+
+                if response.clicked() {
+                    state.selected = if selected {
+                        None
+                    } else {
+                        Some(game.key.path_norm.clone())
+                    };
+                }
+            }
+        });
+}
+
+/// Explorer's "Details": columns with clickable, sort-aware headers.
+fn details_view(
+    ui: &mut egui::Ui,
+    _ctx: &egui::Context,
+    state: &mut AppState,
+    _ops: &mut Ops,
+    indices: &[usize],
+) {
+    let pal = theme::palette(state.dark());
+    const COL_PLATFORM: f32 = 90.0;
+    const COL_ENGINE: f32 = 90.0;
+    const COL_OPTI: f32 = 110.0;
+    let name_w = (ui.available_width() * 0.30).max(180.0);
+
+    // Header row: click sorts, click again reverses
+    ui.horizontal(|ui| {
+        let columns: [(Option<SortKey>, &str, f32); 5] = [
+            (Some(SortKey::Name), "ui.sort_name", name_w),
+            (Some(SortKey::Platform), "ui.sort_platform", COL_PLATFORM),
+            (Some(SortKey::Engine), "ui.sort_engine", COL_ENGINE),
+            (Some(SortKey::Optiscaler), "ui.sort_optiscaler", COL_OPTI),
+            (None, "ui.column_path", 0.0),
+        ];
+        for (key, tr_key, width) in columns {
+            let mut label = state.i18n.tr(tr_key);
+            if key == Some(state.sort_key) {
+                label = format!("{label} {}", if state.sort_ascending { "▲" } else { "▼" });
+            }
+            let text = RichText::new(label).strong();
+            let clicked = if width > 0.0 {
+                let (rect, response) =
+                    ui.allocate_exact_size(Vec2::new(width, 20.0), Sense::click());
+                ui.painter().text(
+                    egui::pos2(rect.min.x + 4.0, rect.center().y),
+                    egui::Align2::LEFT_CENTER,
+                    text.text(),
+                    egui::FontId::proportional(12.5),
+                    if response.hovered() {
+                        pal.accent
+                    } else {
+                        ui.visuals().text_color()
+                    },
+                );
+                response.clicked()
+            } else {
+                ui.label(text.size(12.5)).clicked()
+            };
+            if clicked {
+                if let Some(key) = key {
+                    state.set_sort(key);
+                }
+            }
+        }
+    });
+    ui.separator();
+
+    egui::ScrollArea::vertical()
+        .auto_shrink([false, false])
+        .show_rows(ui, 24.0, indices.len(), |ui, row_range| {
+            for row in row_range {
+                let game = state.games[indices[row]].clone();
+                let (rect, response) =
+                    ui.allocate_exact_size(Vec2::new(ui.available_width(), 22.0), Sense::click());
+                if !ui.is_rect_visible(rect) {
+                    continue;
+                }
+                let selected = state.selected.as_deref() == Some(game.key.path_norm.as_str());
+                if selected || response.hovered() {
+                    ui.painter()
+                        .rect_filled(rect, CornerRadius::same(3), pal.card_hover);
+                }
+
+                let font = egui::FontId::proportional(12.5);
+                let y = rect.center().y;
+                let mut x = rect.min.x + 4.0;
+                let cells: [(String, f32, Color32); 4] = [
+                    (game.name.clone(), name_w, ui.visuals().text_color()),
+                    (
+                        game.platform.label().to_string(),
+                        COL_PLATFORM,
+                        pal.text_dim,
+                    ),
+                    (game.engine.label().to_string(), COL_ENGINE, pal.text_dim),
+                    (
+                        if game.optiscaler_installed {
+                            "✓ OptiScaler".to_string()
+                        } else {
+                            "—".to_string()
+                        },
+                        COL_OPTI,
+                        if game.optiscaler_installed {
+                            pal.badge_ok
+                        } else {
+                            pal.text_dim
+                        },
+                    ),
+                ];
+                for (text, width, color) in cells {
+                    ui.painter().text(
+                        egui::pos2(x, y),
+                        egui::Align2::LEFT_CENTER,
+                        text,
+                        font.clone(),
+                        color,
+                    );
+                    x += width + ui.spacing().item_spacing.x;
+                }
+                ui.painter().text(
+                    egui::pos2(x, y),
+                    egui::Align2::LEFT_CENTER,
+                    game.path.display().to_string(),
+                    egui::FontId::proportional(11.5),
+                    pal.text_dim,
+                );
+
+                if response.clicked() {
+                    state.selected = if selected {
+                        None
+                    } else {
+                        Some(game.key.path_norm.clone())
+                    };
+                }
+            }
+        });
 }
 
 fn placeholder_art(ui: &egui::Ui, rect: egui::Rect, label: &str, pal: theme::Palette) {
