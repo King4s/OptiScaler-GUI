@@ -23,6 +23,8 @@ impl App {
         state.i18n = opticore::i18n::Translator::new(opticore::i18n::Lang::from_code(
             &state.config.language,
         ));
+        state.library_path = opticore::library::Library::library_path(&crate::ops::base_dir());
+        state.library = opticore::library::Library::load(&state.library_path);
         state.sort_key = crate::state::SortKey::from_code(&state.config.sort_key);
         state.sort_ascending = state.config.sort_ascending;
         state.view_mode = crate::state::ViewMode::from_code(&state.config.view_mode);
@@ -123,6 +125,16 @@ impl App {
                     self.state
                         .push_log(format!("GUI update available: {version}"));
                     self.state.gui_update = Some((version, url));
+                }
+                TaskEvent::PlaySession { path_norm, minutes } => {
+                    self.state.library.add_playtime(&path_norm, minutes);
+                    self.state.save_library();
+                    let total = self.state.library.entry(&path_norm).playtime_minutes;
+                    self.state.push_log(format!(
+                        "Play session: {} min (total {})",
+                        minutes,
+                        opticore::library::format_playtime(total)
+                    ));
                 }
                 TaskEvent::DefaultsFetched { ini_path, message } => {
                     self.state.push_log(message.clone());

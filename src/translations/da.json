@@ -164,7 +164,16 @@
     "play": "Spil",
     "play_with": "Spil med OptiScaler",
     "play_without": "Spil uden OptiScaler",
-    "optiscaler_bypassed": "OptiScaler er slået fra lige nu (proxy omdøbt). 'Spil med OptiScaler' slår den til igen."
+    "optiscaler_bypassed": "OptiScaler er slået fra lige nu (proxy omdøbt). 'Spil med OptiScaler' slår den til igen.",
+    "sort_last_played": "Sidst spillet",
+    "sort_playtime": "Spilletid",
+    "show_hidden": "Vis skjulte",
+    "favorite": "Tilføj til favoritter",
+    "unfavorite": "Fjern fra favoritter",
+    "hide_game": "Skjul spil",
+    "unhide_game": "Vis spil igen",
+    "playtime": "Spilletid",
+    "last_played": "Sidst spillet"
   },
   "sections": {
     "OptiScaler": "OptiScaler Hoved Indstillinger",

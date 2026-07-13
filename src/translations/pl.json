@@ -161,7 +161,16 @@
     "play": "Graj",
     "play_with": "Graj z OptiScaler",
     "play_without": "Graj bez OptiScaler",
-    "optiscaler_bypassed": "OptiScaler jest obecnie wyłączony (proxy zmienione). 'Graj z OptiScaler' włączy go ponownie."
+    "optiscaler_bypassed": "OptiScaler jest obecnie wyłączony (proxy zmienione). 'Graj z OptiScaler' włączy go ponownie.",
+    "sort_last_played": "Ostatnio grane",
+    "sort_playtime": "Czas gry",
+    "show_hidden": "Pokaż ukryte",
+    "favorite": "Dodaj do ulubionych",
+    "unfavorite": "Usuń z ulubionych",
+    "hide_game": "Ukryj grę",
+    "unhide_game": "Przywróć grę",
+    "playtime": "Czas gry",
+    "last_played": "Ostatnio grane"
   },
   "sections": {
     "OptiScaler": "OptiScaler Główne Ustawienia",

@@ -4,6 +4,7 @@ use eframe::egui::{self, TextureHandle};
 use opticore::config::AppConfig;
 use opticore::i18n::Translator;
 use opticore::ini::{GpuVendor, IniDocument};
+use opticore::library::Library;
 use opticore::model::{Engine, Game, Platform};
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
@@ -50,14 +51,18 @@ pub enum SortKey {
     Platform,
     Engine,
     Optiscaler,
+    LastPlayed,
+    Playtime,
 }
 
 impl SortKey {
-    pub const ALL: [SortKey; 4] = [
+    pub const ALL: [SortKey; 6] = [
         SortKey::Name,
         SortKey::Platform,
         SortKey::Engine,
         SortKey::Optiscaler,
+        SortKey::LastPlayed,
+        SortKey::Playtime,
     ];
 
     pub fn code(self) -> &'static str {
@@ -66,6 +71,8 @@ impl SortKey {
             SortKey::Platform => "platform",
             SortKey::Engine => "engine",
             SortKey::Optiscaler => "optiscaler",
+            SortKey::LastPlayed => "last_played",
+            SortKey::Playtime => "playtime",
         }
     }
 
@@ -74,6 +81,8 @@ impl SortKey {
             "platform" => SortKey::Platform,
             "engine" => SortKey::Engine,
             "optiscaler" => SortKey::Optiscaler,
+            "last_played" => SortKey::LastPlayed,
+            "playtime" => SortKey::Playtime,
             _ => SortKey::Name,
         }
     }
@@ -85,6 +94,8 @@ impl SortKey {
             SortKey::Platform => "ui.sort_platform",
             SortKey::Engine => "ui.sort_engine",
             SortKey::Optiscaler => "ui.sort_optiscaler",
+            SortKey::LastPlayed => "ui.sort_last_played",
+            SortKey::Playtime => "ui.sort_playtime",
         }
     }
 }
@@ -161,6 +172,11 @@ pub struct AppState {
     pub optiscaler_filter: Option<bool>,
     /// None = all; Some(true) = has anti-cheat; Some(false) = none detected.
     pub anticheat_filter: Option<bool>,
+    /// Show games the user has hidden (session-only toggle).
+    pub show_hidden: bool,
+    /// Per-game launcher data (favorites/hidden/playtime/launch options).
+    pub library: Library,
+    pub library_path: PathBuf,
     pub sort_key: SortKey,
     pub sort_ascending: bool,
     pub view_mode: ViewMode,
@@ -208,6 +224,9 @@ impl Default for AppState {
             engine_filter: None,
             optiscaler_filter: None,
             anticheat_filter: None,
+            show_hidden: false,
+            library: Library::default(),
+            library_path: PathBuf::new(),
             sort_key: SortKey::Name,
             sort_ascending: true,
             view_mode: ViewMode::CardsLarge,
@@ -285,6 +304,7 @@ impl AppState {
             || self.engine_filter.is_some()
             || self.optiscaler_filter.is_some()
             || self.anticheat_filter.is_some()
+            || self.show_hidden
     }
 
     pub fn clear_filters(&mut self) {
@@ -293,6 +313,7 @@ impl AppState {
         self.engine_filter = None;
         self.optiscaler_filter = None;
         self.anticheat_filter = None;
+        self.show_hidden = false;
     }
 
     /// Set the sort column; a second click on the same column flips the
@@ -325,6 +346,7 @@ impl AppState {
             .enumerate()
             .filter(|(_, g)| {
                 (needle.is_empty() || g.key.name_lower.contains(&needle))
+                    && (self.show_hidden || !self.library.entry(&g.key.path_norm).hidden)
                     && self.platform_filter.is_none_or(|p| g.platform == p)
                     && self.engine_filter.is_none_or(|e| g.engine == e)
                     && self
@@ -338,6 +360,10 @@ impl AppState {
             .collect();
         indices.sort_by(|&a, &b| {
             let (ga, gb) = (&self.games[a], &self.games[b]);
+            let (la, lb) = (
+                self.library.entry(&ga.key.path_norm),
+                self.library.entry(&gb.key.path_norm),
+            );
             let name = ga.key.name_lower.cmp(&gb.key.name_lower);
             let ordering = match self.sort_key {
                 SortKey::Name => name,
@@ -347,14 +373,41 @@ impl AppState {
                     .optiscaler_installed
                     .cmp(&ga.optiscaler_installed)
                     .then(name),
+                // ISO timestamps compare lexicographically; ascending shows
+                // most recently played / most played first (like Optiscaler
+                // shows installed-first).
+                SortKey::LastPlayed => lb.last_played.cmp(&la.last_played).then(name),
+                SortKey::Playtime => lb.playtime_minutes.cmp(&la.playtime_minutes).then(name),
             };
-            if self.sort_ascending {
+            let ordering = if self.sort_ascending {
                 ordering
             } else {
                 ordering.reverse()
-            }
+            };
+            // Favorites always float to the top, whatever the sort
+            lb.favorite.cmp(&la.favorite).then(ordering)
         });
         indices
+    }
+
+    /// Number of games the hidden-filter is currently suppressing.
+    pub fn hidden_count(&self) -> usize {
+        self.games
+            .iter()
+            .filter(|g| self.library.entry(&g.key.path_norm).hidden)
+            .count()
+    }
+
+    pub fn save_library(&mut self) {
+        if let Err(e) = self.library.save(&self.library_path) {
+            self.push_log(format!("Failed to save library: {e}"));
+        }
+    }
+
+    /// Bookkeeping after a successful game launch: stamp "last played".
+    pub fn note_launched(&mut self, path_norm: &str) {
+        self.library.touch_last_played(path_norm);
+        self.save_library();
     }
 
     pub fn art_state(&self, path_norm: &str) -> ArtState {

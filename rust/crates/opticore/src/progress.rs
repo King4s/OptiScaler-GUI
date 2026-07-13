@@ -37,6 +37,8 @@ pub enum TaskEvent {
         ini_path: Option<PathBuf>,
         message: String,
     },
+    /// A play session ended (game processes gone) — minutes to credit.
+    PlaySession { path_norm: String, minutes: u64 },
     /// A log line for the log screen.
     Log(String),
 }

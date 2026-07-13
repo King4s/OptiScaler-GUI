@@ -304,6 +304,15 @@ fn filter_menu(ui: &mut egui::Ui, state: &mut AppState) {
             );
         });
 
+        // Hidden games (session-only toggle)
+        let hidden_count = state.hidden_count();
+        if hidden_count > 0 || state.show_hidden {
+            ui.checkbox(
+                &mut state.show_hidden,
+                format!("{} ({hidden_count})", state.i18n.tr("ui.show_hidden")),
+            );
+        }
+
         ui.separator();
         if ui
             .button(format!("✕ {}", state.i18n.tr("ui.clear_filters")))
@@ -541,11 +550,19 @@ fn card(
         ui.painter()
             .galley(play_rect.min + padding, galley, Color32::WHITE);
         if play.clicked() {
-            match opticore::launch::launch(game, true) {
-                Ok(message) => state.push_log(message),
-                Err(error) => state.push_log(format!("Launch failed: {error}")),
-            }
+            do_launch(ctx, state, ops, game, true);
         }
+    }
+
+    // Favorite marker on the artwork corner
+    if state.library.entry(&game.key.path_norm).favorite {
+        ui.painter().text(
+            egui::pos2(art_rect.max.x - 4.0, art_rect.min.y + 2.0),
+            egui::Align2::RIGHT_TOP,
+            "⭐",
+            egui::FontId::proportional(14.0),
+            Color32::WHITE,
+        );
     }
 
     if response.clicked() {
@@ -556,6 +573,25 @@ fn card(
         };
     }
     ui.add_space(GRID_GAP - ui.spacing().item_spacing.x);
+}
+
+/// Launch a game and do the launcher bookkeeping: log the outcome, stamp
+/// "last played", and start the playtime watcher.
+fn do_launch(
+    ctx: &egui::Context,
+    state: &mut AppState,
+    ops: &mut Ops,
+    game: &Game,
+    with_optiscaler: bool,
+) {
+    match opticore::launch::launch(game, with_optiscaler) {
+        Ok(message) => {
+            state.push_log(message);
+            state.note_launched(&game.key.path_norm);
+            ops.spawn_playtime_watch(ctx, game);
+        }
+        Err(error) => state.push_log(format!("Launch failed: {error}")),
+    }
 }
 
 /// Draw a game's artwork into `art_rect` (requesting a fetch when unknown).
@@ -832,6 +868,29 @@ fn detail_panel(
             if ui.button("✕").clicked() {
                 state.selected = None;
             }
+            let entry = state.library.entry(&game.key.path_norm);
+            let star = if entry.favorite { "⭐" } else { "☆" };
+            let star_tip = state.i18n.tr(if entry.favorite {
+                "ui.unfavorite"
+            } else {
+                "ui.favorite"
+            });
+            if ui.button(star).on_hover_text(star_tip).clicked() {
+                let e = state.library.entry_mut(&game.key.path_norm);
+                e.favorite = !e.favorite;
+                state.save_library();
+            }
+            let eye = if entry.hidden { "🚫" } else { "👁" };
+            let eye_tip = state.i18n.tr(if entry.hidden {
+                "ui.unhide_game"
+            } else {
+                "ui.hide_game"
+            });
+            if ui.button(eye).on_hover_text(eye_tip).clicked() {
+                let e = state.library.entry_mut(&game.key.path_norm);
+                e.hidden = !e.hidden;
+                state.save_library();
+            }
         });
     });
     ui.add_space(4.0);
@@ -866,6 +925,18 @@ fn detail_panel(
                 "Not installed"
             });
             ui.end_row();
+            let entry = state.library.entry(&game.key.path_norm);
+            if entry.playtime_minutes > 0 {
+                ui.label(RichText::new(state.i18n.tr("ui.playtime")).color(pal.text_dim));
+                ui.label(opticore::library::format_playtime(entry.playtime_minutes));
+                ui.end_row();
+            }
+            if !entry.last_played.is_empty() {
+                ui.label(RichText::new(state.i18n.tr("ui.last_played")).color(pal.text_dim));
+                // Date part is enough in the panel
+                ui.label(entry.last_played[..10].to_string());
+                ui.end_row();
+            }
         });
 
     ui.add_space(8.0);
@@ -877,7 +948,7 @@ fn detail_panel(
     ui.add_space(8.0);
     ui.separator();
 
-    play_section(ui, state, game, pal);
+    play_section(ui, ctx, state, ops, game, pal);
     ui.separator();
 
     install_section(ui, ctx, state, ops, game);
@@ -897,22 +968,29 @@ fn detail_panel(
 /// (renames our proxy away for a clean boot). Single Play when nothing is
 /// installed. Steam games start via the Steam client, Xbox via the bundled
 /// gamelaunchhelper, everything else via the game's main exe.
-fn play_section(ui: &mut egui::Ui, state: &mut AppState, game: &Game, pal: theme::Palette) {
+fn play_section(
+    ui: &mut egui::Ui,
+    ctx: &egui::Context,
+    state: &mut AppState,
+    ops: &mut Ops,
+    game: &Game,
+    pal: theme::Palette,
+) {
     ui.add_space(4.0);
-    let mut result: Option<Result<String, String>> = None;
+    let mut launch_with: Option<bool> = None;
     if game.optiscaler_installed {
         ui.horizontal(|ui| {
             if ui
                 .button(RichText::new(format!("▶ {}", state.i18n.tr("ui.play_with"))).strong())
                 .clicked()
             {
-                result = Some(opticore::launch::launch(game, true));
+                launch_with = Some(true);
             }
             if ui
                 .button(format!("▶ {}", state.i18n.tr("ui.play_without")))
                 .clicked()
             {
-                result = Some(opticore::launch::launch(game, false));
+                launch_with = Some(false);
             }
         });
         if opticore::launch::optiscaler_bypassed(&game.path) {
@@ -926,12 +1004,10 @@ fn play_section(ui: &mut egui::Ui, state: &mut AppState, game: &Game, pal: theme
         .button(RichText::new(format!("▶ {}", state.i18n.tr("ui.play"))).strong())
         .clicked()
     {
-        result = Some(opticore::launch::launch(game, true));
+        launch_with = Some(true);
     }
-    match result {
-        Some(Ok(message)) => state.push_log(message),
-        Some(Err(error)) => state.push_log(format!("Launch failed: {error}")),
-        None => {}
+    if let Some(with_optiscaler) = launch_with {
+        do_launch(ctx, state, ops, game, with_optiscaler);
     }
     ui.add_space(4.0);
 }

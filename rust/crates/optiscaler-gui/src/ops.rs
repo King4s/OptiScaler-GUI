@@ -11,7 +11,7 @@ use opticore::scan::{scan_all, ScanConfig};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 pub struct Ops {
     pub tx: Sender<TaskEvent>,
@@ -20,6 +20,8 @@ pub struct Ops {
     pub images: Arc<ImageCache>,
     inflight_images: HashSet<String>,
     scan_running: bool,
+    /// Games with an active playtime watcher (one session per game at a time).
+    watching: Arc<Mutex<HashSet<String>>>,
 }
 
 /// Portable layout root: the exe's directory (cwd fallback in dev). The
@@ -46,7 +48,71 @@ impl Ops {
             images: Arc::new(ImageCache::new(&dir)),
             inflight_images: HashSet::new(),
             scan_running: false,
+            watching: Arc::new(Mutex::new(HashSet::new())),
         }
+    }
+
+    /// Track a play session after a launch: wait for a process to appear
+    /// under the game dir (Steam may patch first), then poll until all game
+    /// processes are gone and credit the minutes. One watcher per game; the
+    /// sweep is a sub-millisecond Toolhelp snapshot every 15 s — zero felt
+    /// CPU cost.
+    pub fn spawn_playtime_watch(&self, ctx: &egui::Context, game: &Game) {
+        let key = game.key.path_norm.clone();
+        {
+            let mut watching = self.watching.lock().unwrap();
+            if !watching.insert(key.clone()) {
+                return;
+            }
+        }
+        let tx = self.tx.clone();
+        let ctx = ctx.clone();
+        let path = game.path.clone();
+        let watching = self.watching.clone();
+        std::thread::spawn(move || {
+            use std::time::{Duration, Instant};
+            let appear_deadline = Instant::now() + Duration::from_secs(180);
+            let appeared = loop {
+                if opticore::procwatch::any_process_under(&path) {
+                    break true;
+                }
+                if Instant::now() > appear_deadline {
+                    break false;
+                }
+                std::thread::sleep(Duration::from_secs(5));
+            };
+            if appeared {
+                let started = Instant::now();
+                let mut last_seen = started;
+                let mut misses = 0u32;
+                loop {
+                    std::thread::sleep(Duration::from_secs(15));
+                    if opticore::procwatch::any_process_under(&path) {
+                        misses = 0;
+                        last_seen = Instant::now();
+                    } else {
+                        misses += 1;
+                        if misses >= 2 {
+                            break;
+                        }
+                    }
+                    // Runaway guard (forgotten overnight session)
+                    if started.elapsed() > Duration::from_secs(24 * 3600) {
+                        last_seen = Instant::now();
+                        break;
+                    }
+                }
+                let minutes = last_seen.duration_since(started).as_secs() / 60;
+                if minutes >= 1 {
+                    let _ = tx.send(TaskEvent::PlaySession {
+                        path_norm: key.clone(),
+                        minutes,
+                    });
+                    ctx.request_repaint();
+                }
+            }
+            watching.lock().unwrap().remove(&key);
+        });
     }
 
     /// Load the SteamSpy catalogue in the background (skipped if cache fresh).

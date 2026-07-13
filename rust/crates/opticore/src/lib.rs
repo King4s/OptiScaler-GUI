@@ -9,8 +9,10 @@ pub mod images;
 pub mod ini;
 pub mod install;
 pub mod launch;
+pub mod library;
 pub mod logging;
 pub mod model;
+pub mod procwatch;
 pub mod progress;
 pub mod scan;
 
