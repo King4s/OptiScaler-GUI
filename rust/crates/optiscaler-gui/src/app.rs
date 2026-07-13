@@ -124,6 +124,14 @@ impl App {
                         .push_log(format!("GUI update available: {version}"));
                     self.state.gui_update = Some((version, url));
                 }
+                TaskEvent::DefaultsFetched { ini_path, message } => {
+                    self.state.push_log(message.clone());
+                    if let Some(editor) = self.state.editor.as_mut() {
+                        editor.fetching_defaults = false;
+                        editor.defaults = ini_path.as_deref().and_then(opticore::ini::read_file);
+                        editor.status = Some(message);
+                    }
+                }
                 TaskEvent::Log(line) => self.state.push_log(line),
             }
         }
@@ -227,7 +235,7 @@ impl eframe::App for App {
         self.sidebar(ctx);
         match self.state.screen {
             Screen::Games => screens::games_grid::show(ctx, &mut self.state, &mut self.ops),
-            Screen::IniEditor => screens::ini_editor::show(ctx, &mut self.state),
+            Screen::IniEditor => screens::ini_editor::show(ctx, &mut self.state, &mut self.ops),
             Screen::Settings => screens::show_settings(ctx, &mut self.state),
             Screen::Log => screens::show_log(ctx, &mut self.state),
             Screen::About => screens::show_about(ctx, &mut self.state),

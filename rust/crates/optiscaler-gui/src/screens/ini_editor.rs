@@ -1,12 +1,13 @@
 //! OptiScaler.ini editor: sections as collapsing headers, widgets chosen by
 //! inferred value kind, key search, dirty-state guard, GPU Auto Settings.
 
+use crate::ops::Ops;
 use crate::state::{AppState, Screen};
 use crate::theme;
 use eframe::egui::{self, Align, Layout, RichText};
 use opticore::ini::{auto_settings, ValueKind};
 
-pub fn show(ctx: &egui::Context, state: &mut AppState) {
+pub fn show(ctx: &egui::Context, state: &mut AppState, ops: &mut Ops) {
     let pal = theme::palette(state.dark());
     let gpu_vendor = state.gpu_vendor;
     // Take ownership for the frame so the closure doesn't borrow `state`
@@ -75,13 +76,25 @@ pub fn show(ctx: &egui::Context, state: &mut AppState) {
                 editor.applied_changes = changes;
             }
 
-            // Restore upstream defaults from the cached release payload
-            let restore_button = egui::Button::new("↩ Restore defaults");
-            let restore = ui.add_enabled(editor.defaults.is_some(), restore_button);
-            let restore = restore.on_disabled_hover_text(
-                "Defaults come from the downloaded OptiScaler release — install or update once to enable",
-            );
-            if restore.clicked() {
+            // Restore upstream defaults from the cached release payload;
+            // when the cache is empty (fresh setup / after Clear cache) the
+            // click fetches the release in the background first.
+            if editor.fetching_defaults {
+                ui.spinner();
+                ui.label(RichText::new("Fetching defaults…").color(pal.text_dim));
+            } else if editor.defaults.is_none() {
+                if ui
+                    .button("↩ Restore defaults")
+                    .on_hover_text(
+                        "Downloads the OptiScaler release once to read its default settings",
+                    )
+                    .clicked()
+                {
+                    editor.fetching_defaults = true;
+                    editor.status = Some("Downloading OptiScaler release for defaults…".into());
+                    ops.spawn_fetch_defaults(ctx);
+                }
+            } else if ui.button("↩ Restore defaults").clicked() {
                 if let Some(defaults) = editor.defaults.clone() {
                     let mut changes = Vec::new();
                     for section in &defaults.sections {

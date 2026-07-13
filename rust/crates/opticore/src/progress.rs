@@ -31,6 +31,12 @@ pub enum TaskEvent {
     LatestRelease { version: String },
     /// A newer GUI release exists (version, html url).
     GuiUpdateAvailable { version: String, url: String },
+    /// The release payload was fetched so the INI editor's "Restore defaults"
+    /// has a pristine OptiScaler.ini to compare against (None = fetch failed).
+    DefaultsFetched {
+        ini_path: Option<PathBuf>,
+        message: String,
+    },
     /// A log line for the log screen.
     Log(String),
 }
