@@ -475,31 +475,6 @@ fn card(
     );
     paint_art(ui, ctx, state, ops, game, art_rect, pal);
 
-    // Play button below the artwork (bottom-right of the card), shown on
-    // hover/selection. Registered after the card's click sense, so it wins
-    // the hit test on top of it.
-    if hovered || selected {
-        let size = Vec2::new(34.0, 22.0);
-        let btn_rect = egui::Rect::from_min_size(
-            egui::pos2(rect.max.x - size.x - 6.0, rect.max.y - size.y - 6.0),
-            size,
-        );
-        let play = ui
-            .put(
-                btn_rect,
-                egui::Button::new(RichText::new("▶").size(13.0).strong())
-                    .fill(pal.accent)
-                    .corner_radius(CornerRadius::same(11)),
-            )
-            .on_hover_text(state.i18n.tr("ui.play"));
-        if play.clicked() {
-            match opticore::launch::launch(game, true) {
-                Ok(message) => state.push_log(message),
-                Err(error) => state.push_log(format!("Launch failed: {error}")),
-            }
-        }
-    }
-
     // Name
     let name_pos = egui::pos2(rect.min.x + 8.0, art_rect.max.y + 8.0);
     let name = truncate(&game.name, dims.name_chars);
@@ -527,6 +502,50 @@ fn card(
     }
     if !game.engine_supported && game.engine != Engine::Unknown {
         badge(ui, badge_pos, "engine", pal.badge_danger);
+    }
+
+    // Play badge: same shape/height/row as the platform badges, always
+    // visible, right-aligned, accent blue. Its interact is registered after
+    // the card's click sense, so it wins the hit test on top of it.
+    {
+        let label = if dims.w < 180.0 {
+            "▶".to_string()
+        } else {
+            format!("▶ {}", state.i18n.tr("ui.play"))
+        };
+        let font = egui::FontId::proportional(10.0);
+        let galley = ui.painter().layout_no_wrap(label, font, Color32::WHITE);
+        let padding = Vec2::new(6.0, 3.0);
+        let size = galley.size() + padding * 2.0;
+        let play_rect = egui::Rect::from_min_size(
+            egui::pos2(rect.max.x - size.x - 8.0, rect.max.y - 24.0),
+            size,
+        );
+        let play = ui.interact(
+            play_rect,
+            ui.id().with(("play", game.key.path_norm.as_str())),
+            Sense::click(),
+        );
+        let stroke = if play.hovered() {
+            Stroke::new(1.0_f32, Color32::WHITE)
+        } else {
+            Stroke::NONE
+        };
+        ui.painter().rect(
+            play_rect,
+            CornerRadius::same(4),
+            pal.accent,
+            stroke,
+            egui::StrokeKind::Inside,
+        );
+        ui.painter()
+            .galley(play_rect.min + padding, galley, Color32::WHITE);
+        if play.clicked() {
+            match opticore::launch::launch(game, true) {
+                Ok(message) => state.push_log(message),
+                Err(error) => state.push_log(format!("Launch failed: {error}")),
+            }
+        }
     }
 
     if response.clicked() {
