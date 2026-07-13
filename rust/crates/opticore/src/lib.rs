@@ -11,6 +11,7 @@ pub mod install;
 pub mod launch;
 pub mod library;
 pub mod logging;
+pub mod metadata;
 pub mod model;
 pub mod procwatch;
 pub mod progress;

@@ -5,6 +5,7 @@ use eframe::egui;
 use opticore::appids::AppIdResolver;
 use opticore::images::{ArtRequest, ImageCache};
 use opticore::install::{self, InstallOptions, InstallStage, Installer};
+use opticore::metadata::{MetaRequest, MetadataCache};
 use opticore::model::{Game, Platform};
 use opticore::progress::TaskEvent;
 use opticore::scan::{scan_all, ScanConfig};
@@ -19,9 +20,12 @@ pub struct Ops {
     pub resolver: Arc<AppIdResolver>,
     pub images: Arc<ImageCache>,
     inflight_images: HashSet<String>,
+    inflight_meta: HashSet<String>,
+    inflight_sizes: HashSet<String>,
     scan_running: bool,
     /// Games with an active playtime watcher (one session per game at a time).
     watching: Arc<Mutex<HashSet<String>>>,
+    metadata: Arc<MetadataCache>,
 }
 
 /// Portable layout root: the exe's directory (cwd fallback in dev). The
@@ -47,9 +51,55 @@ impl Ops {
             resolver: Arc::new(AppIdResolver::new(&dir)),
             images: Arc::new(ImageCache::new(&dir)),
             inflight_images: HashSet::new(),
+            inflight_meta: HashSet::new(),
+            inflight_sizes: HashSet::new(),
             scan_running: false,
             watching: Arc::new(Mutex::new(HashSet::new())),
+            metadata: Arc::new(MetadataCache::new(&base_dir())),
         }
+    }
+
+    /// Fetch store metadata for the game page (deduped per game).
+    pub fn request_metadata(&mut self, ctx: &egui::Context, game: &Game) {
+        let key = game.key.path_norm.clone();
+        if !self.inflight_meta.insert(key.clone()) {
+            return;
+        }
+        let tx = self.tx.clone();
+        let ctx = ctx.clone();
+        let metadata = self.metadata.clone();
+        let request = MetaRequest {
+            name: game.name.clone(),
+            appid: game.steam_appid,
+            platform_is_gog: game.platform == Platform::Gog,
+        };
+        std::thread::spawn(move || {
+            let meta = metadata.fetch(&request);
+            let _ = tx.send(TaskEvent::MetadataReady {
+                path_norm: key,
+                meta,
+            });
+            ctx.request_repaint();
+        });
+    }
+
+    /// Walk the game folder once for its size on disk (deduped per game).
+    pub fn request_size(&mut self, ctx: &egui::Context, game: &Game) {
+        let key = game.key.path_norm.clone();
+        if !self.inflight_sizes.insert(key.clone()) {
+            return;
+        }
+        let tx = self.tx.clone();
+        let ctx = ctx.clone();
+        let path = game.path.clone();
+        std::thread::spawn(move || {
+            let bytes = opticore::metadata::dir_size_bytes(&path);
+            let _ = tx.send(TaskEvent::InstalledSize {
+                path_norm: key,
+                bytes,
+            });
+            ctx.request_repaint();
+        });
     }
 
     /// Track a play session after a launch: wait for a process to appear

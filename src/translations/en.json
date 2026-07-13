@@ -179,7 +179,13 @@
     "hide_game": "Hide game",
     "unhide_game": "Unhide game",
     "playtime": "Playtime",
-    "last_played": "Last played"
+    "last_played": "Last played",
+    "more_info": "Details",
+    "developer": "Developer",
+    "publisher": "Publisher",
+    "release_date": "Released",
+    "installed_size": "Size on disk",
+    "store_page": "Store page"
   },
   "sections": {
     "OptiScaler": "OptiScaler Main Settings",

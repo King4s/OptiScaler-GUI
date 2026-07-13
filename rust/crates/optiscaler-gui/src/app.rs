@@ -126,6 +126,12 @@ impl App {
                         .push_log(format!("GUI update available: {version}"));
                     self.state.gui_update = Some((version, url));
                 }
+                TaskEvent::MetadataReady { path_norm, meta } => {
+                    self.state.metadata.insert(path_norm, meta);
+                }
+                TaskEvent::InstalledSize { path_norm, bytes } => {
+                    self.state.sizes.insert(path_norm, bytes);
+                }
                 TaskEvent::PlaySession { path_norm, minutes } => {
                     self.state.library.add_playtime(&path_norm, minutes);
                     self.state.save_library();
@@ -247,6 +253,7 @@ impl eframe::App for App {
         self.sidebar(ctx);
         match self.state.screen {
             Screen::Games => screens::games_grid::show(ctx, &mut self.state, &mut self.ops),
+            Screen::GamePage => screens::game_page::show(ctx, &mut self.state, &mut self.ops),
             Screen::IniEditor => screens::ini_editor::show(ctx, &mut self.state, &mut self.ops),
             Screen::Settings => screens::show_settings(ctx, &mut self.state),
             Screen::Log => screens::show_log(ctx, &mut self.state),

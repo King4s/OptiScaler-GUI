@@ -39,6 +39,13 @@ pub enum TaskEvent {
     },
     /// A play session ended (game processes gone) — minutes to credit.
     PlaySession { path_norm: String, minutes: u64 },
+    /// Store metadata for the game page arrived (None = no store knows it).
+    MetadataReady {
+        path_norm: String,
+        meta: Option<crate::metadata::GameMetadata>,
+    },
+    /// Background walk of the game folder finished.
+    InstalledSize { path_norm: String, bytes: u64 },
     /// A log line for the log screen.
     Log(String),
 }

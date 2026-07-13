@@ -173,7 +173,13 @@
     "hide_game": "Skjul spil",
     "unhide_game": "Vis spil igen",
     "playtime": "Spilletid",
-    "last_played": "Sidst spillet"
+    "last_played": "Sidst spillet",
+    "more_info": "Detaljer",
+    "developer": "Udvikler",
+    "publisher": "Udgiver",
+    "release_date": "Udgivet",
+    "installed_size": "Størrelse på disk",
+    "store_page": "Butiksside"
   },
   "sections": {
     "OptiScaler": "OptiScaler Hoved Indstillinger",

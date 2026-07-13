@@ -12,6 +12,8 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
     Games,
+    /// Full game page for `AppState::page_game`.
+    GamePage,
     IniEditor,
     Settings,
     Log,
@@ -181,6 +183,13 @@ pub struct AppState {
     pub sort_ascending: bool,
     pub view_mode: ViewMode,
     pub selected: Option<String>, // path_norm of selected game
+    /// Game shown on Screen::GamePage (path_norm).
+    pub page_game: Option<String>,
+    /// Store metadata per game: absent = not requested, Some(None) = no
+    /// store knows the game, Some(Some(..)) = ready.
+    pub metadata: HashMap<String, Option<opticore::metadata::GameMetadata>>,
+    /// Installed size per game (bytes), filled by a background walk.
+    pub sizes: HashMap<String, u64>,
     pub art: HashMap<String, ArtState>,
     pub log: VecDeque<String>,
     /// Latest OptiScaler release tag (for update badges), once checked.
@@ -231,6 +240,9 @@ impl Default for AppState {
             sort_ascending: true,
             view_mode: ViewMode::CardsLarge,
             selected: None,
+            page_game: None,
+            metadata: HashMap::new(),
+            sizes: HashMap::new(),
             art: HashMap::new(),
             log: VecDeque::new(),
             latest_release: None,

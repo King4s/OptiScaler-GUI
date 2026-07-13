@@ -27,7 +27,7 @@ impl ImageCache {
     }
 
     /// Sanitize a game name the way Python does for legacy name-keyed files.
-    fn safe_name(game_name: &str) -> String {
+    pub(crate) fn safe_name(game_name: &str) -> String {
         game_name
             .chars()
             .map(|c| match c {
@@ -185,7 +185,7 @@ pub struct ArtRequest {
 
 /// GOG's public catalogue search (no auth). Name-verified like the Steam
 /// store search so a wrong game's art can't win.
-fn gog_search_image(name: &str) -> Option<String> {
+fn gog_search_product(name: &str) -> Option<serde_json::Value> {
     fn norm(s: &str) -> String {
         s.to_lowercase()
             .chars()
@@ -207,19 +207,36 @@ fn gog_search_image(name: &str) -> Option<String> {
     let body = http_get(&url)?;
     let data: serde_json::Value = serde_json::from_slice(&body).ok()?;
     let query_norm = norm(name);
-    for product in data.get("products").and_then(serde_json::Value::as_array)? {
-        let title = product
-            .get("title")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("");
-        if norm(title) != query_norm {
-            continue;
-        }
-        if let Some(image) = product.get("image").and_then(serde_json::Value::as_str) {
-            return Some(format!("{image}.jpg"));
-        }
-    }
-    None
+    data.get("products")
+        .and_then(serde_json::Value::as_array)?
+        .iter()
+        .find(|p| {
+            norm(
+                p.get("title")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or(""),
+            ) == query_norm
+        })
+        .cloned()
+}
+
+fn gog_search_image(name: &str) -> Option<String> {
+    let product = gog_search_product(name)?;
+    product
+        .get("image")
+        .and_then(serde_json::Value::as_str)
+        .map(|image| format!("{image}.jpg"))
+}
+
+/// GOG product id for a name-verified catalogue hit (metadata pipeline).
+pub(crate) fn gog_search_id(name: &str) -> Option<u64> {
+    gog_search_product(name)?.get("id").and_then(gog_id_value)
+}
+
+/// GOG ids appear as both numbers and strings in their APIs.
+fn gog_id_value(v: &serde_json::Value) -> Option<u64> {
+    v.as_u64()
+        .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
 }
 
 /// Xbox/Game Pass titles ship their store logos inside the install:
@@ -344,6 +361,11 @@ pub(crate) fn http_agent() -> ureq::Agent {
         .timeout_global(Some(DOWNLOAD_TIMEOUT))
         .build()
         .into()
+}
+
+/// Plain GET for public store endpoints (shared with the metadata pipeline).
+pub(crate) fn http_get_public(url: &str) -> Option<Vec<u8>> {
+    http_get(url)
 }
 
 fn http_get(url: &str) -> Option<Vec<u8>> {

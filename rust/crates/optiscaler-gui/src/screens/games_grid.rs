@@ -3,7 +3,7 @@
 //! and a detail side panel. Everything is virtualized via show_rows.
 
 use crate::ops::Ops;
-use crate::state::{AppState, ArtState, ScanState, SortKey, ViewMode};
+use crate::state::{AppState, ArtState, ScanState, Screen, SortKey, ViewMode};
 use crate::theme;
 use eframe::egui::{self, Align, Color32, CornerRadius, Layout, RichText, Sense, Stroke, Vec2};
 use opticore::model::{Engine, Game, Platform};
@@ -577,7 +577,7 @@ fn card(
 
 /// Launch a game and do the launcher bookkeeping: log the outcome, stamp
 /// "last played", and start the playtime watcher.
-fn do_launch(
+pub(super) fn do_launch(
     ctx: &egui::Context,
     state: &mut AppState,
     ops: &mut Ops,
@@ -954,21 +954,30 @@ fn detail_panel(
     install_section(ui, ctx, state, ops, game);
 
     ui.add_space(8.0);
-    if ui
-        .button(format!("📂 {}", state.i18n.tr("ui.open_folder")))
-        .clicked()
-    {
-        let _ = std::process::Command::new("explorer")
-            .arg(&game.path)
-            .spawn();
-    }
+    ui.horizontal(|ui| {
+        if ui
+            .button(format!("ℹ {}", state.i18n.tr("ui.more_info")))
+            .clicked()
+        {
+            state.page_game = Some(game.key.path_norm.clone());
+            state.screen = Screen::GamePage;
+        }
+        if ui
+            .button(format!("📂 {}", state.i18n.tr("ui.open_folder")))
+            .clicked()
+        {
+            let _ = std::process::Command::new("explorer")
+                .arg(&game.path)
+                .spawn();
+        }
+    });
 }
 
 /// Play buttons: with OptiScaler (restores the proxy first) or without
 /// (renames our proxy away for a clean boot). Single Play when nothing is
 /// installed. Steam games start via the Steam client, Xbox via the bundled
 /// gamelaunchhelper, everything else via the game's main exe.
-fn play_section(
+pub(super) fn play_section(
     ui: &mut egui::Ui,
     ctx: &egui::Context,
     state: &mut AppState,
@@ -1014,7 +1023,7 @@ fn play_section(
 
 /// Install / Update / Uninstall actions with anti-cheat confirmation and
 /// per-game progress.
-fn install_section(
+pub(super) fn install_section(
     ui: &mut egui::Ui,
     ctx: &egui::Context,
     state: &mut AppState,

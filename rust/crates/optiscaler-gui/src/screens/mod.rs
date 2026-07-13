@@ -1,3 +1,4 @@
+pub mod game_page;
 pub mod games_grid;
 pub mod ini_editor;
 
