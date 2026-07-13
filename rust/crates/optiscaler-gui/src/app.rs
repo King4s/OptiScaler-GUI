@@ -25,6 +25,8 @@ impl App {
         ));
         state.library_path = opticore::library::Library::library_path(&crate::ops::base_dir());
         state.library = opticore::library::Library::load(&state.library_path);
+        state.store_auth_path = opticore::stores::StoreAuth::auth_path(&crate::ops::base_dir());
+        state.store_auth = opticore::stores::StoreAuth::load(&state.store_auth_path);
         state.sort_key = crate::state::SortKey::from_code(&state.config.sort_key);
         state.sort_ascending = state.config.sort_ascending;
         state.view_mode = crate::state::ViewMode::from_code(&state.config.view_mode);
@@ -53,7 +55,7 @@ impl App {
         }
     }
 
-    fn drain_events(&mut self) {
+    fn drain_events(&mut self, ctx: &egui::Context) {
         while let Ok(event) = self.ops.rx.try_recv() {
             match event {
                 TaskEvent::ScanFinished { mut games } => {
@@ -126,6 +128,25 @@ impl App {
                         .push_log(format!("GUI update available: {version}"));
                     self.state.gui_update = Some((version, url));
                 }
+                TaskEvent::StoreAuthChanged { ok, message } => {
+                    self.state.store_auth =
+                        opticore::stores::StoreAuth::load(&self.state.store_auth_path);
+                    self.state.store_status = Some(message.clone());
+                    self.state.push_log(message);
+                    if ok {
+                        self.ops.spawn_store_libraries(ctx);
+                    }
+                }
+                TaskEvent::GogLibraryReady(games) => {
+                    self.state
+                        .push_log(format!("GOG library: {} games", games.len()));
+                    self.state.gog_library = games;
+                }
+                TaskEvent::EpicLibraryReady(games) => {
+                    self.state
+                        .push_log(format!("Epic library: {} games", games.len()));
+                    self.state.epic_library = games;
+                }
                 TaskEvent::MetadataReady { path_norm, meta } => {
                     self.state.metadata.insert(path_norm, meta);
                 }
@@ -177,6 +198,10 @@ impl App {
                         format!("🎮  {}", self.state.i18n.tr("ui.games_tab")),
                     ),
                     (
+                        Screen::Stores,
+                        format!("🛒  {}", self.state.i18n.tr("ui.stores_tab")),
+                    ),
+                    (
                         Screen::Settings,
                         format!("⚙  {}", self.state.i18n.tr("ui.settings_tab")),
                     ),
@@ -224,7 +249,7 @@ impl App {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.drain_events();
+        self.drain_events(ctx);
 
         // First-frame startup: catalogue load + initial scan
         if !self.started {
@@ -254,6 +279,7 @@ impl eframe::App for App {
         match self.state.screen {
             Screen::Games => screens::games_grid::show(ctx, &mut self.state, &mut self.ops),
             Screen::GamePage => screens::game_page::show(ctx, &mut self.state, &mut self.ops),
+            Screen::Stores => screens::stores::show(ctx, &mut self.state, &mut self.ops),
             Screen::IniEditor => screens::ini_editor::show(ctx, &mut self.state, &mut self.ops),
             Screen::Settings => screens::show_settings(ctx, &mut self.state),
             Screen::Log => screens::show_log(ctx, &mut self.state),

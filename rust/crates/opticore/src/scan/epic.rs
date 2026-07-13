@@ -59,9 +59,43 @@ pub fn read_game_name(game_folder: &Path) -> Option<String> {
     None
 }
 
+/// The technical AppName (launcher-protocol id), distinct from DisplayName.
+pub fn read_app_name(game_folder: &Path) -> Option<String> {
+    let egstore = game_folder.join(".egstore");
+    let candidates = mancfg_files(&egstore).chain(mancfg_files(game_folder));
+    for mf in candidates {
+        let Ok(content) = fs::read_to_string(&mf) else {
+            continue;
+        };
+        let Ok(data) = serde_json::from_str::<Value>(&content) else {
+            continue;
+        };
+        let app = data.get("AppName").and_then(Value::as_str).unwrap_or("");
+        if !app.is_empty() {
+            return Some(app.trim().to_string());
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_app_name_distinct_from_display_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let game = tmp.path().join("G");
+        let egstore = game.join(".egstore");
+        fs::create_dir_all(&egstore).unwrap();
+        fs::write(
+            egstore.join("abc.mancfg"),
+            r#"{"DisplayName": "Nice Name", "AppName": "Sugar"}"#,
+        )
+        .unwrap();
+        assert_eq!(read_app_name(&game).as_deref(), Some("Sugar"));
+        assert_eq!(read_game_name(&game).as_deref(), Some("Nice Name"));
+    }
 
     #[test]
     fn reads_display_name_from_egstore() {

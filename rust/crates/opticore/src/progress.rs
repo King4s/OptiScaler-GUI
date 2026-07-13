@@ -46,6 +46,13 @@ pub enum TaskEvent {
     },
     /// Background walk of the game folder finished.
     InstalledSize { path_norm: String, bytes: u64 },
+    /// A store connect/refresh/logout finished; the auth file on disk is
+    /// already updated — reload it and show the message.
+    StoreAuthChanged { ok: bool, message: String },
+    /// The GOG account library arrived.
+    GogLibraryReady(Vec<crate::stores::gog::GogOwned>),
+    /// The Epic account library arrived.
+    EpicLibraryReady(Vec<crate::stores::epic::EpicOwned>),
     /// A log line for the log screen.
     Log(String),
 }

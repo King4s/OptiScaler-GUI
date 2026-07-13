@@ -189,7 +189,19 @@
     "launch_options": "Launch options",
     "launch_args": "Extra arguments",
     "exe_override": "Executable override",
-    "env_vars": "Environment variables (KEY=VALUE per line)"
+    "env_vars": "Environment variables (KEY=VALUE per line)",
+    "stores_tab": "Stores",
+    "stores_intro": "Connect your store accounts to see and install your owned games. Login happens in your browser — the app only stores the resulting token, never your password.",
+    "store_connected": "Connected",
+    "store_connect": "Connect",
+    "store_refresh": "Refresh library",
+    "store_logout": "Log out",
+    "store_open_login": "Open login page",
+    "store_paste_code": "Paste the code from the browser here",
+    "store_login_help": "1) Open the login page and sign in  2) Copy the code shown (or the whole address/JSON)  3) Paste it here and click Connect",
+    "store_install": "Install…",
+    "store_install_epic": "Install via Epic",
+    "store_install_epic_hint": "Opens the Epic Games Launcher to install this game"
   },
   "sections": {
     "OptiScaler": "OptiScaler Main Settings",

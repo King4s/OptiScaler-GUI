@@ -9,6 +9,7 @@ use opticore::metadata::{MetaRequest, MetadataCache};
 use opticore::model::{Game, Platform};
 use opticore::progress::TaskEvent;
 use opticore::scan::{scan_all, ScanConfig};
+use opticore::stores;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -295,6 +296,235 @@ impl Ops {
                 },
             };
             let _ = tx.send(event);
+            ctx.request_repaint();
+        });
+    }
+
+    /// Exchange a pasted GOG login code for tokens (saved to disk).
+    pub fn spawn_gog_connect(&self, ctx: &egui::Context, code: String) {
+        let tx = self.tx.clone();
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let result = stores::gog::exchange_code(&stores::gog::extract_code(&code));
+            let event = match result {
+                Ok(tokens) => {
+                    let path = stores::StoreAuth::auth_path(&base_dir());
+                    let mut auth = stores::StoreAuth::load(&path);
+                    let user = tokens.user_id.clone();
+                    auth.gog = Some(tokens);
+                    match auth.save(&path) {
+                        Ok(()) => TaskEvent::StoreAuthChanged {
+                            ok: true,
+                            message: format!("GOG connected (user {user})"),
+                        },
+                        Err(e) => TaskEvent::StoreAuthChanged {
+                            ok: false,
+                            message: format!("Could not save GOG login: {e}"),
+                        },
+                    }
+                }
+                Err(e) => TaskEvent::StoreAuthChanged {
+                    ok: false,
+                    message: e,
+                },
+            };
+            let _ = tx.send(event);
+            ctx.request_repaint();
+        });
+    }
+
+    /// Exchange a pasted Epic authorization code for tokens (saved to disk).
+    pub fn spawn_epic_connect(&self, ctx: &egui::Context, code: String) {
+        let tx = self.tx.clone();
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let result = stores::epic::exchange_code(&stores::epic::extract_code(&code));
+            let event = match result {
+                Ok(tokens) => {
+                    let path = stores::StoreAuth::auth_path(&base_dir());
+                    let mut auth = stores::StoreAuth::load(&path);
+                    let name = tokens.display_name.clone();
+                    auth.epic = Some(tokens);
+                    match auth.save(&path) {
+                        Ok(()) => TaskEvent::StoreAuthChanged {
+                            ok: true,
+                            message: format!("Epic connected ({name})"),
+                        },
+                        Err(e) => TaskEvent::StoreAuthChanged {
+                            ok: false,
+                            message: format!("Could not save Epic login: {e}"),
+                        },
+                    }
+                }
+                Err(e) => TaskEvent::StoreAuthChanged {
+                    ok: false,
+                    message: e,
+                },
+            };
+            let _ = tx.send(event);
+            ctx.request_repaint();
+        });
+    }
+
+    /// Fetch the owned-games library for connected stores. Refreshes and
+    /// persists tokens as a side effect.
+    pub fn spawn_store_libraries(&self, ctx: &egui::Context) {
+        let tx = self.tx.clone();
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let path = stores::StoreAuth::auth_path(&base_dir());
+            let mut auth = stores::StoreAuth::load(&path);
+            let mut dirty = false;
+            if let Some(gog) = auth.gog.clone() {
+                match stores::gog::ensure_fresh(&gog) {
+                    Ok(fresh) => {
+                        if fresh.access_token != gog.access_token {
+                            auth.gog = Some(fresh.clone());
+                            dirty = true;
+                        }
+                        match stores::gog::owned_games(&fresh.access_token) {
+                            Ok(games) => {
+                                let _ = tx.send(TaskEvent::GogLibraryReady(games));
+                            }
+                            Err(e) => {
+                                let _ = tx.send(TaskEvent::Log(format!("GOG library: {e}")));
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        let _ = tx.send(TaskEvent::Log(format!("GOG token refresh: {e}")));
+                    }
+                }
+            }
+            if let Some(epic) = auth.epic.clone() {
+                match stores::epic::ensure_fresh(&epic) {
+                    Ok(fresh) => {
+                        if fresh.access_token != epic.access_token {
+                            auth.epic = Some(fresh.clone());
+                            dirty = true;
+                        }
+                        match stores::epic::owned_games(&fresh.access_token) {
+                            Ok(games) => {
+                                let _ = tx.send(TaskEvent::EpicLibraryReady(games));
+                            }
+                            Err(e) => {
+                                let _ = tx.send(TaskEvent::Log(format!("Epic library: {e}")));
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        let _ = tx.send(TaskEvent::Log(format!("Epic token refresh: {e}")));
+                    }
+                }
+            }
+            if dirty {
+                let _ = auth.save(&path);
+            }
+            ctx.request_repaint();
+        });
+    }
+
+    /// Download a GOG game's offline installer(s) and run them silently
+    /// into the chosen folder. Progress arrives as OpProgress keyed
+    /// "gog:<id>"; a rescan picks the game up afterwards.
+    pub fn spawn_gog_install(
+        &self,
+        ctx: &egui::Context,
+        game: stores::gog::GogOwned,
+        target_dir: std::path::PathBuf,
+    ) {
+        let tx = self.tx.clone();
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let key = format!("gog:{}", game.id);
+            let finish = |ok: bool, message: String| {
+                let _ = tx.send(TaskEvent::OpFinished {
+                    path_norm: key.clone(),
+                    ok,
+                    message,
+                });
+            };
+            let progress = |label: String| {
+                let _ = tx.send(TaskEvent::OpProgress {
+                    path_norm: key.clone(),
+                    label,
+                });
+                ctx.request_repaint();
+            };
+            progress("Preparing…".into());
+
+            let path = stores::StoreAuth::auth_path(&base_dir());
+            let mut auth = stores::StoreAuth::load(&path);
+            let Some(gog) = auth.gog.clone() else {
+                finish(false, "GOG is not connected".into());
+                return;
+            };
+            let tokens = match stores::gog::ensure_fresh(&gog) {
+                Ok(fresh) => {
+                    if fresh.access_token != gog.access_token {
+                        auth.gog = Some(fresh.clone());
+                        let _ = auth.save(&path);
+                    }
+                    fresh
+                }
+                Err(e) => {
+                    finish(false, format!("GOG token refresh: {e}"));
+                    return;
+                }
+            };
+
+            let files = match stores::gog::windows_installers(&tokens.access_token, game.id) {
+                Ok(files) => files,
+                Err(e) => {
+                    finish(false, e);
+                    return;
+                }
+            };
+            let download_dir = base_dir()
+                .join("cache")
+                .join("store_downloads")
+                .join("gog")
+                .join(game.id.to_string());
+            let mut installer_paths = Vec::new();
+            let total_files = files.len();
+            for (i, file) in files.iter().enumerate() {
+                let label_base = format!("Downloading {}/{}", i + 1, total_files);
+                let result = stores::gog::download_installer_file(
+                    &tokens.access_token,
+                    file,
+                    &download_dir,
+                    |done, total| {
+                        if total > 0 && done % (16 * 1024 * 1024) < (600 * 1024) {
+                            progress(format!("{label_base} — {}%", done * 100 / total));
+                        }
+                    },
+                );
+                match result {
+                    Ok(path) => installer_paths.push(path),
+                    Err(e) => {
+                        finish(false, format!("download failed: {e}"));
+                        return;
+                    }
+                }
+            }
+
+            progress("Installing…".into());
+            // The first exe is the setup; .bin parts sit beside it
+            let Some(setup) = installer_paths
+                .iter()
+                .find(|p| p.extension().map(|e| e.eq_ignore_ascii_case("exe")) == Some(true))
+            else {
+                finish(false, "no setup exe in the downloaded files".into());
+                return;
+            };
+            match stores::gog::run_installer_silent(setup, &target_dir) {
+                Ok(()) => {
+                    // Downloads are large — reclaim the space on success
+                    let _ = std::fs::remove_dir_all(&download_dir);
+                    finish(true, format!("{} installed — rescan to see it", game.title));
+                }
+                Err(e) => finish(false, format!("installer failed: {e}")),
+            }
             ctx.request_repaint();
         });
     }

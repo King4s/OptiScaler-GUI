@@ -14,6 +14,8 @@ pub enum Screen {
     Games,
     /// Full game page for `AppState::page_game`.
     GamePage,
+    /// Store accounts + owned-games libraries (GOG/Epic).
+    Stores,
     IniEditor,
     Settings,
     Log,
@@ -179,6 +181,19 @@ pub struct AppState {
     /// Per-game launcher data (favorites/hidden/playtime/launch options).
     pub library: Library,
     pub library_path: PathBuf,
+    /// Store credentials (cache/store_auth.json) — reloaded on auth events.
+    pub store_auth: opticore::stores::StoreAuth,
+    pub store_auth_path: PathBuf,
+    pub gog_library: Vec<opticore::stores::gog::GogOwned>,
+    pub epic_library: Vec<opticore::stores::epic::EpicOwned>,
+    /// Pasted login codes being edited on the Stores screen.
+    pub gog_code_input: String,
+    pub epic_code_input: String,
+    /// Latest store status line (connect results etc.).
+    pub store_status: Option<String>,
+    pub store_search: String,
+    /// Store libraries have been requested this session.
+    pub store_libraries_requested: bool,
     pub sort_key: SortKey,
     pub sort_ascending: bool,
     pub view_mode: ViewMode,
@@ -236,6 +251,15 @@ impl Default for AppState {
             show_hidden: false,
             library: Library::default(),
             library_path: PathBuf::new(),
+            store_auth: opticore::stores::StoreAuth::default(),
+            store_auth_path: PathBuf::new(),
+            gog_library: Vec::new(),
+            epic_library: Vec::new(),
+            gog_code_input: String::new(),
+            epic_code_input: String::new(),
+            store_status: None,
+            store_search: String::new(),
+            store_libraries_requested: false,
             sort_key: SortKey::Name,
             sort_ascending: true,
             view_mode: ViewMode::CardsLarge,

@@ -16,6 +16,7 @@ pub mod model;
 pub mod procwatch;
 pub mod progress;
 pub mod scan;
+pub mod stores;
 
 /// App version (CalVer), single source of truth for the workspace.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

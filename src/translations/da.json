@@ -183,7 +183,19 @@
     "launch_options": "Start-indstillinger",
     "launch_args": "Ekstra argumenter",
     "exe_override": "Alternativ exe",
-    "env_vars": "Miljøvariabler (KEY=VALUE pr. linje)"
+    "env_vars": "Miljøvariabler (KEY=VALUE pr. linje)",
+    "stores_tab": "Butikker",
+    "stores_intro": "Forbind dine butikskonti for at se og installere dine ejede spil. Login sker i din browser — appen gemmer kun det udstedte token, aldrig dit kodeord.",
+    "store_connected": "Forbundet",
+    "store_connect": "Forbind",
+    "store_refresh": "Opdatér bibliotek",
+    "store_logout": "Log ud",
+    "store_open_login": "Åbn login-side",
+    "store_paste_code": "Indsæt koden fra browseren her",
+    "store_login_help": "1) Åbn login-siden og log ind  2) Kopiér koden (eller hele adressen/JSON)  3) Indsæt her og klik Forbind",
+    "store_install": "Installér…",
+    "store_install_epic": "Installér via Epic",
+    "store_install_epic_hint": "Åbner Epic Games Launcher for at installere spillet"
   },
   "sections": {
     "OptiScaler": "OptiScaler Hoved Indstillinger",

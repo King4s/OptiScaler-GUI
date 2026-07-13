@@ -180,7 +180,19 @@
     "launch_options": "Opcje uruchamiania",
     "launch_args": "Dodatkowe argumenty",
     "exe_override": "Inny plik exe",
-    "env_vars": "Zmienne środowiskowe (KEY=VALUE w wierszu)"
+    "env_vars": "Zmienne środowiskowe (KEY=VALUE w wierszu)",
+    "stores_tab": "Sklepy",
+    "stores_intro": "Połącz konta sklepów, aby zobaczyć i zainstalować posiadane gry. Logowanie odbywa się w przeglądarce — aplikacja zapisuje tylko token, nigdy hasło.",
+    "store_connected": "Połączono",
+    "store_connect": "Połącz",
+    "store_refresh": "Odśwież bibliotekę",
+    "store_logout": "Wyloguj",
+    "store_open_login": "Otwórz stronę logowania",
+    "store_paste_code": "Wklej kod z przeglądarki",
+    "store_login_help": "1) Otwórz stronę logowania i zaloguj się  2) Skopiuj kod (lub cały adres/JSON)  3) Wklej tutaj i kliknij Połącz",
+    "store_install": "Zainstaluj…",
+    "store_install_epic": "Zainstaluj przez Epic",
+    "store_install_epic_hint": "Otwiera Epic Games Launcher, aby zainstalować grę"
   },
   "sections": {
     "OptiScaler": "OptiScaler Główne Ustawienia",

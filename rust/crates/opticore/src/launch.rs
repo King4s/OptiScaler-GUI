@@ -66,6 +66,8 @@ pub fn split_args(raw: &str) -> Vec<String> {
 pub enum LaunchMethod {
     /// Through the Steam client (overlay, cloud saves, playtime).
     SteamUrl(String),
+    /// Through the Epic launcher protocol (EOS auth, cloud saves).
+    EpicUrl(String),
     /// Direct executable start.
     Exe(PathBuf),
 }
@@ -75,6 +77,13 @@ pub fn resolve_method(game: &Game) -> Option<LaunchMethod> {
     if game.platform == Platform::Steam {
         if let Some(appid) = game.steam_appid {
             return Some(LaunchMethod::SteamUrl(format!("steam://rungameid/{appid}")));
+        }
+    }
+    if matches!(game.platform, Platform::Epic | Platform::Heroic) {
+        if let Some(app_name) = crate::scan::epic::read_app_name(&game.path) {
+            return Some(LaunchMethod::EpicUrl(crate::stores::epic::launch_url(
+                &app_name,
+            )));
         }
     }
     if game.platform == Platform::Xbox {
@@ -175,6 +184,13 @@ pub fn launch_with_options(
                 .spawn()
                 .map_err(|e| e.to_string())?;
             Ok(format!("Launching {} via Steam {suffix}", game.name))
+        }
+        LaunchMethod::EpicUrl(url) => {
+            Command::new("explorer.exe")
+                .arg(&url)
+                .spawn()
+                .map_err(|e| e.to_string())?;
+            Ok(format!("Launching {} via Epic {suffix}", game.name))
         }
         LaunchMethod::Exe(exe) => {
             let workdir = exe.parent().map(Path::to_path_buf).unwrap_or_default();

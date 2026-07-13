@@ -15,6 +15,7 @@ ureq = { version = "3", default-features = false, features = ["native-tls", "gzi
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "ico", "bmp"] }
 pelite = "0.10"
 time = { version = "0.3", features = ["formatting", "local-offset", "macros"] }
+md-5 = "0.11"
 
 [target.'cfg(windows)'.dependencies]
 windows-registry = "0.6"
