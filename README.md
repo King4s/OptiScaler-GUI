@@ -15,16 +15,19 @@ All upscaling technology — FSR, XeSS, DLSS integration, frame generation, the 
 
 - **One-click install, update, and uninstall** of official OptiScaler releases
 - **Game auto-detection** for Steam, Epic Games, GOG Galaxy, Xbox Game Pass, and Heroic Launcher — plus manual folder selection for everything else
+- **Launch games directly** — with or without the OptiScaler proxy (Steam games via the Steam client, Game Pass via the bundled launch helper)
 - **Engine-aware installation** — detects Unreal Engine games and installs to `Engine/Binaries/Win64`, warns about known anti-cheat risks
-- **Settings editor** for `OptiScaler.ini` (runtime tuning is still done in OptiScaler's own Insert-key overlay)
+- **Settings editor** for `OptiScaler.ini` with per-key reset, restore-defaults, and GPU-based auto settings (runtime tuning is still done in OptiScaler's own Insert-key overlay)
 - **Safe updates** — SHA256 verification of downloads, config backup, and rollback on failed installs
-- **Portable** — single ~14 MB ZIP with Python runtime and 7-Zip bundled, nothing to install
+- **Explorer-style library** — large/small cards, list and details views, full sorting and filtering, artwork for every store
+- **GPU-rendered UI** (egui/wgpu) with selectable animated backgrounds — and zero idle cost when disabled
+- **Portable** — one ~7.5 MB native exe, nothing to install, no runtime dependencies
 - **Languages:** English, Danish, Polish
 
 ## Getting started
 
-1. Download the portable ZIP from the [latest release](https://github.com/King4s/OptiScaler-GUI/releases/latest)
-2. Extract it and run `OptiScaler-GUI.exe`
+1. Download `OptiScaler-GUI.exe` from the [latest release](https://github.com/King4s/OptiScaler-GUI/releases/latest)
+2. Run it — no installation or extraction needed
 3. Scan for games (or browse to a game folder manually), select a game, click **Install**
 4. Launch the game and press **Insert** to configure upscaling in OptiScaler's overlay
 
@@ -32,25 +35,24 @@ Requires Windows 10/11. The GUI downloads OptiScaler exclusively from the offici
 
 ## OptiScaler compatibility
 
-The current release (v0.5.2) supports OptiScaler **v0.7.0 through v0.9.3** and always downloads the latest official release. When a new OptiScaler version changes the payload layout, a compatibility update is released — see the [changelog](CHANGELOG.md) and [releases](https://github.com/King4s/OptiScaler-GUI/releases) for history.
+The current release supports OptiScaler **v0.7.0 through v0.9.3** and always downloads the latest official release. When a new OptiScaler version changes the payload layout, a compatibility update is released — see the [releases](https://github.com/King4s/OptiScaler-GUI/releases) for history.
 
 ## Project status
 
 | Track | Where | Status |
 |---|---|---|
-| Python app (v0.x) | `src/` | ✅ Current stable release — maintenance mode |
-| Rust rewrite | `rust/` | 🧪 **Public prerelease available** — GPU-rendered UI (egui/wgpu), single ~7 MB exe, CalVer releases (`2026.x`). See [`rust/PARITY.md`](rust/PARITY.md) for the verified feature-parity status. Replaces the Python app at the first stable CalVer release. |
+| Rust app (CalVer `2026.x`) | `rust/` | 🚀 **Beta — the recommended download.** Native single-exe app; reads and manages installs made by the old Python version. See [`rust/PARITY.md`](rust/PARITY.md) for the verified feature-parity status. |
+| Python app (v0.x) | `src/` | ⚠️ **Legacy — phased out.** Final release is [v0.5.2](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.5.2); security/compatibility fixes only. Your existing installs carry over to the Rust app automatically. |
 
 ## Running from source
 
 ```bash
 git clone https://github.com/King4s/OptiScaler-GUI.git
-cd OptiScaler-GUI
-pip install -r requirements.txt   # Python 3.8+
-python src/main.py
+cd OptiScaler-GUI/rust
+cargo run --release
 ```
 
-Run the tests with `pytest -q`, and build the portable package with `python build.py` (requires 7-Zip). Implementation details are covered in the [technical overview](docs/TECHNICAL_OVERVIEW.md).
+Run the tests with `cargo test --workspace`. The legacy Python app still runs from `src/` (`pip install -r requirements.txt && python src/main.py`); its implementation details are covered in the [technical overview](docs/TECHNICAL_OVERVIEW.md).
 
 ## Reporting issues
 
