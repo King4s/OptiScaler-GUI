@@ -160,7 +160,11 @@
     "filter": "Filter",
     "all_label": "Alle",
     "ascending": "Stigende",
-    "descending": "Faldende"
+    "descending": "Faldende",
+    "play": "Spil",
+    "play_with": "Spil med OptiScaler",
+    "play_without": "Spil uden OptiScaler",
+    "optiscaler_bypassed": "OptiScaler er slået fra lige nu (proxy omdøbt). 'Spil med OptiScaler' slår den til igen."
   },
   "sections": {
     "OptiScaler": "OptiScaler Hoved Indstillinger",

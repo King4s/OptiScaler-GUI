@@ -303,7 +303,8 @@ fn exe_icon_image(game_path: &Path) -> Option<image::DynamicImage> {
 }
 
 /// The game's main exe: largest top-level exe, else largest within 3 levels.
-fn largest_exe(game_path: &Path) -> Option<PathBuf> {
+/// Shared with `crate::launch` as the direct-start fallback.
+pub(crate) fn largest_exe(game_path: &Path) -> Option<PathBuf> {
     fn collect(dir: &Path, depth: usize, out: &mut Vec<(u64, PathBuf)>) {
         let Ok(entries) = std::fs::read_dir(dir) else {
             return;

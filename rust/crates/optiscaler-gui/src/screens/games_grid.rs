@@ -830,6 +830,9 @@ fn detail_panel(
     ui.add_space(8.0);
     ui.separator();
 
+    play_section(ui, state, game, pal);
+    ui.separator();
+
     install_section(ui, ctx, state, ops, game);
 
     ui.add_space(8.0);
@@ -841,6 +844,49 @@ fn detail_panel(
             .arg(&game.path)
             .spawn();
     }
+}
+
+/// Play buttons: with OptiScaler (restores the proxy first) or without
+/// (renames our proxy away for a clean boot). Single Play when nothing is
+/// installed. Steam games start via the Steam client, Xbox via the bundled
+/// gamelaunchhelper, everything else via the game's main exe.
+fn play_section(ui: &mut egui::Ui, state: &mut AppState, game: &Game, pal: theme::Palette) {
+    ui.add_space(4.0);
+    let mut result: Option<Result<String, String>> = None;
+    if game.optiscaler_installed {
+        ui.horizontal(|ui| {
+            if ui
+                .button(RichText::new(format!("▶ {}", state.i18n.tr("ui.play_with"))).strong())
+                .clicked()
+            {
+                result = Some(opticore::launch::launch(game, true));
+            }
+            if ui
+                .button(format!("▶ {}", state.i18n.tr("ui.play_without")))
+                .clicked()
+            {
+                result = Some(opticore::launch::launch(game, false));
+            }
+        });
+        if opticore::launch::optiscaler_bypassed(&game.path) {
+            ui.label(
+                RichText::new(state.i18n.tr("ui.optiscaler_bypassed"))
+                    .small()
+                    .color(pal.badge_warn),
+            );
+        }
+    } else if ui
+        .button(RichText::new(format!("▶ {}", state.i18n.tr("ui.play"))).strong())
+        .clicked()
+    {
+        result = Some(opticore::launch::launch(game, true));
+    }
+    match result {
+        Some(Ok(message)) => state.push_log(message),
+        Some(Err(error)) => state.push_log(format!("Launch failed: {error}")),
+        None => {}
+    }
+    ui.add_space(4.0);
 }
 
 /// Install / Update / Uninstall actions with anti-cheat confirmation and
