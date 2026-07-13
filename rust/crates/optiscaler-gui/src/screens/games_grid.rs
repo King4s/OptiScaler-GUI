@@ -584,7 +584,9 @@ pub(super) fn do_launch(
     game: &Game,
     with_optiscaler: bool,
 ) {
-    match opticore::launch::launch(game, with_optiscaler) {
+    let entry = state.library.entry(&game.key.path_norm);
+    let options = opticore::launch::LaunchOptions::from_entry(&entry);
+    match opticore::launch::launch_with_options(game, with_optiscaler, &options) {
         Ok(message) => {
             state.push_log(message);
             state.note_launched(&game.key.path_norm);

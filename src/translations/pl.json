@@ -176,7 +176,11 @@
     "publisher": "Wydawca",
     "release_date": "Data wydania",
     "installed_size": "Rozmiar na dysku",
-    "store_page": "Strona sklepu"
+    "store_page": "Strona sklepu",
+    "launch_options": "Opcje uruchamiania",
+    "launch_args": "Dodatkowe argumenty",
+    "exe_override": "Inny plik exe",
+    "env_vars": "Zmienne środowiskowe (KEY=VALUE w wierszu)"
   },
   "sections": {
     "OptiScaler": "OptiScaler Główne Ustawienia",

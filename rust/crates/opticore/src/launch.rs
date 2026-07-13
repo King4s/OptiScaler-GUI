@@ -6,11 +6,60 @@
 //! are never renamed.
 
 use crate::install::{manifest, payload};
+use crate::library::GameEntry;
 use crate::model::{Game, Platform};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const DISABLED_SUFFIX: &str = ".optiscaler-disabled";
+
+/// Per-game launch options from the user's library entry.
+#[derive(Debug, Clone, Default)]
+pub struct LaunchOptions {
+    /// Extra command-line arguments (whitespace-split; "quoted parts" kept).
+    pub args: Vec<String>,
+    /// Absolute path replacing the auto-detected exe (direct launches only).
+    pub exe_override: Option<PathBuf>,
+    /// Extra environment variables (direct launches only).
+    pub env: Vec<(String, String)>,
+}
+
+impl LaunchOptions {
+    pub fn from_entry(entry: &GameEntry) -> Self {
+        Self {
+            args: split_args(&entry.launch_args),
+            exe_override: (!entry.exe_override.is_empty())
+                .then(|| PathBuf::from(&entry.exe_override)),
+            env: entry
+                .env
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
+        }
+    }
+}
+
+/// Split a command-line string into arguments, honoring "double quotes".
+pub fn split_args(raw: &str) -> Vec<String> {
+    let mut args = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+    for c in raw.chars() {
+        match c {
+            '"' => in_quotes = !in_quotes,
+            c if c.is_whitespace() && !in_quotes => {
+                if !current.is_empty() {
+                    args.push(std::mem::take(&mut current));
+                }
+            }
+            c => current.push(c),
+        }
+    }
+    if !current.is_empty() {
+        args.push(current);
+    }
+    args
+}
 
 /// How a game will be started.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,9 +135,25 @@ pub fn set_optiscaler_enabled(game_path: &Path, enabled: bool) -> std::io::Resul
 
 /// Toggle the proxy as requested, then start the game. Returns a log line.
 pub fn launch(game: &Game, with_optiscaler: bool) -> Result<String, String> {
+    launch_with_options(game, with_optiscaler, &LaunchOptions::default())
+}
+
+/// Like [`launch`], applying the user's per-game launch options: an exe
+/// override wins over auto-detection, extra args are appended (for Steam
+/// launches via `steam://run/<id>//<args>/`), env vars apply to direct
+/// exe starts.
+pub fn launch_with_options(
+    game: &Game,
+    with_optiscaler: bool,
+    options: &LaunchOptions,
+) -> Result<String, String> {
     set_optiscaler_enabled(&game.path, with_optiscaler)
         .map_err(|e| format!("Could not toggle OptiScaler proxy: {e}"))?;
-    let method = resolve_method(game).ok_or("no executable found")?;
+    let method = match &options.exe_override {
+        Some(exe) if exe.exists() => LaunchMethod::Exe(exe.clone()),
+        Some(exe) => return Err(format!("launch exe not found: {}", exe.display())),
+        None => resolve_method(game).ok_or("no executable found")?,
+    };
     let suffix = if with_optiscaler {
         "with OptiScaler"
     } else {
@@ -96,6 +161,14 @@ pub fn launch(game: &Game, with_optiscaler: bool) -> Result<String, String> {
     };
     match method {
         LaunchMethod::SteamUrl(url) => {
+            // steam://run/<appid>//<args>/ passes arguments through Steam
+            let url = if options.args.is_empty() {
+                url
+            } else if let Some(appid) = game.steam_appid {
+                format!("steam://run/{appid}//{}/", options.args.join(" "))
+            } else {
+                url
+            };
             // explorer hands the steam:// URL to the protocol handler
             Command::new("explorer.exe")
                 .arg(&url)
@@ -105,10 +178,12 @@ pub fn launch(game: &Game, with_optiscaler: bool) -> Result<String, String> {
         }
         LaunchMethod::Exe(exe) => {
             let workdir = exe.parent().map(Path::to_path_buf).unwrap_or_default();
-            Command::new(&exe)
-                .current_dir(workdir)
-                .spawn()
-                .map_err(|e| e.to_string())?;
+            let mut command = Command::new(&exe);
+            command.current_dir(workdir).args(&options.args);
+            for (key, value) in &options.env {
+                command.env(key, value);
+            }
+            command.spawn().map_err(|e| e.to_string())?;
             Ok(format!(
                 "Launching {} ({}) {suffix}",
                 game.name,
@@ -188,6 +263,46 @@ mod tests {
             resolve_method(&game),
             Some(LaunchMethod::Exe(content.join("gamelaunchhelper.exe")))
         );
+    }
+
+    #[test]
+    fn arg_splitting_honors_quotes() {
+        assert_eq!(split_args(""), Vec::<String>::new());
+        assert_eq!(
+            split_args("-windowed -w 1920"),
+            vec!["-windowed", "-w", "1920"]
+        );
+        assert_eq!(
+            split_args(r#"--path "C:\My Games\save" -x"#),
+            vec!["--path", r"C:\My Games\save", "-x"]
+        );
+    }
+
+    #[test]
+    fn options_from_library_entry() {
+        let mut entry = GameEntry {
+            launch_args: "-dx12".into(),
+            exe_override: r"C:\g\game.exe".into(),
+            ..Default::default()
+        };
+        entry.env.insert("MANGOHUD".into(), "1".into());
+        let options = LaunchOptions::from_entry(&entry);
+        assert_eq!(options.args, vec!["-dx12"]);
+        assert_eq!(options.exe_override, Some(PathBuf::from(r"C:\g\game.exe")));
+        assert_eq!(options.env, vec![("MANGOHUD".to_string(), "1".to_string())]);
+    }
+
+    #[test]
+    fn missing_exe_override_is_an_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let game = Game::new("G", tmp.path().to_path_buf(), Platform::Manual);
+        let options = LaunchOptions {
+            exe_override: Some(tmp.path().join("nope.exe")),
+            ..Default::default()
+        };
+        assert!(launch_with_options(&game, true, &options)
+            .unwrap_err()
+            .contains("not found"));
     }
 
     #[test]

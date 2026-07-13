@@ -77,6 +77,7 @@ pub fn show(ctx: &egui::Context, state: &mut AppState, ops: &mut Ops) {
                 ui.add_space(10.0);
                 ui.separator();
                 super::games_grid::play_section(ui, ctx, state, ops, &game, pal);
+                launch_options_section(ui, state, &game, pal);
                 ui.separator();
                 super::games_grid::install_section(ui, ctx, state, ops, &game);
 
@@ -106,6 +107,96 @@ pub fn show(ctx: &egui::Context, state: &mut AppState, ops: &mut Ops) {
                 );
             });
     });
+}
+
+/// Collapsible per-game launch options: extra arguments, exe override, and
+/// environment variables (one KEY=VALUE per line). Saved on every edit —
+/// entries that go back to all-default are pruned from library.json.
+fn launch_options_section(
+    ui: &mut egui::Ui,
+    state: &mut AppState,
+    game: &Game,
+    pal: theme::Palette,
+) {
+    let key = game.key.path_norm.clone();
+    let entry = state.library.entry(&key);
+    let configured =
+        !entry.launch_args.is_empty() || !entry.exe_override.is_empty() || !entry.env.is_empty();
+    let title = if configured {
+        format!("⚙ {} •", state.i18n.tr("ui.launch_options"))
+    } else {
+        format!("⚙ {}", state.i18n.tr("ui.launch_options"))
+    };
+    egui::CollapsingHeader::new(RichText::new(title).size(13.0))
+        .id_salt("launch_options")
+        .show(ui, |ui| {
+            let mut changed = false;
+            let entry = state.library.entry_mut(&key);
+
+            ui.label(RichText::new(state.i18n.tr("ui.launch_args")).color(pal.text_dim));
+            changed |= ui
+                .add(
+                    egui::TextEdit::singleline(&mut entry.launch_args)
+                        .hint_text("-dx12 -windowed")
+                        .desired_width(f32::INFINITY),
+                )
+                .changed();
+
+            ui.add_space(4.0);
+            ui.label(RichText::new(state.i18n.tr("ui.exe_override")).color(pal.text_dim));
+            ui.horizontal(|ui| {
+                changed |= ui
+                    .add(
+                        egui::TextEdit::singleline(&mut entry.exe_override)
+                            .hint_text("(auto)")
+                            .desired_width(ui.available_width() - 40.0),
+                    )
+                    .changed();
+                if ui.button("…").clicked() {
+                    if let Some(exe) = rfd::FileDialog::new()
+                        .add_filter("exe", &["exe"])
+                        .set_directory(&game.path)
+                        .pick_file()
+                    {
+                        entry.exe_override = exe.display().to_string();
+                        changed = true;
+                    }
+                }
+            });
+
+            ui.add_space(4.0);
+            ui.label(RichText::new(state.i18n.tr("ui.env_vars")).color(pal.text_dim));
+            // Edited as KEY=VALUE lines; parsed back into the map on change
+            let mut env_text = entry
+                .env
+                .iter()
+                .map(|(k, v)| format!("{k}={v}"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            if ui
+                .add(
+                    egui::TextEdit::multiline(&mut env_text)
+                        .hint_text("MANGOHUD=1")
+                        .desired_rows(2)
+                        .desired_width(f32::INFINITY),
+                )
+                .changed()
+            {
+                entry.env = env_text
+                    .lines()
+                    .filter_map(|line| {
+                        let (k, v) = line.split_once('=')?;
+                        let k = k.trim();
+                        (!k.is_empty()).then(|| (k.to_string(), v.trim().to_string()))
+                    })
+                    .collect();
+                changed = true;
+            }
+
+            if changed {
+                state.save_library();
+            }
+        });
 }
 
 /// Title, genre badges, and the facts grid to the right of the hero art.

@@ -179,7 +179,11 @@
     "publisher": "Udgiver",
     "release_date": "Udgivet",
     "installed_size": "Størrelse på disk",
-    "store_page": "Butiksside"
+    "store_page": "Butiksside",
+    "launch_options": "Start-indstillinger",
+    "launch_args": "Ekstra argumenter",
+    "exe_override": "Alternativ exe",
+    "env_vars": "Miljøvariabler (KEY=VALUE pr. linje)"
   },
   "sections": {
     "OptiScaler": "OptiScaler Hoved Indstillinger",

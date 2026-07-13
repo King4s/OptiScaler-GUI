@@ -185,7 +185,11 @@
     "publisher": "Publisher",
     "release_date": "Released",
     "installed_size": "Size on disk",
-    "store_page": "Store page"
+    "store_page": "Store page",
+    "launch_options": "Launch options",
+    "launch_args": "Extra arguments",
+    "exe_override": "Executable override",
+    "env_vars": "Environment variables (KEY=VALUE per line)"
   },
   "sections": {
     "OptiScaler": "OptiScaler Main Settings",
