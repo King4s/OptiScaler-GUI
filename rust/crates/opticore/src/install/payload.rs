@@ -5,7 +5,8 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-/// Proxy DLL names OptiScaler can be installed as (UI order, dxgi.dll default).
+/// Proxy DLL names OptiScaler can be installed as (UI order, dxgi.dll
+/// default). Mirrors the upstream wiki's supported filename list.
 pub const PROXY_FILENAMES: &[&str] = &[
     "dxgi.dll",
     "winmm.dll",
@@ -15,8 +16,13 @@ pub const PROXY_FILENAMES: &[&str] = &[
     "wininet.dll",
     "winhttp.dll",
     "OptiScaler.asi",
-    "nvngx.dll",
 ];
+
+/// Proxy names from older OptiScaler versions that upstream no longer
+/// supports (a game only loads nvngx.dll if it calls the DLSS loader, so
+/// OptiScaler silently never starts). Not offered for new installs; kept
+/// so uninstall/cleanup still removes them and update migrates them.
+pub const LEGACY_PROXY_FILENAMES: &[&str] = &["nvngx.dll"];
 
 /// Files from older OptiScaler layouts removed before installing v0.9+ payloads.
 const STALE_LEGACY_FILES: &[&str] = &["nvapi64.dll", "nvngx.dll"];

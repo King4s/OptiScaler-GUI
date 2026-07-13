@@ -257,6 +257,7 @@ pub fn uninstall(game_path: &Path) -> Result<(Vec<String>, Vec<String>), Install
     // Legacy fallback: known file list + proxy names
     let mut legacy: Vec<&str> = payload::LEGACY_UNINSTALL_FILES.to_vec();
     legacy.extend(payload::PROXY_FILENAMES);
+    legacy.extend(payload::LEGACY_PROXY_FILENAMES);
     legacy.sort();
     legacy.dedup();
     for filename in legacy {
@@ -313,15 +314,23 @@ impl Installer {
         gpu_type: &str,
         progress: impl FnMut(InstallStage),
     ) -> Result<InstallManifest, InstallError> {
-        let target = installed_target_filename(game_path).unwrap_or_else(|| "dxgi.dll".to_string());
         let options = InstallOptions {
-            target_filename: target,
+            target_filename: update_target_filename(game_path),
             overwrite: true,
             gpu_type: gpu_type.to_string(),
             dlss_inputs: true,
         };
         self.install(game_path, &options, progress)
     }
+}
+
+/// Proxy filename an update should install with: the recorded one — except
+/// legacy names upstream no longer supports (nvngx.dll), which migrate to
+/// dxgi.dll; the stale-legacy cleanup inside install() removes the old file.
+pub fn update_target_filename(game_path: &Path) -> String {
+    installed_target_filename(game_path)
+        .filter(|t| !payload::LEGACY_PROXY_FILENAMES.contains(&t.as_str()))
+        .unwrap_or_else(|| "dxgi.dll".to_string())
 }
 
 /// Proxy filename recorded for an existing install (manifest first, then
@@ -477,6 +486,41 @@ mod tests {
             installed_target_filename(game).as_deref(),
             Some("d3d12.dll")
         );
+    }
+
+    #[test]
+    fn update_migrates_legacy_nvngx_target_to_dxgi() {
+        let tmp = tempfile::tempdir().unwrap();
+        let game = tmp.path();
+        // No install at all → default
+        assert_eq!(update_target_filename(game), "dxgi.dll");
+        // Supported recorded target is reused as-is
+        let m = InstallManifest::new(
+            "winmm.dll",
+            &["winmm.dll".into()],
+            &[],
+            "v0.9.2",
+            None,
+            "t".into(),
+        );
+        manifest::write(game, &m).unwrap();
+        assert_eq!(update_target_filename(game), "winmm.dll");
+        // nvngx.dll (unsupported upstream) migrates to the default proxy
+        let m = InstallManifest::new(
+            "nvngx.dll",
+            &["nvngx.dll".into()],
+            &[],
+            "v0.9.2",
+            None,
+            "t".into(),
+        );
+        manifest::write(game, &m).unwrap();
+        assert_eq!(update_target_filename(game), "dxgi.dll");
+        // A manifest-less nvngx.dll on disk is not treated as the target
+        std::fs::remove_file(game.join(manifest::MANIFEST_FILENAME)).unwrap();
+        File::create(game.join("nvngx.dll")).unwrap();
+        assert_eq!(installed_target_filename(game), None);
+        assert_eq!(update_target_filename(game), "dxgi.dll");
     }
 
     #[test]
