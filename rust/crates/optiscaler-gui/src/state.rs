@@ -4,7 +4,7 @@ use eframe::egui::{self, TextureHandle};
 use opticore::config::AppConfig;
 use opticore::i18n::Translator;
 use opticore::ini::{GpuVendor, IniDocument};
-use opticore::model::{Game, Platform};
+use opticore::model::{Engine, Game, Platform};
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 
@@ -39,6 +39,82 @@ pub enum ScanState {
     NotStarted,
     Running,
     Done,
+}
+
+/// Games list sort column (persisted as config.sort_key).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SortKey {
+    Name,
+    Platform,
+    Engine,
+    Optiscaler,
+}
+
+impl SortKey {
+    pub const ALL: [SortKey; 4] = [
+        SortKey::Name,
+        SortKey::Platform,
+        SortKey::Engine,
+        SortKey::Optiscaler,
+    ];
+
+    pub fn code(self) -> &'static str {
+        match self {
+            SortKey::Name => "name",
+            SortKey::Platform => "platform",
+            SortKey::Engine => "engine",
+            SortKey::Optiscaler => "optiscaler",
+        }
+    }
+
+    pub fn from_code(code: &str) -> Self {
+        match code {
+            "platform" => SortKey::Platform,
+            "engine" => SortKey::Engine,
+            "optiscaler" => SortKey::Optiscaler,
+            _ => SortKey::Name,
+        }
+    }
+
+    /// Translation key for the sort label.
+    pub fn tr_key(self) -> &'static str {
+        match self {
+            SortKey::Name => "ui.sort_name",
+            SortKey::Platform => "ui.sort_platform",
+            SortKey::Engine => "ui.sort_engine",
+            SortKey::Optiscaler => "ui.sort_optiscaler",
+        }
+    }
+}
+
+/// Games list presentation, Windows Explorer style (persisted as
+/// config.view_mode).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewMode {
+    CardsLarge,
+    CardsSmall,
+    List,
+    Details,
+}
+
+impl ViewMode {
+    pub fn code(self) -> &'static str {
+        match self {
+            ViewMode::CardsLarge => "cards_large",
+            ViewMode::CardsSmall => "cards_small",
+            ViewMode::List => "list",
+            ViewMode::Details => "details",
+        }
+    }
+
+    pub fn from_code(code: &str) -> Self {
+        match code {
+            "cards_small" => ViewMode::CardsSmall,
+            "list" => ViewMode::List,
+            "details" => ViewMode::Details,
+            _ => ViewMode::CardsLarge,
+        }
+    }
 }
 
 /// Artwork status per game (keyed by Game.key.path_norm).
@@ -77,6 +153,15 @@ pub struct AppState {
     pub scan_state: ScanState,
     pub search: String,
     pub platform_filter: Option<Platform>,
+    /// None = all engines.
+    pub engine_filter: Option<Engine>,
+    /// None = all; Some(true) = OptiScaler installed; Some(false) = not.
+    pub optiscaler_filter: Option<bool>,
+    /// None = all; Some(true) = has anti-cheat; Some(false) = none detected.
+    pub anticheat_filter: Option<bool>,
+    pub sort_key: SortKey,
+    pub sort_ascending: bool,
+    pub view_mode: ViewMode,
     pub selected: Option<String>, // path_norm of selected game
     pub art: HashMap<String, ArtState>,
     pub log: VecDeque<String>,
@@ -118,6 +203,12 @@ impl Default for AppState {
             scan_state: ScanState::NotStarted,
             search: String::new(),
             platform_filter: None,
+            engine_filter: None,
+            optiscaler_filter: None,
+            anticheat_filter: None,
+            sort_key: SortKey::Name,
+            sort_ascending: true,
+            view_mode: ViewMode::CardsLarge,
             selected: None,
             art: HashMap::new(),
             log: VecDeque::new(),
@@ -184,18 +275,83 @@ impl AppState {
         self.log.push_back(line);
     }
 
-    /// Indices of games matching the current search + platform filter.
+    /// True when any filter beyond the defaults is active.
+    pub fn filters_active(&self) -> bool {
+        !self.search.is_empty()
+            || self.platform_filter.is_some()
+            || self.engine_filter.is_some()
+            || self.optiscaler_filter.is_some()
+            || self.anticheat_filter.is_some()
+    }
+
+    pub fn clear_filters(&mut self) {
+        self.search.clear();
+        self.platform_filter = None;
+        self.engine_filter = None;
+        self.optiscaler_filter = None;
+        self.anticheat_filter = None;
+    }
+
+    /// Set the sort column; a second click on the same column flips the
+    /// direction (Windows Explorer behaviour). Persisted via config.
+    pub fn set_sort(&mut self, key: SortKey) {
+        if self.sort_key == key {
+            self.sort_ascending = !self.sort_ascending;
+        } else {
+            self.sort_key = key;
+            self.sort_ascending = true;
+        }
+        self.config.sort_key = self.sort_key.code().to_string();
+        self.config.sort_ascending = self.sort_ascending;
+        let _ = self.config.save(&self.config_path);
+    }
+
+    pub fn set_view_mode(&mut self, mode: ViewMode) {
+        self.view_mode = mode;
+        self.config.view_mode = mode.code().to_string();
+        let _ = self.config.save(&self.config_path);
+    }
+
+    /// Indices of games matching every active filter, in the current sort
+    /// order (name is always the tiebreaker so equal keys stay stable).
     pub fn filtered_indices(&self) -> Vec<usize> {
         let needle = self.search.to_lowercase();
-        self.games
+        let mut indices: Vec<usize> = self
+            .games
             .iter()
             .enumerate()
             .filter(|(_, g)| {
                 (needle.is_empty() || g.key.name_lower.contains(&needle))
                     && self.platform_filter.is_none_or(|p| g.platform == p)
+                    && self.engine_filter.is_none_or(|e| g.engine == e)
+                    && self
+                        .optiscaler_filter
+                        .is_none_or(|want| g.optiscaler_installed == want)
+                    && self
+                        .anticheat_filter
+                        .is_none_or(|want| g.anti_cheat.is_empty() != want)
             })
             .map(|(i, _)| i)
-            .collect()
+            .collect();
+        indices.sort_by(|&a, &b| {
+            let (ga, gb) = (&self.games[a], &self.games[b]);
+            let name = ga.key.name_lower.cmp(&gb.key.name_lower);
+            let ordering = match self.sort_key {
+                SortKey::Name => name,
+                SortKey::Platform => ga.platform.label().cmp(gb.platform.label()).then(name),
+                SortKey::Engine => ga.engine.label().cmp(gb.engine.label()).then(name),
+                SortKey::Optiscaler => gb
+                    .optiscaler_installed
+                    .cmp(&ga.optiscaler_installed)
+                    .then(name),
+            };
+            if self.sort_ascending {
+                ordering
+            } else {
+                ordering.reverse()
+            }
+        });
+        indices
     }
 
     pub fn art_state(&self, path_norm: &str) -> ArtState {

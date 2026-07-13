@@ -37,6 +37,26 @@ pub enum Engine {
     Unknown,
 }
 
+impl Engine {
+    pub const ALL: [Engine; 5] = [
+        Engine::Unreal,
+        Engine::Unity,
+        Engine::Godot,
+        Engine::Prism3D,
+        Engine::Unknown,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Engine::Unreal => "Unreal",
+            Engine::Unity => "Unity",
+            Engine::Godot => "Godot",
+            Engine::Prism3D => "Prism3D",
+            Engine::Unknown => "Unknown",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AntiCheat {
     EasyAntiCheat,

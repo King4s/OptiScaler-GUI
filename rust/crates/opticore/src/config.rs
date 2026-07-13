@@ -18,6 +18,11 @@ pub struct AppConfig {
     /// Comma-separated uppercase drive letters, e.g. "D,E" (Python format)
     pub excluded_drives: String,
     pub check_updates: bool,
+    /// Games view: "cards_large" (default), "cards_small", "list", "details"
+    pub view_mode: String,
+    /// Games sort column: "name" (default), "platform", "engine", "optiscaler"
+    pub sort_key: String,
+    pub sort_ascending: bool,
     /// Fields we don't own (Python app settings) — preserved on save.
     passthrough: Map<String, Value>,
 }
@@ -31,6 +36,9 @@ impl Default for AppConfig {
             effects_style: "orbits".to_string(),
             excluded_drives: String::new(),
             check_updates: true,
+            view_mode: "cards_large".to_string(),
+            sort_key: "name".to_string(),
+            sort_ascending: true,
             passthrough: Map::new(),
         }
     }
@@ -88,6 +96,21 @@ impl AppConfig {
                         config.check_updates = b;
                     }
                 }
+                "view_mode" => {
+                    if let Some(s) = value.as_str() {
+                        config.view_mode = s.to_string();
+                    }
+                }
+                "sort_key" => {
+                    if let Some(s) = value.as_str() {
+                        config.sort_key = s.to_string();
+                    }
+                }
+                "sort_ascending" => {
+                    if let Some(b) = value.as_bool() {
+                        config.sort_ascending = b;
+                    }
+                }
                 _ => {
                     config.passthrough.insert(key, value);
                 }
@@ -114,6 +137,9 @@ impl AppConfig {
             Value::String(self.excluded_drives.clone()),
         );
         map.insert("check_updates".into(), Value::Bool(self.check_updates));
+        map.insert("view_mode".into(), Value::String(self.view_mode.clone()));
+        map.insert("sort_key".into(), Value::String(self.sort_key.clone()));
+        map.insert("sort_ascending".into(), Value::Bool(self.sort_ascending));
         let json = serde_json::to_string_pretty(&Value::Object(map))?;
         std::fs::write(path, json)
     }
