@@ -31,6 +31,11 @@ pub enum TaskEvent {
     LatestRelease { version: String },
     /// A newer GUI release exists (version, html url).
     GuiUpdateAvailable { version: String, url: String },
+    /// GUI self-update download/verify progress.
+    GuiUpdateStatus {
+        phase: GuiUpdatePhase,
+        label: String,
+    },
     /// The release payload was fetched so the INI editor's "Restore defaults"
     /// has a pristine OptiScaler.ini to compare against (None = fetch failed).
     DefaultsFetched {
@@ -39,4 +44,13 @@ pub enum TaskEvent {
     },
     /// A log line for the log screen.
     Log(String),
+}
+
+/// Where a GUI self-update currently stands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GuiUpdatePhase {
+    Downloading,
+    /// Verified and staged next to the exe — a restart applies it.
+    Staged,
+    Failed,
 }

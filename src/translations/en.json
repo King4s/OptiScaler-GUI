@@ -104,7 +104,7 @@
     "optiscaler_updated": "OptiScaler updated successfully",
     "update_version": "Version",
     "details": "Details",
-    "update_failed": "Update Failed",
+    "update_failed": "Update failed",
     "failed_to_update": "Failed to update OptiScaler",
     "confirm_uninstall": "Confirm Uninstall",
     "sure_to_uninstall": "Are you sure you want to uninstall OptiScaler from",
@@ -170,7 +170,14 @@
     "play": "Play",
     "play_with": "Play with OptiScaler",
     "play_without": "Play without OptiScaler",
-    "optiscaler_bypassed": "OptiScaler is currently disabled (proxy renamed). 'Play with OptiScaler' re-enables it."
+    "optiscaler_bypassed": "OptiScaler is currently disabled (proxy renamed). 'Play with OptiScaler' re-enables it.",
+    "update_download_restart": "Update to",
+    "update_restart_now": "Restart to update",
+    "update_downloading": "Downloading update…",
+    "auto_update_optiscaler": "Update OptiScaler automatically",
+    "auto_update_hint": "Outdated installs are updated at startup. Your OptiScaler.ini is backed up first.",
+    "overlay_hint": "In-game overlay: press Insert",
+    "overlay_hint_alt": "In-game overlay: press Alt+Insert (your keyboard layout needs Alt held)"
   },
   "sections": {
     "OptiScaler": "OptiScaler Main Settings",

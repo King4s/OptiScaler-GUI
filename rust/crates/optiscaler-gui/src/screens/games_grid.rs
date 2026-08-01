@@ -922,6 +922,14 @@ fn play_section(ui: &mut egui::Ui, state: &mut AppState, game: &Game, pal: theme
                     .color(pal.badge_warn),
             );
         }
+        // Overlay hotkey differs on non-US keyboard layouts (Alt+Insert) —
+        // the most common "overlay doesn't open" support case.
+        let overlay_hint = if crate::winutil::non_us_keyboard() {
+            state.i18n.tr("ui.overlay_hint_alt")
+        } else {
+            state.i18n.tr("ui.overlay_hint")
+        };
+        ui.label(RichText::new(overlay_hint).small().color(pal.text_dim));
     } else if ui
         .button(RichText::new(format!("▶ {}", state.i18n.tr("ui.play"))).strong())
         .clicked()

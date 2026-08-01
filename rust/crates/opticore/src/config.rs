@@ -18,6 +18,8 @@ pub struct AppConfig {
     /// Comma-separated uppercase drive letters, e.g. "D,E" (Python format)
     pub excluded_drives: String,
     pub check_updates: bool,
+    /// Auto-update OptiScaler for installed games at startup (opt-in)
+    pub auto_update_optiscaler: bool,
     /// Games view: "cards_large" (default), "cards_small", "list", "details"
     pub view_mode: String,
     /// Games sort column: "name" (default), "platform", "engine", "optiscaler"
@@ -36,6 +38,7 @@ impl Default for AppConfig {
             effects_style: "orbits".to_string(),
             excluded_drives: String::new(),
             check_updates: true,
+            auto_update_optiscaler: false,
             view_mode: "cards_large".to_string(),
             sort_key: "name".to_string(),
             sort_ascending: true,
@@ -96,6 +99,11 @@ impl AppConfig {
                         config.check_updates = b;
                     }
                 }
+                "auto_update_optiscaler" => {
+                    if let Some(b) = value.as_bool() {
+                        config.auto_update_optiscaler = b;
+                    }
+                }
                 "view_mode" => {
                     if let Some(s) = value.as_str() {
                         config.view_mode = s.to_string();
@@ -137,6 +145,10 @@ impl AppConfig {
             Value::String(self.excluded_drives.clone()),
         );
         map.insert("check_updates".into(), Value::Bool(self.check_updates));
+        map.insert(
+            "auto_update_optiscaler".into(),
+            Value::Bool(self.auto_update_optiscaler),
+        );
         map.insert("view_mode".into(), Value::String(self.view_mode.clone()));
         map.insert("sort_key".into(), Value::String(self.sort_key.clone()));
         map.insert("sort_ascending".into(), Value::Bool(self.sort_ascending));

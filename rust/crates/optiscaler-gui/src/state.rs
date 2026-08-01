@@ -185,6 +185,8 @@ pub struct AppState {
     pub reduced_motion: bool,
     /// Newer GUI release available: (version, url).
     pub gui_update: Option<(String, String)>,
+    /// GUI self-update progress: current phase + label (percent/version/error).
+    pub gui_update_phase: Option<(opticore::progress::GuiUpdatePhase, String)>,
     /// Persisted app configuration (cache/config.json, shared with Python).
     pub config: AppConfig,
     /// Path the config is saved to.
@@ -223,6 +225,7 @@ impl Default for AppState {
             gpu_vendor: GpuVendor::Unknown,
             reduced_motion: false,
             gui_update: None,
+            gui_update_phase: None,
             config: AppConfig::default(),
             config_path: PathBuf::new(),
             i18n: Translator::default(),

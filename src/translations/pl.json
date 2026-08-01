@@ -94,7 +94,7 @@
     "optiscaler_updated": "OptiScaler zaktualizowany pomyślnie",
     "update_version": "Wersja",
     "details": "Szczegóły",
-    "update_failed": "Aktualizacja Nieudana",
+    "update_failed": "Aktualizacja nie powiodła się",
     "failed_to_update": "Nie udało się zaktualizować OptiScaler",
     "confirm_uninstall": "Potwierdź Odinstalowanie",
     "sure_to_uninstall": "Czy na pewno chcesz odinstalować OptiScaler z",
@@ -161,7 +161,14 @@
     "play": "Graj",
     "play_with": "Graj z OptiScaler",
     "play_without": "Graj bez OptiScaler",
-    "optiscaler_bypassed": "OptiScaler jest obecnie wyłączony (proxy zmienione). 'Graj z OptiScaler' włączy go ponownie."
+    "optiscaler_bypassed": "OptiScaler jest obecnie wyłączony (proxy zmienione). 'Graj z OptiScaler' włączy go ponownie.",
+    "update_download_restart": "Aktualizuj do",
+    "update_restart_now": "Uruchom ponownie, aby zaktualizować",
+    "update_downloading": "Pobieranie aktualizacji…",
+    "auto_update_optiscaler": "Aktualizuj OptiScaler automatycznie",
+    "auto_update_hint": "Nieaktualne instalacje są aktualizowane przy starcie. Twój OptiScaler.ini jest najpierw archiwizowany.",
+    "overlay_hint": "Nakładka w grze: naciśnij Insert",
+    "overlay_hint_alt": "Nakładka w grze: naciśnij Alt+Insert (twój układ klawiatury wymaga wciśniętego Alt)"
   },
   "sections": {
     "OptiScaler": "OptiScaler Główne Ustawienia",

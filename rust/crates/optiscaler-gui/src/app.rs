@@ -11,6 +11,8 @@ pub struct App {
     state: AppState,
     ops: Ops,
     started: bool,
+    /// Startup OptiScaler auto-update has been dispatched this session.
+    auto_update_done: bool,
 }
 
 impl App {
@@ -44,11 +46,49 @@ impl App {
             opticore::VERSION,
             state.gpu_vendor.label()
         ));
+        // Remove leftovers from a completed or interrupted self-update
+        if let Ok(exe) = std::env::current_exe() {
+            opticore::selfupdate::cleanup_old(&exe);
+        }
         Self {
             state,
             ops: Ops::new(),
             started: false,
+            auto_update_done: false,
         }
+    }
+
+    /// Opt-in startup auto-update: once the scan AND the latest-release
+    /// check have both landed, update every outdated install sequentially.
+    fn maybe_auto_update_optiscaler(&mut self, ctx: &egui::Context) {
+        if self.auto_update_done
+            || !self.state.config.auto_update_optiscaler
+            || self.state.scan_state != ScanState::Done
+        {
+            return;
+        }
+        let Some(latest) = self.state.latest_release.clone() else {
+            return;
+        };
+        self.auto_update_done = true;
+        let outdated: Vec<opticore::model::Game> = self
+            .state
+            .games
+            .iter()
+            .filter(|g| {
+                g.optiscaler_installed
+                    && opticore::install::installed_version(&g.path)
+                        .is_some_and(|v| opticore::install::is_update_available(&v, &latest))
+                    && !self.state.busy_ops.contains_key(&g.key.path_norm)
+            })
+            .cloned()
+            .collect();
+        for game in &outdated {
+            self.state
+                .busy_ops
+                .insert(game.key.path_norm.clone(), "Queued for update…".into());
+        }
+        self.ops.spawn_auto_updates(ctx, outdated);
     }
 
     fn drain_events(&mut self) {
@@ -124,6 +164,12 @@ impl App {
                         .push_log(format!("GUI update available: {version}"));
                     self.state.gui_update = Some((version, url));
                 }
+                TaskEvent::GuiUpdateStatus { phase, label } => {
+                    if phase == opticore::progress::GuiUpdatePhase::Failed {
+                        self.state.push_log(format!("GUI update failed: {label}"));
+                    }
+                    self.state.gui_update_phase = Some((phase, label));
+                }
                 TaskEvent::DefaultsFetched { ini_path, message } => {
                     self.state.push_log(message.clone());
                     if let Some(editor) = self.state.editor.as_mut() {
@@ -189,15 +235,80 @@ impl App {
                             .color(pal.text_dim),
                     );
                     if let Some((version, url)) = self.state.gui_update.clone() {
-                        ui.hyperlink_to(
-                            RichText::new(format!(
-                                "⬆ {} {version}",
-                                self.state.i18n.tr("ui.update_available")
-                            ))
-                            .small()
-                            .color(pal.accent),
-                            url,
-                        );
+                        use opticore::progress::GuiUpdatePhase;
+                        match self.state.gui_update_phase.clone() {
+                            Some((GuiUpdatePhase::Downloading, label)) => {
+                                ui.label(
+                                    RichText::new(format!(
+                                        "⬇ {} {label}",
+                                        self.state.i18n.tr("ui.update_downloading")
+                                    ))
+                                    .small()
+                                    .color(pal.accent),
+                                );
+                            }
+                            Some((GuiUpdatePhase::Staged, _)) => {
+                                if ui
+                                    .button(
+                                        RichText::new(format!(
+                                            "🔄 {}",
+                                            self.state.i18n.tr("ui.update_restart_now")
+                                        ))
+                                        .small()
+                                        .strong(),
+                                    )
+                                    .clicked()
+                                {
+                                    if let Ok(exe) = std::env::current_exe() {
+                                        match opticore::selfupdate::apply_and_restart(&exe) {
+                                            Ok(()) => {
+                                                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                                            }
+                                            Err(e) => {
+                                                self.state.gui_update_phase =
+                                                    Some((GuiUpdatePhase::Failed, e.to_string()));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Some((GuiUpdatePhase::Failed, label)) => {
+                                ui.label(
+                                    RichText::new(format!(
+                                        "⚠ {}",
+                                        self.state.i18n.tr("ui.update_failed")
+                                    ))
+                                    .small()
+                                    .color(pal.badge_danger),
+                                )
+                                .on_hover_text(label);
+                                ui.hyperlink_to(
+                                    RichText::new(format!(
+                                        "⬆ {} {version}",
+                                        self.state.i18n.tr("ui.update_available")
+                                    ))
+                                    .small()
+                                    .color(pal.accent),
+                                    url,
+                                );
+                            }
+                            None => {
+                                if ui
+                                    .button(
+                                        RichText::new(format!(
+                                            "⬆ {} {version}",
+                                            self.state.i18n.tr("ui.update_download_restart")
+                                        ))
+                                        .small()
+                                        .strong(),
+                                    )
+                                    .on_hover_text(url)
+                                    .clicked()
+                                {
+                                    self.ops.spawn_gui_update_download(ctx);
+                                }
+                            }
+                        }
                     }
                 });
             });
@@ -207,6 +318,7 @@ impl App {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.drain_events();
+        self.maybe_auto_update_optiscaler(ctx);
 
         // First-frame startup: catalogue load + initial scan
         if !self.started {
