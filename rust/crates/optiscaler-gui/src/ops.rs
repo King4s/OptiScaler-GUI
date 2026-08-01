@@ -249,8 +249,7 @@ impl Ops {
             let progress_ctx = ctx.clone();
             let mut last_pct = 0;
             let result = opticore::selfupdate::download_update(&release, &exe, |done, total| {
-                if total > 0 {
-                    let pct = (done * 100 / total) as u32;
+                if let Some(pct) = (done * 100).checked_div(total).map(|p| p as u32) {
                     if pct != last_pct {
                         last_pct = pct;
                         let _ = progress_tx.send(TaskEvent::GuiUpdateStatus {
