@@ -808,7 +808,7 @@ fn badge(ui: &egui::Ui, pos: egui::Pos2, text: &str, color: Color32) -> egui::Po
     let font = egui::FontId::proportional(10.0);
     let galley = ui
         .painter()
-        .layout_no_wrap(text.to_string(), font.clone(), Color32::WHITE);
+        .layout_no_wrap(text.to_string(), font, Color32::WHITE);
     let padding = Vec2::new(6.0, 3.0);
     let rect = egui::Rect::from_min_size(pos, galley.size() + padding * 2.0);
     ui.painter().rect_filled(rect, CornerRadius::same(4), color);

@@ -17,7 +17,7 @@ pub fn default_roots() -> Vec<PathBuf> {
 pub fn read_game_title(game_folder: &Path) -> Option<String> {
     let entries = fs::read_dir(game_folder).ok()?;
     for entry in entries.flatten() {
-        let name = entry.file_name().to_string_lossy().to_string();
+        let name = entry.file_name().to_string_lossy().to_lowercase();
         if name.starts_with("goggame-") && name.ends_with(".info") {
             let content = fs::read_to_string(entry.path()).ok()?;
             let data: Value = serde_json::from_str(&content).ok()?;
