@@ -265,7 +265,15 @@ pub fn rollback(install_dir: &Path, files: &[String], directories: &[String]) {
 /// per path component (case-insensitive) — a string prefix would let
 /// `C:\Games\Foo` match the sibling `C:\Games\Foo-other`.
 pub(crate) fn path_within(path: &Path, root: &Path) -> bool {
-    let resolved = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    // A missing file can't be canonicalized directly — resolve its parent
+    // instead so 8.3 short names (RUNNER~1) still expand and compare.
+    let resolved = path
+        .canonicalize()
+        .or_else(|e| match (path.parent(), path.file_name()) {
+            (Some(parent), Some(name)) => parent.canonicalize().map(|p| p.join(name)),
+            _ => Err(e),
+        })
+        .unwrap_or_else(|_| path.to_path_buf());
     if resolved
         .components()
         .any(|c| matches!(c, std::path::Component::ParentDir))
