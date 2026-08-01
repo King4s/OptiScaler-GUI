@@ -73,7 +73,7 @@ pub fn build_manifest_map(steamapps: &Path) -> HashMap<String, ManifestEntry> {
         return map;
     };
     for entry in entries.flatten() {
-        let fname = entry.file_name().to_string_lossy().to_string();
+        let fname = entry.file_name().to_string_lossy().to_lowercase();
         if !fname.starts_with("appmanifest_") || !fname.ends_with(".acf") {
             continue;
         }

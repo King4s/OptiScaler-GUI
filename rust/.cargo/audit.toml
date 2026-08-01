@@ -1,0 +1,10 @@
+[advisories]
+ignore = [
+    # quick-xml DoS advisories — reached only via wayland-scanner, a
+    # Linux/Wayland build-time proc-macro. Never compiled into the
+    # Windows-only shipped binary.
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
+    # ttf-parser unmaintained — egui's bundled font stack; tracked upstream.
+    "RUSTSEC-2026-0192",
+]

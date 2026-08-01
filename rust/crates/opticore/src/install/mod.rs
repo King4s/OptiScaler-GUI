@@ -221,7 +221,7 @@ pub fn uninstall(game_path: &Path) -> Result<(Vec<String>, Vec<String>), Install
     let mut removed_dirs = Vec::new();
 
     if let Some(m) = manifest::read(&install_dir) {
-        let mut files: Vec<String> = m.files.clone();
+        let mut files: Vec<String> = m.files;
         files.extend([
             manifest::MANIFEST_FILENAME.to_string(),
             "Remove OptiScaler.bat".to_string(),
@@ -238,7 +238,7 @@ pub fn uninstall(game_path: &Path) -> Result<(Vec<String>, Vec<String>), Install
                 removed_files.push(rel.clone());
             }
         }
-        let mut dirs = m.directories.clone();
+        let mut dirs = m.directories;
         dirs.sort_by_key(|d| std::cmp::Reverse(d.len()));
         for rel in &dirs {
             let path = install_dir.join(rel);
@@ -258,7 +258,7 @@ pub fn uninstall(game_path: &Path) -> Result<(Vec<String>, Vec<String>), Install
     let mut legacy: Vec<&str> = payload::LEGACY_UNINSTALL_FILES.to_vec();
     legacy.extend(payload::PROXY_FILENAMES);
     legacy.extend(payload::LEGACY_PROXY_FILENAMES);
-    legacy.sort();
+    legacy.sort_unstable();
     legacy.dedup();
     for filename in legacy {
         let path = install_dir.join(filename);

@@ -261,12 +261,37 @@ pub fn rollback(install_dir: &Path, files: &[String], directories: &[String]) {
     }
 }
 
+/// True when `path` resolves to `root` or somewhere beneath it. Compared
+/// per path component (case-insensitive) — a string prefix would let
+/// `C:\Games\Foo` match the sibling `C:\Games\Foo-other`.
 pub(crate) fn path_within(path: &Path, root: &Path) -> bool {
-    let resolved = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    resolved
-        .to_string_lossy()
-        .to_lowercase()
-        .starts_with(&root.to_string_lossy().to_lowercase())
+    // A missing file can't be canonicalized directly — resolve its parent
+    // instead so 8.3 short names (RUNNER~1) still expand and compare.
+    let resolved = path
+        .canonicalize()
+        .or_else(|e| match (path.parent(), path.file_name()) {
+            (Some(parent), Some(name)) => parent.canonicalize().map(|p| p.join(name)),
+            _ => Err(e),
+        })
+        .unwrap_or_else(|_| path.to_path_buf());
+    if resolved
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return false;
+    }
+    // Normalize \\?\ verbatim prefixes so canonicalized and plain paths compare
+    let part = |c: std::path::Component<'_>| {
+        c.as_os_str()
+            .to_string_lossy()
+            .trim_start_matches(r"\\?\")
+            .to_lowercase()
+    };
+    let root_parts: Vec<String> = root.components().map(part).collect();
+    let mut path_parts = resolved.components().map(part);
+    root_parts
+        .iter()
+        .all(|r| path_parts.next().as_ref() == Some(r))
 }
 
 #[cfg(test)]
@@ -338,6 +363,27 @@ mod tests {
         assert!(!tmp.path().join("some.dll").exists());
         assert!(!tmp.path().join("Licenses").exists());
         assert!(backup.exists()); // backups survive rollback
+    }
+
+    #[test]
+    fn path_within_rejects_sibling_prefix_and_parent_escapes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("Game");
+        let sibling = tmp.path().join("Game-other");
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(&sibling).unwrap();
+        File::create(sibling.join("x.dll")).unwrap();
+        let canon = root.canonicalize().unwrap();
+
+        File::create(root.join("dxgi.dll")).unwrap();
+        assert!(path_within(&root.join("dxgi.dll"), &canon));
+        // Also within when the file does not exist (canonicalize fails →
+        // the raw path is compared against the \\?\-prefixed root)
+        assert!(path_within(&root.join("missing.dll"), &canon));
+        // A sibling directory sharing the name prefix is NOT within root
+        assert!(!path_within(&sibling.join("x.dll"), &canon));
+        // Parent-dir escapes are rejected even when the target doesn't exist
+        assert!(!path_within(&root.join("..").join("escape.dll"), &canon));
     }
 
     #[test]
