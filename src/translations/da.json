@@ -98,7 +98,7 @@
     "optiscaler_updated": "OptiScaler opdateret med succes",
     "update_version": "Version",
     "details": "Detaljer",
-    "update_failed": "Opdatering Mislykkedes",
+    "update_failed": "Opdatering mislykkedes",
     "failed_to_update": "Kunne ikke opdatere OptiScaler",
     "confirm_uninstall": "Bekræft Afinstallation",
     "sure_to_uninstall": "Er du sikker på, at du vil afinstallere OptiScaler fra",
@@ -164,7 +164,14 @@
     "play": "Spil",
     "play_with": "Spil med OptiScaler",
     "play_without": "Spil uden OptiScaler",
-    "optiscaler_bypassed": "OptiScaler er slået fra lige nu (proxy omdøbt). 'Spil med OptiScaler' slår den til igen."
+    "optiscaler_bypassed": "OptiScaler er slået fra lige nu (proxy omdøbt). 'Spil med OptiScaler' slår den til igen.",
+    "update_download_restart": "Opdater til",
+    "update_restart_now": "Genstart for at opdatere",
+    "update_downloading": "Henter opdatering…",
+    "auto_update_optiscaler": "Opdater OptiScaler automatisk",
+    "auto_update_hint": "Forældede installationer opdateres ved opstart. Din OptiScaler.ini sikkerhedskopieres først.",
+    "overlay_hint": "Overlay i spillet: tryk Insert",
+    "overlay_hint_alt": "Overlay i spillet: tryk Alt+Insert (dit tastaturlayout kræver Alt holdt nede)"
   },
   "sections": {
     "OptiScaler": "OptiScaler Hoved Indstillinger",

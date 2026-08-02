@@ -13,6 +13,7 @@ pub mod logging;
 pub mod model;
 pub mod progress;
 pub mod scan;
+pub mod selfupdate;
 
 /// App version (CalVer), single source of truth for the workspace.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

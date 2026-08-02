@@ -200,12 +200,12 @@ impl Ops {
     /// Check for a newer GUI release (stable releases only — GitHub's
     /// releases/latest endpoint excludes pre-releases).
     pub fn spawn_gui_update_check(&self, ctx: &egui::Context) {
-        const GUI_RELEASES_LATEST: &str =
-            "https://api.github.com/repos/King4s/OptiScaler-GUI/releases/latest";
         let tx = self.tx.clone();
         let ctx = ctx.clone();
         std::thread::spawn(move || {
-            if let Ok(release) = install::github::fetch_release_from(GUI_RELEASES_LATEST) {
+            if let Ok(release) =
+                install::github::fetch_release_from(opticore::selfupdate::GUI_RELEASES_LATEST)
+            {
                 let latest = release.version_label();
                 if install::is_update_available(opticore::VERSION, &latest) {
                     let _ = tx.send(TaskEvent::GuiUpdateAvailable {
@@ -216,6 +216,98 @@ impl Ops {
                     });
                     ctx.request_repaint();
                 }
+            }
+        });
+    }
+
+    /// Download + verify the new GUI exe next to the current one. The GUI
+    /// shows a "Restart now" button when the Staged phase arrives.
+    pub fn spawn_gui_update_download(&self, ctx: &egui::Context) {
+        use opticore::progress::GuiUpdatePhase;
+        let tx = self.tx.clone();
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let send = |phase: GuiUpdatePhase, label: String| {
+                let _ = tx.send(TaskEvent::GuiUpdateStatus { phase, label });
+                ctx.request_repaint();
+            };
+            let Ok(exe) = std::env::current_exe() else {
+                send(GuiUpdatePhase::Failed, "cannot locate own exe".into());
+                return;
+            };
+            send(GuiUpdatePhase::Downloading, "0%".into());
+            let release = match install::github::fetch_release_from(
+                opticore::selfupdate::GUI_RELEASES_LATEST,
+            ) {
+                Ok(r) => r,
+                Err(e) => {
+                    send(GuiUpdatePhase::Failed, e.to_string());
+                    return;
+                }
+            };
+            let progress_tx = tx.clone();
+            let progress_ctx = ctx.clone();
+            let mut last_pct = 0;
+            let result = opticore::selfupdate::download_update(&release, &exe, |done, total| {
+                if let Some(pct) = (done * 100).checked_div(total).map(|p| p as u32) {
+                    if pct != last_pct {
+                        last_pct = pct;
+                        let _ = progress_tx.send(TaskEvent::GuiUpdateStatus {
+                            phase: GuiUpdatePhase::Downloading,
+                            label: format!("{pct}%"),
+                        });
+                        progress_ctx.request_repaint();
+                    }
+                }
+            });
+            match result {
+                Ok(_) => send(GuiUpdatePhase::Staged, release.version_label()),
+                Err(e) => send(GuiUpdatePhase::Failed, e.to_string()),
+            }
+        });
+    }
+
+    /// Sequentially update OptiScaler in every outdated install (opt-in
+    /// startup auto-update). One worker thread — parallel updates would race
+    /// on the shared download cache.
+    pub fn spawn_auto_updates(&self, ctx: &egui::Context, games: Vec<Game>) {
+        if games.is_empty() {
+            return;
+        }
+        let tx = self.tx.clone();
+        let ctx = ctx.clone();
+        let downloads = self.downloads_dir();
+        std::thread::spawn(move || {
+            let _ = tx.send(TaskEvent::Log(format!(
+                "Auto-updating OptiScaler in {} game(s)…",
+                games.len()
+            )));
+            for game in games {
+                let key = game.key.path_norm.clone();
+                let installer = Installer::new(&downloads);
+                let progress_tx = tx.clone();
+                let progress_ctx = ctx.clone();
+                let progress_key = key.clone();
+                let result = installer.update(&game.path, "auto", move |stage| {
+                    let _ = progress_tx.send(TaskEvent::OpProgress {
+                        path_norm: progress_key.clone(),
+                        label: Self::stage_label(&stage),
+                    });
+                    progress_ctx.request_repaint();
+                });
+                let (ok, message) = match result {
+                    Ok(m) => (
+                        true,
+                        format!("Auto-updated OptiScaler to {}", m.optiscaler_version),
+                    ),
+                    Err(e) => (false, e.to_string()),
+                };
+                let _ = tx.send(TaskEvent::OpFinished {
+                    path_norm: key,
+                    ok,
+                    message,
+                });
+                ctx.request_repaint();
             }
         });
     }

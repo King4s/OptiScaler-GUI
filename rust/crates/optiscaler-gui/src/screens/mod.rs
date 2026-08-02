@@ -111,6 +111,26 @@ pub fn show_settings(ctx: &egui::Context, state: &mut AppState) {
             config_changed = true;
         }
 
+        // Opt-in: auto-update OptiScaler in installed games at startup
+        if state.config.check_updates {
+            if ui
+                .checkbox(
+                    &mut state.config.auto_update_optiscaler,
+                    state.i18n.tr("ui.auto_update_optiscaler"),
+                )
+                .changed()
+            {
+                config_changed = true;
+            }
+            if state.config.auto_update_optiscaler {
+                ui.label(
+                    RichText::new(state.i18n.tr("ui.auto_update_hint"))
+                        .small()
+                        .color(pal.text_dim),
+                );
+            }
+        }
+
         // Excluded drives
         ui.horizontal(|ui| {
             ui.label(state.i18n.tr("ui.excluded_drives"));
