@@ -34,7 +34,7 @@ All upscaling technology — FSR, XeSS, DLSS integration, frame generation, the 
 1. Download `OptiScaler-GUI.exe` from the [latest release](https://github.com/King4s/OptiScaler-GUI/releases/latest)
 2. Run it — no installation or extraction needed
 3. Scan for games (or browse to a game folder manually), select a game, click **Install**
-4. Launch the game and press **Insert** to configure upscaling in OptiScaler's overlay
+4. Launch the game and press **Insert** (**Alt+Insert** on non-US keyboard layouts) to configure upscaling in OptiScaler's overlay
 
 Requires Windows 10/11. The GUI downloads OptiScaler exclusively from the official GitHub releases and works offline otherwise — no data collection.
 
@@ -46,7 +46,7 @@ The current release supports OptiScaler **v0.7.0 through v0.9.4** and always dow
 
 | Track | Where | Status |
 |---|---|---|
-| Rust app (CalVer `2026.x`) | `rust/` | 🚀 **Beta — the recommended download.** Native single-exe app; reads and manages installs made by the old Python version. See [`rust/PARITY.md`](rust/PARITY.md) for the verified feature-parity status. |
+| Rust app (CalVer `2026.x`) | `rust/` | ✅ **Stable — the recommended download.** Native single-exe app; reads and manages installs made by the old Python version. See [`rust/PARITY.md`](rust/PARITY.md) for the verified feature-parity status. |
 | Python app (v0.x) | `src/` | ⚠️ **Legacy — phased out.** Final release is [v0.5.2](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.5.2); security/compatibility fixes only. Your existing installs carry over to the Rust app automatically. |
 
 ## Running from source
