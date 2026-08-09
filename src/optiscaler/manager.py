@@ -89,6 +89,11 @@ class OptiScalerConfig:
     STALE_LEGACY_FILES = [
         "nvapi64.dll",
         "nvngx.dll",
+        # FidelityFX SDK 2.0 DLLs from v0.7.9-era releases. Absent from v0.9.x
+        # payloads (which ship amd_fidelityfx_dx12.dll plus the split
+        # upscaler/framegeneration DLLs), so upgrades must clear them.
+        "amd_fidelityfx_dx12_v2.dll",
+        "amd_fidelityfx_vk_v2.dll",
     ]
 
     INSTALL_MANIFEST = ".optiscaler-gui-install.json"

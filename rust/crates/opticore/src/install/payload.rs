@@ -25,7 +25,17 @@ pub const PROXY_FILENAMES: &[&str] = &[
 pub const LEGACY_PROXY_FILENAMES: &[&str] = &["nvngx.dll"];
 
 /// Files from older OptiScaler layouts removed before installing v0.9+ payloads.
-const STALE_LEGACY_FILES: &[&str] = &["nvapi64.dll", "nvngx.dll"];
+///
+/// The `*_v2.dll` pair shipped with v0.7.9-era releases (FidelityFX SDK 2.0) and
+/// is absent from v0.9.x payloads, which ship `amd_fidelityfx_dx12.dll` plus the
+/// split upscaler/framegeneration DLLs. Left behind they shadow the current FFX
+/// runtime; `LEGACY_UNINSTALL_FILES` already treats them as obsolete.
+const STALE_LEGACY_FILES: &[&str] = &[
+    "nvapi64.dll",
+    "nvngx.dll",
+    "amd_fidelityfx_dx12_v2.dll",
+    "amd_fidelityfx_vk_v2.dll",
+];
 
 /// Release marker files never copied to the game dir.
 const PAYLOAD_EXCLUDED_FILENAMES: &[&str] = &["OptiScaler.dll", super::manifest::MANIFEST_FILENAME];
@@ -346,6 +356,21 @@ mod tests {
         remove_stale_legacy_files(tmp.path(), "nvngx.dll");
         assert!(!tmp.path().join("nvapi64.dll").exists());
         assert!(tmp.path().join("nvngx.dll").exists()); // chosen proxy preserved
+    }
+
+    #[test]
+    fn stale_legacy_cleanup_removes_obsolete_ffx2_dlls() {
+        // v0.7.9-era leftovers: absent from v0.9.x payloads, so an upgrade must
+        // clear them instead of leaving them beside the current FFX runtime.
+        let tmp = tempfile::tempdir().unwrap();
+        File::create(tmp.path().join("amd_fidelityfx_dx12_v2.dll")).unwrap();
+        File::create(tmp.path().join("amd_fidelityfx_vk_v2.dll")).unwrap();
+        File::create(tmp.path().join("amd_fidelityfx_dx12.dll")).unwrap();
+        remove_stale_legacy_files(tmp.path(), "dxgi.dll");
+        assert!(!tmp.path().join("amd_fidelityfx_dx12_v2.dll").exists());
+        assert!(!tmp.path().join("amd_fidelityfx_vk_v2.dll").exists());
+        // the current (non-_v2) FFX runtime must survive
+        assert!(tmp.path().join("amd_fidelityfx_dx12.dll").exists());
     }
 
     #[test]
