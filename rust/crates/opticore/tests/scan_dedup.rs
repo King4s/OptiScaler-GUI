@@ -310,6 +310,33 @@ fn a_blank_hit_never_displaces_an_identity_bearing_one() {
     );
 }
 
+#[test]
+fn one_install_spelled_two_ways_collapses_to_one() {
+    // Store metadata and a launcher's JSON spell the same install differently: a
+    // trailing separator, `/` instead of `\`, and different case. The key folds
+    // all three, so this is one install and must not become two cards.
+    let from_store_root = game_at(
+        r"C:\Program Files\Epic Games\Some Game",
+        "Some Game",
+        Platform::Epic,
+        None,
+    );
+    let from_launcher = game_at(
+        "c:/program files/epic games/some game/",
+        "Some Game",
+        Platform::Heroic,
+        Some("app1"),
+    );
+
+    let kept = dedup_games(vec![from_store_root, from_launcher]);
+
+    assert_eq!(kept.len(), 1);
+    assert_eq!(
+        kept[0].store_identity,
+        Some(StoreIdentity::new(Platform::Heroic, "app1"))
+    );
+}
+
 /// A GOG folder found through its own store file, carrying a real id but no
 /// `gameTitle`, so its title is only prettified from the folder name.
 fn gog_hit_without_a_store_title() -> Game {

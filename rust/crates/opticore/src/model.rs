@@ -1,7 +1,7 @@
 //! Core domain types shared by the scanner, installer, and GUI.
 
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Platform {
@@ -74,6 +74,35 @@ pub enum AntiCheat {
 pub struct GameKey {
     pub name_lower: String,
     pub path_norm: String,
+}
+
+impl GameKey {
+    /// The one place an install path is folded into a library key.
+    ///
+    /// Folds case, both separator kinds and trailing separators, and folds to
+    /// backslashes because that is what `os.path.normcase` produces on Windows:
+    /// the Rust and Python scanners then agree on the same install instead of
+    /// keeping one entry each. A path spelled the native way keeps the exact key
+    /// older builds wrote, so nothing persisted for it moves.
+    ///
+    /// It deliberately does **not** collapse `.` or `..` segments. A junction or
+    /// symlink can make a purely textual shortening point at a different install,
+    /// and merging two genuinely different installs is worse than showing one
+    /// twice. Resolving through the filesystem would be correct but costs a stat
+    /// per path on every scan, so it is a separate decision (see `tasks/todo.md`,
+    /// T2b).
+    ///
+    /// Every path-keyed comparison and map goes through this: `Game::new`,
+    /// `build_game` and the scanner's own duplicate guards, plus the persisted
+    /// `game_gpus` and `game_results` maps. The result is a key, never a path:
+    /// use `Game::path` for anything that touches the filesystem.
+    pub fn path_key(path: &Path) -> String {
+        path.to_string_lossy()
+            .to_lowercase()
+            .replace('/', "\\")
+            .trim_end_matches('\\')
+            .to_string()
+    }
 }
 
 /// A stable identifier for one game inside one store.
@@ -175,7 +204,7 @@ impl Game {
         let name = name.into();
         let key = GameKey {
             name_lower: name.to_lowercase(),
-            path_norm: path.to_string_lossy().to_lowercase(),
+            path_norm: GameKey::path_key(&path),
         };
         Self {
             key,
@@ -194,6 +223,16 @@ impl Game {
             art_url: None,
         }
     }
+
+    /// The key this game's path produced before [`GameKey::path_key`] folded
+    /// separators and trailing separators.
+    ///
+    /// Only for reading data an older build persisted under that spelling: the
+    /// per-game GPU choice and the user's own test result. Never write a new
+    /// entry under it.
+    pub fn legacy_path_norm(&self) -> String {
+        self.path.to_string_lossy().to_lowercase()
+    }
 }
 
 #[cfg(test)]
@@ -210,5 +249,49 @@ mod tests {
         assert_eq!(g.key.name_lower, "test game");
         assert_eq!(g.key.path_norm, r"c:\games\test");
         assert_eq!(g.platform.label(), "Steam");
+    }
+
+    #[test]
+    fn path_key_folds_separators_case_and_a_trailing_separator() {
+        let native = GameKey::path_key(Path::new(r"C:\Games\Cyberpunk 2077"));
+        assert_eq!(native, r"c:\games\cyberpunk 2077");
+
+        // The same install as a launcher's JSON spells it.
+        assert_eq!(
+            GameKey::path_key(Path::new("C:/Games/Cyberpunk 2077")),
+            native
+        );
+        assert_eq!(
+            GameKey::path_key(Path::new("C:/Games/Cyberpunk 2077/")),
+            native
+        );
+        assert_eq!(
+            GameKey::path_key(Path::new("c:\\games\\cyberpunk 2077\\")),
+            native
+        );
+    }
+
+    #[test]
+    fn path_key_leaves_parent_segments_alone() {
+        // Textual `..` folding is wrong across a junction or a symlink, so the
+        // segment has to stay and the key has to stay a different one.
+        let with_parent = GameKey::path_key(Path::new(r"C:\Games\..\Other"));
+        assert_eq!(with_parent, r"c:\games\..\other");
+        assert_ne!(with_parent, GameKey::path_key(Path::new(r"C:\Other")));
+    }
+
+    #[test]
+    fn legacy_path_norm_keeps_the_spelling_older_builds_wrote() {
+        let forward = Game::new("Test Game", PathBuf::from("C:/Games/Test"), Platform::Steam);
+        assert_eq!(forward.key.path_norm, r"c:\games\test");
+        assert_eq!(forward.legacy_path_norm(), "c:/games/test");
+
+        let trailing = Game::new(
+            "Test Game",
+            PathBuf::from("C:\\Games\\Test\\"),
+            Platform::Steam,
+        );
+        assert_eq!(trailing.key.path_norm, r"c:\games\test");
+        assert_eq!(trailing.legacy_path_norm(), "c:\\games\\test\\");
     }
 }

@@ -880,9 +880,7 @@ fn detail_panel(
     play_section(ui, state, game, pal);
     ui.separator();
 
-    state
-        .hardware
-        .game_selector(ui, &game.key.path_norm, &state.i18n);
+    state.hardware.game_selector(ui, game, &state.i18n);
     state
         .advice
         .show(ui, game, &mut state.hardware, &state.i18n);

@@ -113,7 +113,7 @@ fn build_game(
     Game {
         key: GameKey {
             name_lower: name.to_lowercase(),
-            path_norm: path.to_string_lossy().to_lowercase(),
+            path_norm: GameKey::path_key(path),
         },
         name,
         path: path.to_path_buf(),
@@ -154,7 +154,7 @@ fn scan_steam_library(
     if !common.is_dir() {
         return;
     }
-    let key = common.to_string_lossy().to_lowercase();
+    let key = GameKey::path_key(&common);
     if !scanned_roots.insert(key) {
         return;
     }
@@ -332,7 +332,7 @@ fn scan_heroic(verified: &VerifiedList, games: &mut Vec<Game>) {
             // Read the identity before the fields below are moved out of the entry.
             let identity = heroic_identity(&entry);
             let install_path = entry.install_path;
-            let norm = install_path.to_string_lossy().to_lowercase();
+            let norm = GameKey::path_key(&install_path);
             if seen_paths.contains(&norm) || !install_path.is_dir() {
                 continue;
             }
