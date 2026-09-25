@@ -1,9 +1,9 @@
 # Game discovery and artwork TODO
 
-Status: none of these tasks is implemented by this plan. T1 and T2 are committed on
-branch `codex/game-identity-contracts` as `dc22034e`, with the title-provenance fix in
-`a07a3030` (not pushed, not merged), so their boxes stay unticked until a PR records the
-acceptance criteria and the verification.
+Status: none of these tasks is implemented by this plan. T1, T2 and T2b are committed on
+branch `codex/game-identity-contracts` as `dc22034e`, `a07a3030` (title provenance) and
+`97f52d38` (one path-key function). Not pushed and not merged, so the boxes stay unticked
+until a PR records the acceptance criteria and the verification.
 
 For every task: write fixture tests first, keep the existing installer safety gate, run focused tests and review the diff. Complete only when acceptance criteria and verification are recorded in the PR.
 
@@ -33,6 +33,11 @@ For every task: write fixture tests first, keep the existing installer safety ga
   entry; two genuinely different paths still separate; a `..` segment left alone rather than
   folded; a persisted `game_gpus` entry written under the old key still resolving; existing
   same-title and legacy fixtures unchanged.
+  Decided when implemented: the key folds to backslashes, because that is what `os.path.normcase`
+  gives on Windows and a natively spelled path then keeps the exact key older builds wrote;
+  read-compat resolves the new key first and the old spelling second, so nothing is rewritten.
+  The fallback is exact, so a store that changes its own spelling between versions still orphans
+  its entry. See `GameKey::path_key`, `Game::legacy_path_norm` and `LocalProfiles::gpu_for`.
 - [ ] **T3, M, T1:** Add exact-app-ID local Steam portrait cache lookup. Verify offline fixture, no global recursive scan, bounded decode and icon fallback.
 - [ ] **T4, M, T3:** Add Steam `GetItems` portrait lookup, with `appdetails`/header fallback. Verify mock responses for missing assets, wrong app ID, HTTP failure, oversized and malformed images; no UI blocking.
 - [ ] **T5, M, T1:** Persist user scan roots and opt-out settings, show provenance, bound traversal and protect against out-of-root paths. Verify settings roundtrip and fixture scan.
