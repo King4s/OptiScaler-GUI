@@ -30,17 +30,6 @@ const EXCLUDE_FOLDERS: &[&str] = &[
     "installer",
 ];
 
-/// OptiScaler indicator files (port of `OPTISCALER_INDICATOR_FILES`).
-const OPTISCALER_FILES: &[&str] = &[
-    "nvngx_dlss.dll",
-    "nvngx_dlssg.dll",
-    "optiscaler.dll",
-    "nvngx.dll",
-    "dxgi.dll",
-    "winmm.dll",
-];
-const OPTISCALER_SUBDIRS: &[&str] = &["D3D12_Optiscaler", "OptiScaler", "mods", "plugins"];
-
 #[derive(Debug, Default)]
 pub struct FolderFacts {
     pub root: PathBuf,
@@ -216,38 +205,25 @@ pub fn detect_anti_cheat(facts: &FolderFacts) -> Vec<AntiCheat> {
     found
 }
 
-/// Detect an existing OptiScaler install. Port of `_detect_optiscaler`.
-pub fn detect_optiscaler(root: &Path, facts: &FolderFacts) -> bool {
-    if facts
-        .top_files
-        .iter()
-        .any(|f| OPTISCALER_FILES.contains(&f.as_str()))
-    {
-        return true;
-    }
-    let subdirs_present: Vec<&&str> = OPTISCALER_SUBDIRS
-        .iter()
-        .filter(|s| facts.top_dirs.iter().any(|d| d == &s.to_lowercase()))
-        .collect();
-    for subdir in subdirs_present {
-        let sub = root.join(subdir);
-        if OPTISCALER_FILES.iter().any(|f| sub.join(f).exists()) {
-            return true;
-        }
-    }
-    let ue_dir = root.join("Engine").join("Binaries").join("Win64");
-    if ue_dir.is_dir() {
-        if OPTISCALER_FILES.iter().any(|f| ue_dir.join(f).exists()) {
-            return true;
-        }
-        for subdir in OPTISCALER_SUBDIRS {
-            let sub = ue_dir.join(subdir);
-            if sub.is_dir() && OPTISCALER_FILES.iter().any(|f| sub.join(f).exists()) {
-                return true;
-            }
-        }
-    }
-    false
+/// Recorded installation only. Native DLSS/proxy DLLs are not ownership evidence.
+pub fn detect_optiscaler(root: &Path, _facts: &FolderFacts) -> bool {
+    let Ok(target) = crate::resolver::resolve(root) else {
+        return false;
+    };
+    let Some(record) = crate::install::manifest::read(&target.directory) else {
+        return false;
+    };
+    record.installed_by == "OptiScaler-GUI"
+        && (record.schema_version == 1 || record.is_owned_v2())
+        && crate::install::payload::PROXY_FILENAMES
+            .iter()
+            .chain(crate::install::payload::LEGACY_PROXY_FILENAMES.iter())
+            .any(|name| *name == record.target_filename)
+        && (target.directory.join(&record.target_filename).is_file()
+            || target
+                .directory
+                .join(format!("{}.optiscaler-disabled", record.target_filename))
+                .is_file())
 }
 
 #[cfg(test)]
@@ -283,6 +259,16 @@ mod tests {
 
         File::create(game.join("dxgi.dll")).unwrap();
         let facts2 = collect(&game).unwrap();
+        assert!(!detect_optiscaler(&game, &facts2));
+        let manifest = crate::install::manifest::InstallManifest::new(
+            "dxgi.dll",
+            &["dxgi.dll".into()],
+            &[],
+            "v0.9.4",
+            None,
+            "fixture".into(),
+        );
+        crate::install::manifest::write(&game, &manifest).unwrap();
         assert!(detect_optiscaler(&game, &facts2));
     }
 

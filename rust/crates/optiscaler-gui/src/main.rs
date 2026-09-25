@@ -1,9 +1,11 @@
 //! OptiScaler GUI (Rust rewrite) — GPU-rendered installer/manager for OptiScaler.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod advice_view;
 mod app;
 mod chrome;
 mod fx;
+mod hardware_view;
 mod ops;
 mod screens;
 mod state;

@@ -60,15 +60,12 @@ pub const LEGACY_UNINSTALL_FILES: &[&str] = &[
     "setup_linux.sh",
 ];
 
-/// Unreal Engine games install into Engine/Binaries/Win64, everything else
-/// into the game root. Port of `_determine_install_directory`.
+/// Read-only compatibility helper. Mutations must call resolver::resolve and
+/// propagate errors instead of using this fallback for unknown layouts.
 pub fn determine_install_directory(game_path: &Path) -> PathBuf {
-    let unreal = game_path.join("Engine").join("Binaries").join("Win64");
-    if unreal.is_dir() {
-        unreal
-    } else {
-        game_path.to_path_buf()
-    }
+    crate::resolver::resolve(game_path)
+        .map(|t| t.directory)
+        .unwrap_or_else(|_| game_path.to_path_buf())
 }
 
 /// Remove "!! EXTRACT ALL FILES !!"-style marker files from the payload.
@@ -301,14 +298,27 @@ mod tests {
     use std::io::Write;
 
     #[test]
-    fn install_dir_prefers_unreal_layout() {
+    fn install_dir_prefers_game_shipping_exe_not_engine() {
         let tmp = tempfile::tempdir().unwrap();
         let game = tmp.path().join("Game");
         fs::create_dir_all(game.join("Engine").join("Binaries").join("Win64")).unwrap();
-        assert!(determine_install_directory(&game).ends_with("Win64"));
+        let shipping = game.join("SLASHER/Binaries/Win64");
+        fs::create_dir_all(&shipping).unwrap();
+        File::create(shipping.join("SLASHER-Win64-Shipping.exe")).unwrap();
+        assert_eq!(
+            determine_install_directory(&game),
+            shipping.canonicalize().unwrap()
+        );
         let plain = tmp.path().join("Plain");
         fs::create_dir_all(&plain).unwrap();
         assert_eq!(determine_install_directory(&plain), plain);
+    }
+
+    #[test]
+    fn engine_directory_alone_is_not_a_game_install_target() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir_all(tmp.path().join("Engine/Binaries/Win64")).unwrap();
+        assert_eq!(determine_install_directory(tmp.path()), tmp.path());
     }
 
     #[test]

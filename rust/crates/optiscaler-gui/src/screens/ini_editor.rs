@@ -5,11 +5,10 @@ use crate::ops::Ops;
 use crate::state::{AppState, Screen};
 use crate::theme;
 use eframe::egui::{self, Align, Layout, RichText};
-use opticore::ini::{auto_settings, ValueKind};
+use opticore::ini::ValueKind;
 
 pub fn show(ctx: &egui::Context, state: &mut AppState, ops: &mut Ops) {
     let pal = theme::palette(state.dark());
-    let gpu_vendor = state.gpu_vendor;
     // Take ownership for the frame so the closure doesn't borrow `state`
     let Some(mut editor) = state.editor.take() else {
         state.screen = Screen::Games;
@@ -52,28 +51,10 @@ pub fn show(ctx: &egui::Context, state: &mut AppState, ops: &mut Ops) {
                     .hint_text("Search settings…")
                     .desired_width(220.0),
             );
-            if ui
-                .button(format!("✨ Auto Settings ({})", gpu_vendor.label()))
-                .clicked()
-            {
-                let mut changes = Vec::new();
-                for (section, key, value) in auto_settings(gpu_vendor) {
-                    let old = editor.doc.get(section, key).map(|e| e.value.clone());
-                    match old {
-                        Some(old) if old != value => {
-                            editor.doc.set_value(section, key, value);
-                            changes.push(format!("{section}.{key}: {old} → {value}"));
-                        }
-                        _ => {}
-                    }
-                }
-                editor.dirty = editor.dirty || !changes.is_empty();
-                editor.status = Some(format!(
-                    "Auto Settings ({}): {} changes — review below and Save",
-                    gpu_vendor.label(),
-                    changes.len()
-                ));
-                editor.applied_changes = changes;
+            if ui.button(state.i18n.tr("advice.preview")).clicked() {
+                editor.applied_changes =
+                    opticore::ini::preview_changes(&editor.original, &editor.doc);
+                editor.status = Some(state.i18n.tr("advice.restart"));
             }
 
             // Restore upstream defaults from the cached release payload;
@@ -126,12 +107,41 @@ pub fn show(ctx: &egui::Context, state: &mut AppState, ops: &mut Ops) {
             }
             let save = egui::Button::new(RichText::new("💾 Save").strong());
             if ui.add_enabled(editor.dirty, save).clicked() {
+                let changes = opticore::ini::preview_changes(&editor.original, &editor.doc);
+                let confirmed = !changes.is_empty()
+                    && rfd::MessageDialog::new()
+                        .set_title(state.i18n.tr("advice.preview"))
+                        .set_description(format!(
+                            "{}\n\n{}\n\n{}",
+                            state.i18n.tr("advice.save_confirm"),
+                            changes.join("\n"),
+                            state.i18n.tr("advice.restart")
+                        ))
+                        .set_buttons(rfd::MessageButtons::YesNo)
+                        .show()
+                        == rfd::MessageDialogResult::Yes;
+                if !confirmed {
+                    return;
+                }
+                let current = opticore::ini::read_file(&editor.ini_path);
+                if current.as_ref().is_none_or(|doc| {
+                    opticore::ini::serialize(doc) != opticore::ini::serialize(&editor.original)
+                }) {
+                    editor.status =
+                        Some("INI changed outside this editor; reopen before saving".into());
+                    return;
+                }
                 match opticore::ini::write_file(&editor.ini_path, &editor.doc) {
                     Ok(()) => {
                         editor.dirty = false;
                         editor.discard_armed = false;
                         editor.applied_changes.clear();
-                        editor.status = Some("Saved (previous file kept as .ini.backup)".into());
+                        editor.original = editor.doc.clone();
+                        editor.status = Some(format!(
+                            "{} {}",
+                            state.i18n.tr("advice.saved"),
+                            state.i18n.tr("advice.restart")
+                        ));
                     }
                     Err(e) => editor.status = Some(format!("Save failed: {e}")),
                 }

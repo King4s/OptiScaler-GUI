@@ -18,6 +18,7 @@ time = { version = "0.3", features = ["formatting", "local-offset", "macros"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-registry = "0.6"
+windows = { version = "0.58", features = ["Win32_Foundation", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_System_SystemInformation"] }
 
 [dev-dependencies]
 tempfile = "3"

@@ -5,6 +5,7 @@
 pub mod github;
 pub mod manifest;
 pub mod payload;
+pub mod transaction;
 
 use crate::archive;
 use github::ReleaseInfo;
@@ -15,6 +16,8 @@ use std::path::{Path, PathBuf};
 pub struct InstallOptions {
     pub target_filename: String,
     pub overwrite: bool,
+    /// The directory and EXE the user approved before a potentially long download.
+    pub confirmed_target: Option<crate::resolver::InstallTarget>,
     /// GPU type written to a freshly created OptiScaler.ini ("auto"/"nvidia"/"amd"/"intel")
     pub gpu_type: String,
     /// v0.7.9+ DLSS-inputs semantics: when the user answers "No" on an
@@ -27,6 +30,7 @@ impl Default for InstallOptions {
         Self {
             target_filename: "dxgi.dll".to_string(),
             overwrite: false,
+            confirmed_target: None,
             gpu_type: "auto".to_string(),
             dlss_inputs: true,
         }
@@ -81,15 +85,23 @@ fn iso_now() -> String {
         .unwrap_or_else(|_| "1970-01-01T00:00:00.000000".to_string())
 }
 
-fn compact_now() -> String {
-    let now = time::OffsetDateTime::now_local().unwrap_or_else(|_| time::OffsetDateTime::now_utc());
-    let format = time::macros::format_description!("[year][month][day]-[hour][minute][second]");
-    now.format(&format)
-        .unwrap_or_else(|_| "00000000-000000".to_string())
-}
-
 pub struct Installer {
     pub download_dir: PathBuf,
+}
+
+fn confirmed_directory(
+    game_path: &Path,
+    options: &InstallOptions,
+) -> Result<PathBuf, InstallError> {
+    let resolved = crate::resolver::resolve(game_path).map_err(InstallError::Io)?;
+    if options.confirmed_target.as_ref().is_some_and(|confirmed| {
+        confirmed.executable != resolved.executable || confirmed.directory != resolved.directory
+    }) {
+        return Err(InstallError::Io(
+            "installation target changed after confirmation; select it again".into(),
+        ));
+    }
+    Ok(resolved.directory)
 }
 
 impl Installer {
@@ -139,150 +151,31 @@ impl Installer {
         mut progress: impl FnMut(InstallStage),
     ) -> Result<InstallManifest, InstallError> {
         let (extracted, release) = self.prepare_payload(&mut progress)?;
-        payload::remove_setup_markers(&extracted);
-
-        let dest_dir = payload::determine_install_directory(game_path);
-        std::fs::create_dir_all(&dest_dir).map_err(|e| InstallError::Io(e.to_string()))?;
-
-        let target_path = dest_dir.join(&options.target_filename);
-        if target_path.exists() {
-            if !options.overwrite {
-                return Err(InstallError::TargetExists(options.target_filename.clone()));
-            }
-            std::fs::remove_file(&target_path).map_err(|e| InstallError::Io(e.to_string()))?;
-        }
-        if options.overwrite {
-            payload::remove_stale_legacy_files(&dest_dir, &options.target_filename);
-            payload::backup_existing_config(&dest_dir, &compact_now());
-        }
-
-        let mut op_files: Vec<String> = Vec::new();
-        let mut op_dirs: Vec<String> = Vec::new();
-        let result = (|| {
-            let dll = payload::find_optiscaler_dll(&extracted).ok_or(InstallError::DllNotFound)?;
-            std::fs::copy(&dll, &target_path).map_err(|e| InstallError::Io(e.to_string()))?;
-            op_files.push(options.target_filename.clone());
-
-            let copied = payload::copy_release_payload(&extracted, &dest_dir, |done, total| {
-                progress(InstallStage::CopyingPayload { done, total })
-            })
-            .map_err(|e| InstallError::Io(e.to_string()))?;
-            op_files.extend(copied.files.iter().cloned());
-            op_dirs.extend(copied.directories.iter().cloned());
-
-            progress(InstallStage::Finalizing);
-            payload::create_uninstaller_script(&dest_dir, &op_files)
-                .map_err(|e| InstallError::Io(e.to_string()))?;
-            op_files.push("Remove OptiScaler.bat".to_string());
-
-            if !dest_dir.join("OptiScaler.ini").exists() {
-                payload::create_default_config(&dest_dir, &options.gpu_type)
-                    .map_err(|e| InstallError::Io(e.to_string()))?;
-                op_files.push("OptiScaler.ini".to_string());
-            }
-            // v0.7.9 DLSS-inputs semantics: "No" → force Dxgi=false in the config
-            if !options.dlss_inputs {
-                set_ini_value(
-                    &dest_dir.join("OptiScaler.ini"),
-                    "Spoofing",
-                    "Dxgi",
-                    "false",
-                )
-                .map_err(|e| InstallError::Io(e.to_string()))?;
-            }
-
-            let manifest = InstallManifest::new(
-                &options.target_filename,
-                &op_files,
-                &op_dirs,
-                &release.version_label(),
-                release.html_url.clone(),
-                iso_now(),
-            );
-            manifest::write(&dest_dir, &manifest).map_err(|e| InstallError::Io(e.to_string()))?;
-            Ok(manifest)
-        })();
-
-        if result.is_err() {
-            payload::rollback(&dest_dir, &op_files, &op_dirs);
-        }
-        result
+        let dest_dir = confirmed_directory(game_path, options)?;
+        transaction::install(
+            &dest_dir,
+            &extracted,
+            options,
+            &release.version_label(),
+            release.html_url.clone(),
+            iso_now(),
+            progress,
+        )
     }
 }
 
 /// Uninstall using the manifest when present, else the legacy known-file list.
 /// Port of `uninstall_optiscaler`. Returns the removed files/dirs.
 pub fn uninstall(game_path: &Path) -> Result<(Vec<String>, Vec<String>), InstallError> {
-    let install_dir = payload::determine_install_directory(game_path);
-    let root = install_dir
-        .canonicalize()
-        .unwrap_or_else(|_| install_dir.clone());
-    let mut removed_files = Vec::new();
-    let mut removed_dirs = Vec::new();
-
-    if let Some(m) = manifest::read(&install_dir) {
-        let mut files: Vec<String> = m.files;
-        files.extend([
-            manifest::MANIFEST_FILENAME.to_string(),
-            "Remove OptiScaler.bat".to_string(),
-            "OptiScaler.log".to_string(),
-        ]);
-        files.sort();
-        files.dedup();
-        for rel in &files {
-            let path = install_dir.join(rel);
-            if payload::path_within(&path, &root)
-                && path.is_file()
-                && std::fs::remove_file(&path).is_ok()
-            {
-                removed_files.push(rel.clone());
-            }
-        }
-        let mut dirs = m.directories;
-        dirs.sort_by_key(|d| std::cmp::Reverse(d.len()));
-        for rel in &dirs {
-            let path = install_dir.join(rel);
-            if payload::path_within(&path, &root)
-                && path.is_dir()
-                && std::fs::remove_dir_all(&path).is_ok()
-            {
-                removed_dirs.push(rel.clone());
-            }
-        }
-        if !removed_files.is_empty() || !removed_dirs.is_empty() {
-            return Ok((removed_files, removed_dirs));
-        }
-    }
-
-    // Legacy fallback: known file list + proxy names
-    let mut legacy: Vec<&str> = payload::LEGACY_UNINSTALL_FILES.to_vec();
-    legacy.extend(payload::PROXY_FILENAMES);
-    legacy.extend(payload::LEGACY_PROXY_FILENAMES);
-    legacy.sort_unstable();
-    legacy.dedup();
-    for filename in legacy {
-        let path = install_dir.join(filename);
-        if path.is_file() && std::fs::remove_file(&path).is_ok() {
-            removed_files.push(filename.to_string());
-        }
-    }
-    for dirname in payload::LEGACY_UNINSTALL_DIRS {
-        let path = install_dir.join(dirname);
-        if path.is_dir() && std::fs::remove_dir_all(&path).is_ok() {
-            removed_dirs.push(dirname.to_string());
-        }
-    }
-    if removed_files.is_empty() && removed_dirs.is_empty() {
-        return Err(InstallError::Io(
-            "no OptiScaler files found to remove".into(),
-        ));
-    }
-    Ok((removed_files, removed_dirs))
+    let install_dir = crate::resolver::resolve(game_path)
+        .map_err(InstallError::Io)?
+        .directory;
+    transaction::uninstall(&install_dir)
 }
 
 /// Version recorded in an existing install's manifest, if any.
 pub fn installed_version(game_path: &Path) -> Option<String> {
-    let install_dir = payload::determine_install_directory(game_path);
+    let install_dir = crate::resolver::resolve(game_path).ok()?.directory;
     manifest::read(&install_dir).map(|m| m.optiscaler_version)
 }
 
@@ -317,6 +210,7 @@ impl Installer {
         let options = InstallOptions {
             target_filename: update_target_filename(game_path),
             overwrite: true,
+            confirmed_target: None,
             gpu_type: gpu_type.to_string(),
             dlss_inputs: true,
         };
@@ -336,7 +230,10 @@ pub fn update_target_filename(game_path: &Path) -> String {
 /// Proxy filename recorded for an existing install (manifest first, then
 /// probing known proxy names). Port of `get_installed_target_filename`.
 pub fn installed_target_filename(game_path: &Path) -> Option<String> {
-    let install_dir = payload::determine_install_directory(game_path);
+    let install_dir = match crate::resolver::resolve(game_path) {
+        Ok(t) => t.directory,
+        Err(_) => return None,
+    };
     if let Some(m) = manifest::read(&install_dir) {
         if !m.target_filename.is_empty() {
             return Some(m.target_filename);
@@ -392,9 +289,27 @@ mod tests {
     use std::io::Write;
 
     #[test]
+    fn confirmed_target_rejects_changed_executable_choice() {
+        let tmp = tempfile::tempdir().unwrap();
+        let game = tmp.path();
+        File::create(game.join("Game.exe")).unwrap();
+        let confirmed = crate::resolver::resolve(game).unwrap();
+        fs::create_dir_all(game.join("bin/x64")).unwrap();
+        let other = game.join("bin/x64/Other.exe");
+        File::create(&other).unwrap();
+        crate::resolver::remember(game, &other).unwrap();
+        let options = InstallOptions {
+            confirmed_target: Some(confirmed),
+            ..InstallOptions::default()
+        };
+        assert!(confirmed_directory(game, &options).is_err());
+    }
+
+    #[test]
     fn uninstall_follows_manifest() {
         let tmp = tempfile::tempdir().unwrap();
         let game = tmp.path();
+        File::create(game.join("Game.exe")).unwrap();
         for f in ["dxgi.dll", "fakenvapi.dll", "Remove OptiScaler.bat"] {
             File::create(game.join(f)).unwrap();
         }
@@ -402,7 +317,7 @@ mod tests {
         File::create(game.join("Licenses").join("L.txt")).unwrap();
         File::create(game.join("unrelated.txt")).unwrap();
 
-        let m = InstallManifest::new(
+        let mut m = InstallManifest::new(
             "dxgi.dll",
             &[
                 "dxgi.dll".into(),
@@ -414,6 +329,19 @@ mod tests {
             None,
             "2026-07-12T12:00:00".into(),
         );
+        use sha2::{Digest, Sha256};
+        m.schema_version = 2;
+        for file in &m.files {
+            m.owned_files.insert(
+                file.clone(),
+                manifest::OwnedFile {
+                    sha256: hex::encode(Sha256::digest(fs::read(game.join(file)).unwrap())),
+                    original_backup: None,
+                    original_sha256: None,
+                    extra: Default::default(),
+                },
+            );
+        }
         manifest::write(game, &m).unwrap();
 
         let (files, dirs) = uninstall(game).unwrap();
@@ -426,9 +354,10 @@ mod tests {
 
     #[test]
     fn uninstall_python_made_install() {
-        // A manifest written by the actual Python app must drive uninstall
+        // Legacy Python ownership is unknown: preserve every file.
         let tmp = tempfile::tempdir().unwrap();
         let game = tmp.path();
+        File::create(game.join("Game.exe")).unwrap();
         let python_manifest = include_str!("../../tests/fixtures/python_manifest.json");
         fs::write(game.join(manifest::MANIFEST_FILENAME), python_manifest).unwrap();
         fs::create_dir_all(game.join("D3D12_Optiscaler")).unwrap();
@@ -442,31 +371,43 @@ mod tests {
         }
         File::create(game.join("D3D12_Optiscaler").join("plugin.dll")).unwrap();
 
-        let (files, dirs) = uninstall(game).unwrap();
-        assert!(files.contains(&"dxgi.dll".to_string()));
-        assert!(files.contains(&"D3D12_Optiscaler/plugin.dll".to_string()));
-        assert!(dirs.contains(&"D3D12_Optiscaler".to_string()));
-        assert!(!game.join("dxgi.dll").exists());
+        assert!(uninstall(game).unwrap_err().to_string().contains("legacy"));
+        assert!(game.join("dxgi.dll").exists());
+        assert!(game.join("D3D12_Optiscaler/plugin.dll").exists());
+        assert_eq!(
+            fs::read_to_string(game.join(manifest::MANIFEST_FILENAME)).unwrap(),
+            python_manifest
+        );
     }
 
     #[test]
     fn uninstall_legacy_without_manifest() {
         let tmp = tempfile::tempdir().unwrap();
         let game = tmp.path();
+        File::create(game.join("Game.exe")).unwrap();
         for f in ["dxgi.dll", "OptiScaler.ini", "libxess.dll"] {
             File::create(game.join(f)).unwrap();
         }
         fs::create_dir_all(game.join("D3D12_Optiscaler")).unwrap();
-        let (files, dirs) = uninstall(game).unwrap();
-        assert!(files.contains(&"dxgi.dll".to_string()));
-        assert!(files.contains(&"libxess.dll".to_string()));
-        assert!(dirs.contains(&"D3D12_Optiscaler".to_string()));
+        assert!(uninstall(game)
+            .unwrap_err()
+            .to_string()
+            .contains("no owned"));
+        for f in [
+            "dxgi.dll",
+            "OptiScaler.ini",
+            "libxess.dll",
+            "D3D12_Optiscaler",
+        ] {
+            assert!(game.join(f).exists());
+        }
     }
 
     #[test]
     fn installed_target_from_manifest_and_probe() {
         let tmp = tempfile::tempdir().unwrap();
         let game = tmp.path();
+        File::create(game.join("Game.exe")).unwrap();
         assert_eq!(installed_target_filename(game), None);
         File::create(game.join("winmm.dll")).unwrap();
         assert_eq!(
@@ -492,6 +433,7 @@ mod tests {
     fn update_migrates_legacy_nvngx_target_to_dxgi() {
         let tmp = tempfile::tempdir().unwrap();
         let game = tmp.path();
+        File::create(game.join("Game.exe")).unwrap();
         // No install at all → default
         assert_eq!(update_target_filename(game), "dxgi.dll");
         // Supported recorded target is reused as-is

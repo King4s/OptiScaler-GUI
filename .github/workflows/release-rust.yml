@@ -24,9 +24,9 @@ jobs:
         with:
           workspaces: rust
 
-      - run: cargo test --workspace
+      - run: cargo test --workspace --locked
 
-      - run: cargo build --release --workspace
+      - run: cargo build --release --workspace --locked
 
       - name: Stage artifacts
         shell: pwsh
@@ -36,15 +36,28 @@ jobs:
           Write-Host "OptiScaler-GUI.exe: $mb MB"
           New-Item -ItemType Directory -Force out | Out-Null
           Copy-Item $exe out/OptiScaler-GUI.exe
-          $hash = (Get-FileHash out/OptiScaler-GUI.exe -Algorithm SHA256).Hash.ToLower()
-          "$hash  OptiScaler-GUI.exe" | Out-File -Encoding ascii out/SHA256SUMS.txt
+          $sevenZip = Join-Path $env:ProgramFiles '7-Zip/7z.exe'
+          if (!(Test-Path $sevenZip)) { throw '7-Zip is missing from the Windows runner' }
+          Push-Location out
+          try {
+            & $sevenZip a -t7z -mx=9 'OptiScaler-GUI.7z' 'OptiScaler-GUI.exe'
+            if ($LASTEXITCODE -ne 0) { throw '7z creation failed' }
+            & $sevenZip t 'OptiScaler-GUI.7z'
+            if ($LASTEXITCODE -ne 0) { throw '7z verification failed' }
+          } finally { Pop-Location }
+          @('OptiScaler-GUI.exe', 'OptiScaler-GUI.7z') | ForEach-Object {
+            $hash = (Get-FileHash (Join-Path out $_) -Algorithm SHA256).Hash.ToLower()
+            "$hash  $_"
+          } | Out-File -Encoding ascii out/SHA256SUMS.txt
           Get-Content out/SHA256SUMS.txt
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
+          body_path: ${{ github.ref_name == 'v2026.9.0-beta.1' && 'docs/releases/2026.9.0-beta.1.md' || '' }}
           files: |
             rust/out/OptiScaler-GUI.exe
+            rust/out/OptiScaler-GUI.7z
             rust/out/SHA256SUMS.txt
           prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') }}
           fail_on_unmatched_files: true
