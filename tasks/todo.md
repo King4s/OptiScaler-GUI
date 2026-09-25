@@ -2,8 +2,8 @@
 
 Status: none of these tasks is implemented by this plan. T1, T2 and T2b are committed on
 branch `codex/game-identity-contracts` as `dc22034e`, `a07a3030` (title provenance) and
-`97f52d38` (one path-key function). Not pushed and not merged, so the boxes stay unticked
-until a PR records the acceptance criteria and the verification.
+`97f52d38` (one path-key function). The branch is pushed as PR #33 against `main` (open, not
+merged), and that PR records the acceptance criteria and the verification for all three.
 
 For every task: write fixture tests first, keep the existing installer safety gate, run focused tests and review the diff. Complete only when acceptance criteria and verification are recorded in the PR.
 
