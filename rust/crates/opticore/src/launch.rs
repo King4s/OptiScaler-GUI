@@ -7,10 +7,60 @@
 
 use crate::install::{manifest, payload};
 use crate::model::{Game, Platform};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const DISABLED_SUFFIX: &str = ".optiscaler-disabled";
+
+fn entry_metadata(path: &Path) -> io::Result<Option<std::fs::Metadata>> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) => Ok(Some(metadata)),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+fn reject_reparse(metadata: &std::fs::Metadata) -> io::Result<()> {
+    if metadata.file_type().is_symlink() {
+        return Err(io::Error::other("Proxy path is a link; preserved"));
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+        if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+            return Err(io::Error::other("Proxy path is a reparse point; preserved"));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn rename_without_replace(source: &Path, destination: &Path) -> io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn MoveFileW(existing: *const u16, new: *const u16) -> i32;
+    }
+    let source: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
+    let destination: Vec<u16> = destination
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect();
+    // MoveFileW fails if the destination exists; std::fs::rename may replace it.
+    if unsafe { MoveFileW(source.as_ptr(), destination.as_ptr()) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn rename_without_replace(source: &Path, destination: &Path) -> io::Result<()> {
+    std::fs::hard_link(source, destination)?;
+    std::fs::remove_file(source)
+}
 
 /// How a game will be started.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,14 +90,16 @@ pub fn resolve_method(game: &Game) -> Option<LaunchMethod> {
             }
         }
     }
-    crate::images::largest_exe(&game.path).map(LaunchMethod::Exe)
+    crate::resolver::resolve(&game.path)
+        .ok()
+        .map(|t| LaunchMethod::Exe(t.executable))
 }
 
 /// The manifest-recorded proxy target for a game, if we installed one.
 fn manifest_target(game_path: &Path) -> Option<(PathBuf, String)> {
-    let install_dir = payload::determine_install_directory(game_path);
+    let install_dir = crate::resolver::resolve(game_path).ok()?.directory;
     let m = manifest::read(&install_dir)?;
-    if m.target_filename.is_empty() {
+    if !payload::PROXY_FILENAMES.contains(&m.target_filename.as_str()) {
         return None;
     }
     Some((install_dir, m.target_filename))
@@ -69,19 +121,59 @@ pub fn set_optiscaler_enabled(game_path: &Path, enabled: bool) -> std::io::Resul
     };
     let active = install_dir.join(&target);
     let disabled = install_dir.join(format!("{target}{DISABLED_SUFFIX}"));
-    if enabled {
-        if disabled.exists() && !active.exists() {
-            std::fs::rename(&disabled, &active)?;
-            return Ok(true);
-        }
-    } else if active.exists() {
-        if disabled.exists() {
-            std::fs::remove_file(&disabled)?;
-        }
-        std::fs::rename(&active, &disabled)?;
-        return Ok(true);
+    let active_meta = entry_metadata(&active)?;
+    let disabled_meta = entry_metadata(&disabled)?;
+    if active_meta.is_some() && disabled_meta.is_some() {
+        return Err(io::Error::other("Both proxy states exist; preserved"));
     }
-    Ok(false)
+    if (enabled && active_meta.is_some()) || (!enabled && disabled_meta.is_some()) {
+        return Ok(false);
+    }
+    let (source, destination, source_meta, destination_meta) = if enabled {
+        (&disabled, &active, disabled_meta, active_meta)
+    } else {
+        (&active, &disabled, active_meta, disabled_meta)
+    };
+    let Some(source_meta) = source_meta else {
+        return Ok(false);
+    };
+    reject_reparse(&source_meta)?;
+    if let Some(metadata) = &destination_meta {
+        reject_reparse(metadata)?;
+        return Err(io::Error::other(
+            "Proxy destination already exists; preserved",
+        ));
+    }
+    if !source_meta.is_file()
+        || !payload::path_within(source, &install_dir)
+        || !payload::path_within(destination, &install_dir)
+    {
+        return Err(io::Error::other(
+            "Proxy path is not a regular file in the game directory",
+        ));
+    }
+    let m =
+        manifest::read(&install_dir).ok_or_else(|| std::io::Error::other("Missing manifest"))?;
+    let owned = m
+        .owned_files
+        .get(&target)
+        .filter(|_| m.is_owned_v2())
+        .ok_or_else(|| std::io::Error::other("Legacy installation: proxy ownership is unknown"))?;
+    if owned.sha256.len() != 64
+        || !owned.sha256.bytes().all(|b| b.is_ascii_hexdigit())
+        || crate::install::github::verify_digest(source, Some(&format!("sha256:{}", owned.sha256)))
+            .is_err()
+    {
+        return Err(std::io::Error::other(
+            "Proxy changed or outside game directory; preserved",
+        ));
+    }
+    // Recheck the destination immediately before rename; never intentionally replace it.
+    if entry_metadata(destination)?.is_some() {
+        return Err(io::Error::other("Proxy destination appeared; preserved"));
+    }
+    rename_without_replace(source, destination)?;
+    Ok(true)
 }
 
 /// Toggle the proxy as requested, then start the game. Returns a log line.
@@ -121,9 +213,12 @@ pub fn launch(game: &Game, with_optiscaler: bool) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::install::manifest::InstallManifest;
+    use crate::install::manifest::{InstallManifest, OwnedFile};
+    use sha2::{Digest, Sha256};
+    use std::collections::BTreeMap;
 
     fn game_with_manifest(dir: &Path, target: &str) {
+        std::fs::write(dir.join("Game.exe"), b"game").unwrap();
         let m = InstallManifest::new(
             target,
             &[target.to_string()],
@@ -132,6 +227,17 @@ mod tests {
             None,
             "2026-07-13T00:00:00".to_string(),
         );
+        let mut m = m;
+        m.schema_version = 2;
+        m.owned_files = BTreeMap::from([(
+            target.to_string(),
+            OwnedFile {
+                sha256: hex::encode(Sha256::digest(b"proxy")),
+                original_backup: None,
+                original_sha256: None,
+                extra: BTreeMap::new(),
+            },
+        )]);
         manifest::write(dir, &m).unwrap();
         std::fs::write(dir.join(target), b"proxy").unwrap();
     }
@@ -159,6 +265,7 @@ mod tests {
     fn no_manifest_means_no_touching_game_files() {
         let tmp = tempfile::tempdir().unwrap();
         // A game that ships its OWN dxgi.dll but has no OptiScaler manifest
+        std::fs::write(tmp.path().join("Game.exe"), b"game").unwrap();
         std::fs::write(tmp.path().join("dxgi.dll"), b"the game's own dll").unwrap();
         assert!(!set_optiscaler_enabled(tmp.path(), false).unwrap());
         assert!(tmp.path().join("dxgi.dll").exists());
@@ -191,14 +298,19 @@ mod tests {
     }
 
     #[test]
-    fn fallback_is_largest_exe() {
+    fn ambiguous_exes_require_explicit_selection() {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join("small.exe"), vec![0u8; 100]).unwrap();
         std::fs::write(tmp.path().join("big.exe"), vec![0u8; 10_000]).unwrap();
         let game = Game::new("G", tmp.path().to_path_buf(), Platform::Gog);
+        assert_eq!(resolve_method(&game), None);
+
+        crate::resolver::remember(tmp.path(), &tmp.path().join("big.exe")).unwrap();
         assert_eq!(
             resolve_method(&game),
-            Some(LaunchMethod::Exe(tmp.path().join("big.exe")))
+            Some(LaunchMethod::Exe(
+                tmp.path().join("big.exe").canonicalize().unwrap()
+            ))
         );
     }
 }

@@ -1,0 +1,117 @@
+{
+  "rules_version": 1,
+  "checked_at": "2026-09-25",
+  "general": [
+    {
+      "id": "dlss-sr-output",
+      "status": "conditional",
+      "source_url": "https://www.nvidia.com/en-gb/geforce/technologies/dlss/",
+      "version_scope": "NVIDIA DLSS Super Resolution; game integration and driver version unknown",
+      "title": {"en": "DLSS Super Resolution output", "da": "DLSS Super Resolution som output", "pl": "DLSS Super Resolution jako wyjście"},
+      "explanation": {"en": "Native DLSS Super Resolution output requires a GeForce RTX GPU and game support. A DLL or selectable input alone does not prove it is active.", "da": "DLSS Super Resolution som output kræver et GeForce RTX-grafikkort og spilunderstøttelse. En DLL eller et valgbart input beviser ikke, at det er aktivt.", "pl": "Natywne wyjście DLSS Super Resolution wymaga karty GeForce RTX i obsługi w grze. Sama biblioteka DLL lub wybór wejścia nie dowodzi aktywacji."}
+    },
+    {
+      "id": "dlss-input-spoofing",
+      "status": "conditional",
+      "source_url": "https://github.com/optiscaler/OptiScaler/wiki/Fakenvapi",
+      "version_scope": "OptiScaler 0.9 family; input selection is not DLSS output support",
+      "title": {"en": "DLSS input is separate from output", "da": "DLSS-input er adskilt fra output", "pl": "Wejście DLSS jest oddzielne od wyjścia"},
+      "explanation": {"en": "AMD and Intel users may be able to select a game's DLSS input through spoofing, then choose another supported output. This does not enable NVIDIA DLSS output on non-RTX hardware; game-specific spoofing risks still apply.", "da": "AMD- og Intel-brugere kan muligvis vælge spillets DLSS-input via spoofing og derefter et andet understøttet output. Det aktiverer ikke NVIDIA DLSS-output uden RTX; spilspecifikke spoofing-risici gælder stadig.", "pl": "Na AMD i Intel spoofing może umożliwić wybór wejścia DLSS gry i innego obsługiwanego wyjścia. Nie włącza to wyjścia NVIDIA DLSS bez RTX; nadal istnieją ryzyka specyficzne dla gry."}
+    },
+    {
+      "id": "fsr-sr",
+      "status": "conditional",
+      "source_url": "https://gpuopen.com/amd-fsr-sdk/",
+      "version_scope": "FSR 2.3.4/3.1.5 SR; SM 6.2; newer ML requirements not inferred",
+      "title": {"en": "FSR Super Resolution", "da": "FSR Super Resolution", "pl": "FSR Super Resolution"},
+      "explanation": {"en": "FSR SR is cross-vendor, but the exact game integration, graphics API, Shader Model 6.2 capability and driver are not established by this profile. Do not infer newer ML FSR support.", "da": "FSR SR virker på tværs af leverandører, men spillets integration, grafik-API, Shader Model 6.2 og driver er ikke påvist af denne profil. Udled ikke understøttelse af nyere ML-FSR.", "pl": "FSR SR działa na GPU różnych firm, ale profil nie potwierdza integracji gry, API, Shader Model 6.2 ani sterownika. Nie zakładaj obsługi nowszego FSR opartego na ML."}
+    },
+    {
+      "id": "xess-sr",
+      "status": "conditional",
+      "source_url": "https://github.com/intel/xess/blob/main/doc/xess_sr_developer_guide_english.md",
+      "version_scope": "Intel XeSS 3 SR; DX12 cross-vendor SM 6.4/DP4a; other APIs have separate requirements",
+      "title": {"en": "XeSS Super Resolution", "da": "XeSS Super Resolution", "pl": "XeSS Super Resolution"},
+      "explanation": {"en": "XeSS SR may run on supported Intel GPUs or other GPUs with required SM 6.4/DP4a capability. This profile does not measure that capability, API integration or driver compatibility.", "da": "XeSS SR kan køre på understøttede Intel-GPU'er eller andre GPU'er med krævet SM 6.4/DP4a. Profilen måler ikke denne evne, API-integration eller driverkompatibilitet.", "pl": "XeSS SR może działać na zgodnych GPU Intel lub innych GPU z wymaganym SM 6.4/DP4a. Profil nie mierzy tej funkcji, integracji API ani zgodności sterownika."}
+    },
+    {
+      "id": "fg-input-output",
+      "status": "conditional",
+      "source_url": "https://github.com/optiscaler/OptiScaler/wiki/Frame-Generation-Options",
+      "version_scope": "OptiScaler 0.9+ FG options; actual game FG support unknown",
+      "title": {"en": "Frame generation needs input and output", "da": "Frame generation kræver input og output", "pl": "Generowanie klatek wymaga wejścia i wyjścia"},
+      "explanation": {"en": "Prefer a native FG input when the game offers one; use OptiFG only as a fallback. Select both FG input and output, save the INI and restart the game. Exact game/API/driver support is unverified.", "da": "Foretræk spillets native FG-input; brug kun OptiFG som reserve. Vælg både FG-input og output, gem INI og genstart spillet. Spil/API/driver er ikke verificeret.", "pl": "Preferuj natywne wejście FG gry; OptiFG traktuj jako awaryjne. Wybierz wejście i wyjście FG, zapisz INI i uruchom grę ponownie. Gra/API/sterownik nie są potwierdzone."}
+    },
+    {
+      "id": "fsr-fg-31",
+      "status": "conditional",
+      "source_url": "https://gpuopen.com/amd-fsr-sdk/",
+      "version_scope": "AMD FSR Frame Generation 3.1.6; newer ML FG requirements not inferred",
+      "title": {"en": "FSR 3.1 frame-generation hardware", "da": "FSR 3.1 FG-hardware", "pl": "Sprzęt FSR 3.1 FG"},
+      "explanation": {"en": "AMD lists RX 5000+ or equivalent hardware with Shader Model 6.2 for FSR 3.1.6 FG. This profile cannot verify Shader Model, driver, game integration or newer ML FG requirements.", "da": "AMD angiver RX 5000+ eller tilsvarende hardware med Shader Model 6.2 til FSR 3.1.6 FG. Profilen kan ikke verificere Shader Model, driver, spilintegration eller nyere ML-FG-krav.", "pl": "AMD podaje RX 5000+ lub odpowiednik z Shader Model 6.2 dla FSR 3.1.6 FG. Profil nie potwierdza Shader Model, sterownika, integracji gry ani wymagań nowszego ML FG."}
+    },
+    {
+      "id": "xefg-limits",
+      "status": "conditional",
+      "source_url": "https://github.com/intel/xess/blob/main/doc/xess_fg_developer_guide_english.md",
+      "version_scope": "Intel XeSS-FG developer guide 1.3; OptiScaler output support may differ",
+      "title": {"en": "XeFG conditions", "da": "XeFG-betingelser", "pl": "Warunki XeFG"},
+      "explanation": {"en": "XeFG requires supported DX12 hardware/driver and XeLL; non-Intel GPUs need SM 6.4. Avoid Vulkan, exclusive fullscreen, FP16 HDR and scRGB for this path. Verify borderless mode and output support before enabling.", "da": "XeFG kræver understøttet DX12-hardware/driver og XeLL; ikke-Intel-GPU'er kræver SM 6.4. Undgå Vulkan, eksklusiv fuldskærm, FP16 HDR og scRGB her. Kontroller kantløs tilstand og outputunderstøttelse før aktivering.", "pl": "XeFG wymaga zgodnego sprzętu/sterownika DX12 i XeLL; GPU innych firm wymagają SM 6.4. Unikaj Vulkan, pełnego ekranu wyłącznego, FP16 HDR i scRGB. Sprawdź tryb bez ramek i obsługę wyjścia."}
+    }
+  ],
+  "games": [
+    {
+      "id": "fatekeeper-local",
+      "aliases": ["Fatekeeper"], "steam_ids": [], "status": "unknown",
+      "source_url": "local:investigation", "version_scope": "Local layout investigation only; runtime gameplay unverified",
+      "title": {"en": "Fatekeeper: local evidence only", "da": "Fatekeeper: kun lokale data", "pl": "Fatekeeper: tylko lokalne dane"},
+      "explanation": {"en": "The install layout was investigated locally, not verified on the upstream compatibility wiki. Do not claim OptiScaler loaded or worked until logs and gameplay confirm it.", "da": "Installationsmappen er undersøgt lokalt, ikke verificeret på upstreams kompatibilitetswiki. Påstå ikke at OptiScaler blev indlæst eller virkede uden log og spiltest.", "pl": "Układ instalacji zbadano lokalnie, bez potwierdzenia na wiki zgodności. Nie twierdz, że OptiScaler załadował się lub działał bez logu i testu gry."}
+    },
+    {
+      "id": "satisfactory",
+      "aliases": ["Satisfactory"], "steam_ids": ["526870"], "status": "documented",
+      "source_url": "https://github.com/optiscaler/OptiScaler/wiki/Compatibility-List", "version_scope": "Wiki compatibility entry; tested OptiScaler version not stated",
+      "title": {"en": "Satisfactory: DX12 Engine target", "da": "Satisfactory: DX12 Engine-mål", "pl": "Satisfactory: katalog Engine DX12"},
+      "explanation": {"en": "The wiki lists DLSS, FSR3 and XeSS inputs. Use DX12 and Engine/Binaries/Win64, not FactoryGame/Binaries/Win64. This is an installation rule, not proof of current settings or loading.", "da": "Wikien angiver DLSS-, FSR3- og XeSS-input. Brug DX12 og Engine/Binaries/Win64, ikke FactoryGame/Binaries/Win64. Det er en installationsregel, ikke bevis for aktive indstillinger eller indlæsning.", "pl": "Wiki wymienia wejścia DLSS, FSR3 i XeSS. Użyj DX12 oraz Engine/Binaries/Win64, nie FactoryGame/Binaries/Win64. To wskazówka instalacji, nie dowód aktywnych ustawień ani załadowania."}
+    },
+    {
+      "id": "cyberpunk-2077",
+      "tested_version": "0.9.3",
+      "aliases": ["Cyberpunk 2077"], "steam_ids": ["1091500"], "status": "documented",
+      "source_url": "https://github.com/optiscaler/OptiScaler/wiki/Cyberpunk-2077", "version_scope": "Wiki last tested with OptiScaler 0.9.3; game build unspecified",
+      "title": {"en": "Cyberpunk 2077: input caveats", "da": "Cyberpunk 2077: input-forbehold", "pl": "Cyberpunk 2077: uwagi o wejściach"},
+      "explanation": {"en": "Wiki lists DLSS, XeSS and FSR inputs; avoid FSR-FG inputs. On AMD/Intel with path tracing, DLSS input may force noisy DLSS RR; prefer XeSS or FSR input. This does not establish the current output or active FG.", "da": "Wikien angiver DLSS-, XeSS- og FSR-input; undgå FSR-FG-input. På AMD/Intel med path tracing kan DLSS-input tvinge støjende DLSS RR; foretræk XeSS- eller FSR-input. Det fastslår ikke aktuelt output eller aktiv FG.", "pl": "Wiki wymienia wejścia DLSS, XeSS i FSR; unikaj wejść FSR-FG. Na AMD/Intel z path tracing wejście DLSS może wymusić zaszumione DLSS RR; preferuj XeSS lub FSR. To nie potwierdza aktualnego wyjścia ani FG."}
+    },
+    {
+      "id": "hitman-woa",
+      "tested_version": "0.9",
+      "aliases": ["HITMAN 3", "HITMAN World of Assassination", "HITMAN 3 World of Assassination"], "steam_ids": ["1659040"], "status": "documented",
+      "source_url": "https://github.com/optiscaler/OptiScaler/wiki/HITMAN-3-World-of-Assassination", "version_scope": "Wiki last tested with OptiScaler 0.9; game build unspecified",
+      "title": {"en": "HITMAN 3 / World of Assassination", "da": "HITMAN 3 / World of Assassination", "pl": "HITMAN 3 / World of Assassination"},
+      "explanation": {"en": "Wiki reports FSR2 inputs disabled due to crashes; use DLSS or XeSS input. Spoofing is off by default because it disables ray tracing. Do not generalize this to other HITMAN titles.", "da": "Wikien melder at FSR2-input er slået fra på grund af nedbrud; brug DLSS- eller XeSS-input. Spoofing er som standard fra, da det deaktiverer ray tracing. Overfør ikke dette til andre HITMAN-spil.", "pl": "Wiki podaje, że wejścia FSR2 są wyłączone z powodu awarii; użyj DLSS lub XeSS. Spoofing domyślnie jest wyłączony, bo wyłącza ray tracing. Nie uogólniaj tego na inne gry HITMAN."}
+    },
+    {
+      "id": "witcher-3",
+      "tested_version": "0.9.4",
+      "aliases": ["The Witcher 3", "The Witcher 3 Wild Hunt", "The Witcher 3: Wild Hunt"], "steam_ids": ["292030"], "status": "documented",
+      "source_url": "https://github.com/optiscaler/OptiScaler/wiki/The-Witcher-3-Wild-Hunt", "version_scope": "Wiki last tested with OptiScaler 0.9.4; DX12 mode",
+      "title": {"en": "The Witcher 3: DX12 and SL1", "da": "The Witcher 3: DX12 og SL1", "pl": "Wiedźmin 3: DX12 i SL1"},
+      "explanation": {"en": "Use DX12 and bin/x64_dx12. Streamline 1 means DLSSG-via-SL FG input is unsupported; the wiki discusses Nukem's or OptiFG paths instead. If DLSS input flickers, try XeSS input. Verify FG setup separately.", "da": "Brug DX12 og bin/x64_dx12. Streamline 1 betyder, at DLSSG-via-SL FG-input ikke understøttes; wikien omtaler i stedet Nukem's eller OptiFG. Prøv XeSS-input ved flimrende DLSS-input. Kontroller FG separat.", "pl": "Użyj DX12 i bin/x64_dx12. Streamline 1 wyklucza wejście FG DLSSG-via-SL; wiki omawia zamiast tego Nukem's lub OptiFG. Gdy wejście DLSS migocze, spróbuj XeSS. FG sprawdź oddzielnie."}
+    },
+    {
+      "id": "forspoken",
+      "tested_version": "0.7.7-pre13",
+      "aliases": ["Forspoken"], "steam_ids": ["1680880"], "status": "documented",
+      "source_url": "https://github.com/optiscaler/OptiScaler/wiki/Forspoken", "version_scope": "Wiki last tested with OptiScaler 0.7.7-pre13; later versions unverified here",
+      "title": {"en": "Forspoken: proxy filename", "da": "Forspoken: proxyfilnavn", "pl": "Forspoken: nazwa pliku proxy"},
+      "explanation": {"en": "The wiki requires d3d12.dll; other proxy names may be rejected as modified. Its old test version does not establish compatibility with this release. FSR3.0 input was marked uncertain.", "da": "Wikien kræver d3d12.dll; andre proxynavne kan blive afvist som ændrede. Den gamle testversion beviser ikke kompatibilitet med denne udgave. FSR3.0-input var markeret usikkert.", "pl": "Wiki wymaga d3d12.dll; inne nazwy proxy mogą być odrzucone jako zmodyfikowane. Stara wersja testowa nie potwierdza zgodności z tą wersją. Wejście FSR3.0 było niepewne."}
+    },
+    {
+      "id": "a-quiet-place-road-ahead",
+      "aliases": ["A Quiet Place The Road Ahead", "A Quiet Place: The Road Ahead"], "steam_ids": ["2233120"], "status": "documented",
+      "source_url": "https://github.com/optiscaler/OptiScaler/wiki/Compatibility-List", "version_scope": "Wiki compatibility entry; tested OptiScaler version not stated",
+      "title": {"en": "A Quiet Place: The Road Ahead proxy", "da": "A Quiet Place: The Road Ahead-proxy", "pl": "A Quiet Place: The Road Ahead proxy"},
+      "explanation": {"en": "The compatibility list specifies winmm.dll for this game. This filename guidance is not evidence that the overlay loaded or gameplay worked on this device.", "da": "Kompatibilitetslisten angiver winmm.dll til spillet. Filnavnet beviser ikke, at overlay blev indlæst eller at spillet virkede på denne maskine.", "pl": "Lista zgodności wskazuje winmm.dll dla tej gry. Ta wskazówka nie dowodzi, że nakładka załadowała się ani że gra działała na tym komputerze."}
+    }
+  ]
+}

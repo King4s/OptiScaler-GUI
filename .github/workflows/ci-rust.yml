@@ -3,9 +3,9 @@ name: CI (Rust)
 on:
   push:
     branches: [main]
-    paths: ['rust/**', '.github/workflows/ci-rust.yml']
+    paths: ['rust/**', 'src/translations/**', '.github/workflows/ci-rust.yml']
   pull_request:
-    paths: ['rust/**', '.github/workflows/ci-rust.yml']
+    paths: ['rust/**', 'src/translations/**', '.github/workflows/ci-rust.yml']
 
 defaults:
   run:
@@ -25,7 +25,7 @@ jobs:
         with:
           workspaces: rust
       - run: cargo fmt --all --check
-      - run: cargo clippy --all-targets --workspace -- -D warnings
+      - run: cargo clippy --all-targets --workspace --locked -- -D warnings
 
   test-windows:
     runs-on: windows-latest
@@ -35,7 +35,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: rust
-      - run: cargo test --workspace
+      - run: cargo test --workspace --locked
 
   build-release:
     runs-on: windows-latest
@@ -45,7 +45,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: rust
-      - run: cargo build --release --workspace
+      - run: cargo build --release --workspace --locked
       - name: Check binary size budget
         shell: pwsh
         run: |
@@ -54,10 +54,45 @@ jobs:
           Write-Host "OptiScaler-GUI.exe: $mb MB"
           if ($mb -gt 12) { Write-Error "Binary exceeds 12 MB budget ($mb MB)"; exit 1 }
           if ($mb -gt 9)  { Write-Host "::warning::Binary above 9 MB soft budget ($mb MB)" }
+      - name: Smoke-test native GUI startup
+        shell: pwsh
+        run: |
+          $smokeDir = Join-Path $env:RUNNER_TEMP 'optiscaler-gui-smoke'
+          New-Item -ItemType Directory -Force -Path (Join-Path $smokeDir 'cache') | Out-Null
+          Copy-Item 'target/release/OptiScaler-GUI.exe' (Join-Path $smokeDir 'OptiScaler-GUI.exe')
+          '{"check_updates":false,"auto_update_optiscaler":false}' |
+            Set-Content -NoNewline -Encoding utf8 (Join-Path $smokeDir 'cache/config.json')
+          $process = Start-Process -FilePath (Join-Path $smokeDir 'OptiScaler-GUI.exe') -WindowStyle Hidden -PassThru
+          try {
+            Start-Sleep -Seconds 8
+            $process.Refresh()
+            if ($process.HasExited) { throw "GUI exited during startup with code $($process.ExitCode)" }
+            $log = Join-Path $smokeDir 'logs/optiscaler-gui.log'
+            if (!(Test-Path $log) -or !(Select-String -Path $log -Pattern 'OptiScaler GUI .* started' -Quiet)) {
+              throw 'GUI did not record a successful startup'
+            }
+          } finally {
+            $process.Refresh()
+            if (!$process.HasExited) { Stop-Process -Id $process.Id -Force }
+          }
+      - name: Verify 7z release package
+        shell: pwsh
+        run: |
+          $sevenZip = Join-Path $env:ProgramFiles '7-Zip/7z.exe'
+          if (!(Test-Path $sevenZip)) { throw '7-Zip is missing from the Windows runner' }
+          Push-Location target/release
+          try {
+            & $sevenZip a -t7z -mx=9 'OptiScaler-GUI.7z' 'OptiScaler-GUI.exe'
+            if ($LASTEXITCODE -ne 0) { throw '7z creation failed' }
+            & $sevenZip t 'OptiScaler-GUI.7z'
+            if ($LASTEXITCODE -ne 0) { throw '7z verification failed' }
+          } finally { Pop-Location }
       - uses: actions/upload-artifact@v4
         with:
           name: OptiScaler-GUI-dev
-          path: rust/target/release/OptiScaler-GUI.exe
+          path: |
+            rust/target/release/OptiScaler-GUI.exe
+            rust/target/release/OptiScaler-GUI.7z
 
   # Weekly canary: extract the real latest OptiScaler release with sevenz-rust2
   # so an upstream compression change is caught before users hit it.
@@ -78,4 +113,4 @@ jobs:
           "OPTISCALER_ARCHIVE=$($asset.FullName)" | Out-File -Append $env:GITHUB_ENV
         env:
           GH_TOKEN: ${{ github.token }}
-      - run: cargo test -p opticore extracts_real_optiscaler_archive -- --ignored
+      - run: cargo test -p opticore --locked extracts_real_optiscaler_archive -- --ignored

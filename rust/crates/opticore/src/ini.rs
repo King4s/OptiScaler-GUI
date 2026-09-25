@@ -205,16 +205,73 @@ pub fn serialize(doc: &IniDocument) -> String {
     out
 }
 
-/// Write with a `.ini.backup` copy of the previous file, like Python.
+/// Concrete user-selected changes; never inferred from the GUI's GPU vendor.
+pub fn preview_changes(before: &IniDocument, after: &IniDocument) -> Vec<String> {
+    after
+        .sections
+        .iter()
+        .flat_map(|s| {
+            s.entries.iter().filter_map(move |e| {
+                let old = before
+                    .get(&s.name, &e.key)
+                    .map(|e| e.value.as_str())
+                    .unwrap_or("<absent>");
+                (old != e.value).then(|| format!("{}.{}: {} -> {}", s.name, e.key, old, e.value))
+            })
+        })
+        .collect()
+}
+
+/// Backup before atomic replacement. Existing backups are never overwritten.
 pub fn write_file(ini_path: &Path, doc: &IniDocument) -> std::io::Result<()> {
+    use std::io::Write;
+    if let Ok(meta) = std::fs::symlink_metadata(ini_path) {
+        let linked = meta.file_type().is_symlink();
+        #[cfg(windows)]
+        let linked = {
+            use std::os::windows::fs::MetadataExt;
+            linked || meta.file_attributes() & 0x400 != 0
+        };
+        if linked || !meta.is_file() {
+            return Err(std::io::Error::other(
+                "INI is not a regular file; preserved",
+            ));
+        }
+    }
     if let Some(parent) = ini_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
     if ini_path.exists() {
-        let backup = ini_path.with_extension("ini.backup");
-        std::fs::copy(ini_path, backup)?;
+        let mut backup = ini_path.with_extension("ini.backup");
+        if backup.exists() {
+            backup = ini_path.with_extension(format!(
+                "ini.backup.{}",
+                time::OffsetDateTime::now_utc().unix_timestamp_nanos()
+            ));
+        }
+        let mut destination = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&backup)?;
+        let mut source = std::fs::File::open(ini_path)?;
+        std::io::copy(&mut source, &mut destination)?;
+        destination.sync_all()?;
     }
-    std::fs::write(ini_path, serialize(doc))
+    let temp = ini_path.with_extension(format!("ini.{}.tmp", std::process::id()));
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temp)?;
+    let result = (|| {
+        file.write_all(serialize(doc).as_bytes())?;
+        file.sync_all()?;
+        drop(file);
+        std::fs::rename(&temp, ini_path)
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(temp);
+    }
+    result
 }
 
 /// GPU-vendor-based recommended settings, applied only where the key exists

@@ -29,8 +29,7 @@ impl App {
         state.sort_ascending = state.config.sort_ascending;
         state.view_mode = crate::state::ViewMode::from_code(&state.config.view_mode);
         theme::apply(&cc.egui_ctx, state.dark());
-        // GPU vendor from the running wgpu adapter (for Auto Settings) —
-        // no WMI/PowerShell needed
+        // Keep the UI adapter vendor for diagnostics only; it is not the game's GPU.
         if let Some(render_state) = cc.wgpu_render_state.as_ref() {
             let info = render_state.adapter.get_info();
             state.gpu_vendor = opticore::ini::GpuVendor::from_pci_vendor_id(info.vendor);
@@ -77,6 +76,10 @@ impl App {
             .iter()
             .filter(|g| {
                 g.optiscaler_installed
+                    && opticore::resolver::resolve(&g.path)
+                        .ok()
+                        .and_then(|t| opticore::install::manifest::read(&t.directory))
+                        .is_some_and(|m| m.is_owned_v2())
                     && opticore::install::installed_version(&g.path)
                         .is_some_and(|v| opticore::install::is_update_available(&v, &latest))
                     && !self.state.busy_ops.contains_key(&g.key.path_norm)
@@ -317,6 +320,7 @@ impl App {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.state.hardware.poll();
         self.drain_events();
         self.maybe_auto_update_optiscaler(ctx);
 

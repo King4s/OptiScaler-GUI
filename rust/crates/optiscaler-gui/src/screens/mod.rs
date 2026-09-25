@@ -27,6 +27,7 @@ pub fn show_settings(ctx: &egui::Context, state: &mut AppState) {
     let pal = theme::palette(state.dark());
     egui::CentralPanel::default().show(ctx, |ui| {
         ui.heading(state.i18n.tr("ui.global_settings_title"));
+        state.hardware.settings(ui, &state.i18n);
         ui.add_space(10.0);
         let mut config_changed = false;
 

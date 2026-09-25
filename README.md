@@ -19,9 +19,10 @@ All upscaling technology — FSR, XeSS, DLSS integration, frame generation, the 
 - **One-click install, update, and uninstall** of official OptiScaler releases
 - **Game auto-detection** for Steam, Epic Games, GOG Galaxy, Xbox Game Pass, and Heroic Launcher — plus manual folder selection for everything else
 - **Launch games directly** — with or without the OptiScaler proxy (Steam games via the Steam client, Game Pass via the bundled launch helper)
-- **Engine-aware installation** — detects Unreal Engine games and installs to `Engine/Binaries/Win64`, warns about known anti-cheat risks
-- **Settings editor** for `OptiScaler.ini` with per-key reset, restore-defaults, and GPU-based auto settings (runtime tuning is still done in OptiScaler's own Insert-key overlay)
-- **Safe updates** — SHA256 verification of downloads, config backup, and rollback on failed installs
+- **Reviewed install targets** — resolves the selected game executable to a target folder, shows both paths before install, and requires explicit selection when the layout is ambiguous; includes the documented Satisfactory target exception
+- **Settings editor** for `OptiScaler.ini` with per-key reset and change preview (runtime tuning is still done in OptiScaler's own Insert-key overlay)
+- **Transactional install management** — SHA256 verification, v2 ownership manifest, preservation of pre-existing files, and rollback/recovery snapshots
+- **Local guidance and report preview** — inspect detected GPU facts and source-linked advice, then review and explicitly save a limited JSON report with your test result
 - **Explorer-style library** — large/small cards, list and details views, full sorting and filtering, artwork for every store
 - **GPU-rendered UI** (egui/wgpu) with selectable animated backgrounds — and zero idle cost when disabled
 - **Portable** — one ~7.5 MB native exe, nothing to install, no runtime dependencies
@@ -31,12 +32,12 @@ All upscaling technology — FSR, XeSS, DLSS integration, frame generation, the 
 
 ## Getting started
 
-1. Download `OptiScaler-GUI.exe` from the [latest release](https://github.com/King4s/OptiScaler-GUI/releases/latest)
+1. For a publicly released build, download `OptiScaler-GUI.exe` from the [latest release](https://github.com/King4s/OptiScaler-GUI/releases/latest). The local `2026.9.0 Standard` beta is not a public release.
 2. Run it — no installation or extraction needed
 3. Scan for games (or browse to a game folder manually), select a game, click **Install**
 4. Launch the game and press **Insert** (**Alt+Insert** on non-US keyboard layouts) to configure upscaling in OptiScaler's overlay
 
-Requires Windows 10/11. The GUI downloads OptiScaler exclusively from the official GitHub releases and works offline otherwise — no data collection.
+Requires Windows 10/11. The GUI downloads OptiScaler exclusively from the official GitHub releases. Local hardware and install observations are used for on-device guidance. Reports are previewed in the game panel and saved only after you choose a file; review the JSON before sharing it yourself.
 
 ## OptiScaler compatibility
 
@@ -44,10 +45,12 @@ The current release supports OptiScaler **v0.7.0 through v0.9.4** and always dow
 
 ## Project status
 
+The Rust `2026.9.0 Standard` work is offered first as **2026.9.0-beta.1**, a prerelease rather than a stable compatibility claim. Hardware inventory, deterministic advice, local install/runtime observations, an application log, an OptiScaler INI change preview and a limited JSON report preview/export are included. The INI preview is not a settings compatibility guarantee; DLL hints and log timestamps are evidence only, and a detected `Init done` line can be stale. The user reported Fatekeeper working on 2026-09-25, but exact versions, hardware, overlay behavior and uninstall were not recorded. This beta does not establish compatibility with all games.
+
 | Track | Where | Status |
 |---|---|---|
-| Rust app (CalVer `2026.x`) | `rust/` | ✅ **Stable — the recommended download.** Native single-exe app; reads and manages installs made by the old Python version. See [`rust/PARITY.md`](rust/PARITY.md) for the verified feature-parity status. |
-| Python app (v0.x) | `src/` | ⚠️ **Legacy — phased out.** Final release is [v0.5.2](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.5.2); security/compatibility fixes only. Your existing installs carry over to the Rust app automatically. |
+| Rust app (CalVer `2026.x`) | `rust/` | Stable users should stay on the latest stable release. The `2026.9.0-beta.1` prerelease is for feedback and has not been validated for general compatibility. |
+| Python app (v0.x) | `src/` | ⚠️ **Legacy — phased out.** Final release is [v0.5.2](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.5.2); security/compatibility fixes only. Existing Python installs with old manifests are preserved, not automatically migrated or removed by this beta. |
 
 ## Running from source
 

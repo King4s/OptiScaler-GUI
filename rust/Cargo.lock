@@ -1817,7 +1817,7 @@ dependencies = [
 
 [[package]]
 name = "opticore"
-version = "2026.8.0"
+version = "2026.9.0-beta.1"
 dependencies = [
  "hex",
  "image",
@@ -1829,12 +1829,13 @@ dependencies = [
  "tempfile",
  "time",
  "ureq",
+ "windows",
  "windows-registry",
 ]
 
 [[package]]
 name = "optiscaler-gui"
-version = "2026.8.0"
+version = "2026.9.0-beta.1"
 dependencies = [
  "eframe",
  "image",

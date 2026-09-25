@@ -880,6 +880,12 @@ fn detail_panel(
     play_section(ui, state, game, pal);
     ui.separator();
 
+    state
+        .hardware
+        .game_selector(ui, &game.key.path_norm, &state.i18n);
+    state
+        .advice
+        .show(ui, game, &mut state.hardware, &state.i18n);
     install_section(ui, ctx, state, ops, game);
 
     ui.add_space(8.0);
@@ -992,6 +998,48 @@ fn install_section(
     }
     let allowed = !needs_confirm || state.anticheat_confirmed;
 
+    if ui
+        .button(state.i18n.tr("install_target.select_exe"))
+        .clicked()
+    {
+        if let Some(exe) = rfd::FileDialog::new()
+            .set_directory(&game.path)
+            .add_filter(state.i18n.tr("install_target.game_exe"), &["exe"])
+            .pick_file()
+        {
+            let answer = rfd::MessageDialog::new()
+                .set_title(state.i18n.tr("install_target.title"))
+                .set_description(format!(
+                    "{}\n{}",
+                    state.i18n.tr("install_target.remember"),
+                    exe.display()
+                ))
+                .set_buttons(rfd::MessageButtons::YesNo)
+                .show();
+            if answer == rfd::MessageDialogResult::Yes {
+                if let Err(e) = opticore::resolver::remember(&game.path, &exe) {
+                    state
+                        .op_results
+                        .insert(game.key.path_norm.clone(), (false, e));
+                }
+            }
+        }
+    }
+    let target = match opticore::resolver::resolve(&game.path) {
+        Ok(target) => target,
+        Err(e) => {
+            ui.colored_label(pal.badge_warn, e);
+            return;
+        }
+    };
+    ui.label(format!("EXE: {}", target.executable.display()));
+    ui.label(format!(
+        "{}: {}",
+        state.i18n.tr("install_target.folder"),
+        target.directory.display()
+    ));
+    ui.label(&target.reason);
+
     if game.optiscaler_installed {
         // Update path: compare installed manifest version vs latest release
         let installed = opticore::install::installed_version(&game.path);
@@ -1015,9 +1063,14 @@ fn install_section(
                 {
                     let target = opticore::install::installed_target_filename(&game.path)
                         .unwrap_or_else(|| "dxgi.dll".to_string());
+                    let Some(confirmed_target) = confirm_install(&game.path, &target, &state.i18n)
+                    else {
+                        return;
+                    };
                     let options = opticore::install::InstallOptions {
                         target_filename: target,
                         overwrite: true,
+                        confirmed_target: Some(confirmed_target),
                         ..Default::default()
                     };
                     state
@@ -1076,9 +1129,15 @@ fn install_section(
             )
             .clicked()
         {
+            let Some(confirmed_target) =
+                confirm_install(&game.path, &state.proxy_choice, &state.i18n)
+            else {
+                return;
+            };
             let options = opticore::install::InstallOptions {
                 target_filename: state.proxy_choice.clone(),
                 overwrite: false,
+                confirmed_target: Some(confirmed_target),
                 ..Default::default()
             };
             state
@@ -1087,4 +1146,28 @@ fn install_section(
             ops.spawn_install(ctx, game, options);
         }
     }
+}
+
+fn confirm_install(
+    root: &std::path::Path,
+    proxy: &str,
+    i18n: &opticore::i18n::Translator,
+) -> Option<opticore::resolver::InstallTarget> {
+    let Ok(target) = opticore::resolver::resolve(root) else {
+        return None;
+    };
+    let confirmed = rfd::MessageDialog::new()
+        .set_title(i18n.tr("install_target.confirm_title"))
+        .set_description(format!(
+            "EXE: {}\n{}: {}\nDLL: {}\n{}",
+            target.executable.display(),
+            i18n.tr("install_target.folder"),
+            target.directory.display(),
+            proxy,
+            i18n.tr("install_target.backup_continue")
+        ))
+        .set_buttons(rfd::MessageButtons::YesNo)
+        .show()
+        == rfd::MessageDialogResult::Yes;
+    confirmed.then_some(target)
 }

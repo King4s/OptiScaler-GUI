@@ -22,6 +22,7 @@ pub struct EditorState {
     pub game_name: String,
     pub ini_path: PathBuf,
     pub doc: IniDocument,
+    pub original: IniDocument,
     /// Pristine upstream OptiScaler.ini from the cached release payload,
     /// used for "Restore defaults" and per-key reset.
     pub defaults: Option<IniDocument>,
@@ -150,6 +151,8 @@ fn load_default_ini() -> Option<IniDocument> {
 }
 
 pub struct AppState {
+    pub advice: crate::advice_view::AdviceState,
+    pub hardware: crate::hardware_view::HardwareState,
     pub screen: Screen,
     pub games: Vec<Game>,
     pub scan_state: ScanState,
@@ -179,7 +182,7 @@ pub struct AppState {
     pub proxy_choice: String,
     /// Open INI editing session (Screen::IniEditor).
     pub editor: Option<EditorState>,
-    /// GPU vendor from the wgpu adapter, for Auto Settings.
+    /// UI adapter vendor for diagnostics, not an assumption about the game's GPU.
     pub gpu_vendor: GpuVendor,
     /// System accessibility: animations disabled → effects stay off.
     pub reduced_motion: bool,
@@ -202,6 +205,8 @@ pub struct AppState {
 impl Default for AppState {
     fn default() -> Self {
         Self {
+            hardware: crate::hardware_view::HardwareState::default(),
+            advice: crate::advice_view::AdviceState::default(),
             screen: Screen::Games,
             games: Vec::new(),
             scan_state: ScanState::NotStarted,
@@ -248,12 +253,19 @@ impl AppState {
 
     /// Open the INI editor for a game (install dir resolved like the installer).
     pub fn open_editor(&mut self, game: &Game) {
-        let install_dir = opticore::install::payload::determine_install_directory(&game.path);
+        let install_dir = match opticore::resolver::resolve(&game.path) {
+            Ok(target) => target.directory,
+            Err(e) => {
+                self.push_log(e);
+                return;
+            }
+        };
         let ini_path = install_dir.join("OptiScaler.ini");
         if let Some(doc) = opticore::ini::read_file(&ini_path) {
             self.editor = Some(EditorState {
                 game_name: game.name.clone(),
                 ini_path,
+                original: doc.clone(),
                 doc,
                 defaults: load_default_ini(),
                 dirty: false,

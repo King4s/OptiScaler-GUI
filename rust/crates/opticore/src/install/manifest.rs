@@ -3,10 +3,22 @@
 //! installations made by the other. THE cross-version contract.
 
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 pub const MANIFEST_FILENAME: &str = ".optiscaler-gui-install.json";
+pub const BACKUP_DIRECTORY: &str = ".optiscaler-gui-backups";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OwnedFile {
+    pub sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_backup: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_sha256: Option<String>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstallManifest {
@@ -21,6 +33,10 @@ pub struct InstallManifest {
     /// Forward-slash relative paths, sorted & deduped
     pub files: Vec<String>,
     pub directories: Vec<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub owned_files: BTreeMap<String, OwnedFile>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
 impl InstallManifest {
@@ -51,7 +67,17 @@ impl InstallManifest {
             release_url,
             files: files.into_iter().collect(),
             directories: directories.into_iter().collect(),
+            owned_files: BTreeMap::new(),
+            extra: BTreeMap::new(),
         }
+    }
+
+    pub fn is_owned_v2(&self) -> bool {
+        self.schema_version == 2
+            && self.installed_by == "OptiScaler-GUI"
+            && !self.owned_files.is_empty()
+            && self.files.len() == self.owned_files.len()
+            && self.files.iter().all(|f| self.owned_files.contains_key(f))
     }
 }
 

@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+### 2026.9.0-beta.1 Standard - prerelease
+
+- Added a shared safe resolver for scan, install, update, launch, observations, INI editing, and removal. Ambiguous executable layouts require an explicit game EXE selection; the preview shows the selected executable and target folder. Satisfactory has a documented exception: its FactoryGame Shipping EXE is under `FactoryGame/Binaries/Win64`, while the OptiScaler proxy target is `Engine/Binaries/Win64`.
+- Added v2 install manifests with per-file hashes, ownership checks, private original-file backups, rollback snapshots, and guarded update/uninstall. Legacy v1 and manifest-less installs do not authorize deletion; preserve files and handle migration cautiously.
+- Added local hardware inventory, deterministic advice, game/install observations, overlay/loaded-log evidence, and INI change preview. These are advisory/evidence features, not proof of runtime compatibility; the loaded-log indicator can reflect stale `OptiScaler.log` data.
+- Added an allowlisted JSON report builder with privacy tests, locally saved per-game test results, a GUI preview and a non-overwriting save dialog. Local Rust checks and isolated startup smoke passed. The user reported Fatekeeper working on 2026-09-25; exact versions, hardware, overlay behavior and uninstall were not recorded. Compatibility with all games is not claimed.
+- Hardened updates against foreign-file collisions, late destination changes, unsafe rollback and hard-link destinations. Installation aborts if the target changes after confirmation. Edited OptiScaler INI files no longer block safe binary updates or uninstall, and are preserved. Satisfactory target resolution uses its validated layout instead of the root folder name. Report exports omit filesystem-derived game names.
+
+### Fixed
+
+- Locate Unreal Engine game installations beside the project's Shipping.exe
+  (Win64 or WinGDK), not Engine/Binaries/Win64. This fixes misplaced installs
+  and missing overlays in games such as Fatekeeper. Scan detection now also
+  checks the resolved game directory.
+
 ### v0.5.2 - 2026-07-12
 
 #### Performance
