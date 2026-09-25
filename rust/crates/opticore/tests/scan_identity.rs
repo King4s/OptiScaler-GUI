@@ -4,8 +4,10 @@
 //! Everything here is built in a tempdir from synthetic manifests; no test
 //! reads this machine's real game libraries.
 
-use opticore::model::{DiscoverySource, Game, Platform, StoreIdentity};
-use opticore::scan::{dedup_games, epic, gog, heroic, heroic_identity, scan_steam_root_for_tests};
+use opticore::model::{DiscoverySource, Game, Platform, StoreIdentity, TitleSource};
+use opticore::scan::{
+    dedup_games, epic, gog, gog_describe, heroic, heroic_identity, names, scan_steam_root_for_tests,
+};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -455,5 +457,27 @@ fn heroic_identity_names_the_store_not_the_launcher() {
             ("amzn1".to_string(), Platform::Amazon),
             ("app1".to_string(), Platform::Epic),
         ]
+    );
+}
+
+#[test]
+fn gog_folder_with_an_id_but_no_title_reports_a_folder_title() {
+    // The regression: the entry is discovered through its store file and carries
+    // a real id, but that file has no `gameTitle`, so the name is only prettified
+    // from the folder. Reporting it as store-supplied let a folder name outrank a
+    // launcher's real title for the same install.
+    let tmp = tempfile::tempdir().unwrap();
+    let folder = tmp.path().join("cyberpunk_2077");
+    fs::create_dir_all(&folder).unwrap();
+    write_file_at(&folder.join("goggame-1091500.info"), r#"{"other": 1}"#);
+
+    let described = gog_describe(&folder);
+
+    assert_eq!(described.store_id.as_deref(), Some("1091500"));
+    assert_eq!(described.source, DiscoverySource::StoreManifest);
+    assert_eq!(described.title_source, TitleSource::Folder);
+    assert_eq!(
+        described.name,
+        names::folder_name_to_title("cyberpunk_2077")
     );
 }

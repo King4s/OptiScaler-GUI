@@ -123,6 +123,24 @@ pub enum DiscoverySource {
     UserSelected,
 }
 
+/// Where an entry's title came from.
+///
+/// This is deliberately not the discovery source. A GOG folder can be found
+/// through its own store file while that file carries no `gameTitle`, and then
+/// the title is only prettified from the folder name even though the entry was
+/// discovered through a store manifest. Ranking titles by the discovery source
+/// let such a folder name outrank a launcher's real title for the same install.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum TitleSource {
+    /// Prettified from the folder name. The weakest source.
+    #[default]
+    Folder,
+    /// A launcher's own library metadata.
+    Launcher,
+    /// The store's own metadata for this game.
+    Store,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Game {
     pub key: GameKey,
@@ -138,6 +156,10 @@ pub struct Game {
     /// `FolderScan` — the least-claiming default.
     #[serde(default)]
     pub discovery_source: DiscoverySource,
+    /// Where this entry's title came from. Absent from older JSON, which loads
+    /// as `Folder` — the least-claiming default.
+    #[serde(default)]
+    pub title_source: TitleSource,
     pub engine: Engine,
     pub engine_supported: bool,
     pub anti_cheat: Vec<AntiCheat>,
@@ -163,6 +185,7 @@ impl Game {
             steam_appid: None,
             store_identity: None,
             discovery_source: DiscoverySource::FolderScan,
+            title_source: TitleSource::Folder,
             engine: Engine::Unknown,
             engine_supported: true,
             anti_cheat: Vec::new(),

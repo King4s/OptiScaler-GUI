@@ -10,7 +10,7 @@
 //! They deliberately never touch this machine's real game libraries, and they
 //! do not re-derive the rule — they call the shipping function.
 
-use opticore::model::{DiscoverySource, Game, Platform, StoreIdentity};
+use opticore::model::{DiscoverySource, Game, Platform, StoreIdentity, TitleSource};
 use opticore::scan::dedup_games;
 use std::path::PathBuf;
 
@@ -165,6 +165,7 @@ fn store_root_hit(title: &str) -> Game {
         None,
     );
     game.discovery_source = DiscoverySource::StoreManifest;
+    game.title_source = TitleSource::Store;
     game
 }
 
@@ -178,6 +179,7 @@ fn launcher_hit(title: &str) -> Game {
         None,
     );
     game.discovery_source = DiscoverySource::LauncherLibrary;
+    game.title_source = TitleSource::Launcher;
     // The launcher is only the route; the id belongs to the store behind it.
     game.store_identity = Some(StoreIdentity::new(Platform::Epic, "app1"));
     game.art_url = Some("https://cdn.example/cover.jpg".to_string());
@@ -305,5 +307,67 @@ fn a_blank_hit_never_displaces_an_identity_bearing_one() {
     assert_eq!(
         kept[0].store_identity,
         Some(StoreIdentity::new(Platform::Heroic, "app1"))
+    );
+}
+
+/// A GOG folder found through its own store file, carrying a real id but no
+/// `gameTitle`, so its title is only prettified from the folder name.
+fn gog_hit_without_a_store_title() -> Game {
+    let mut game = game_at(
+        r"C:\Program Files\Epic Games\Some Game",
+        "Somegame",
+        Platform::Gog,
+        Some("1091500"),
+    );
+    game.discovery_source = DiscoverySource::StoreManifest;
+    game.title_source = TitleSource::Folder;
+    game
+}
+
+/// The same install as a launcher reports it: a real title, no id of its own.
+fn launcher_title_only(title: &str) -> Game {
+    let mut game = game_at(
+        r"C:\Program Files\Epic Games\Some Game",
+        title,
+        Platform::Heroic,
+        None,
+    );
+    game.discovery_source = DiscoverySource::LauncherLibrary;
+    game.title_source = TitleSource::Launcher;
+    game
+}
+
+#[test]
+fn a_store_manifest_folder_title_does_not_outrank_a_launcher_title() {
+    // The bug this pins: the GOG entry really is a store-manifest discovery, but
+    // its title came from the folder. Ranking titles by the discovery source let
+    // that folder name win over the launcher's real title for the same install.
+    let kept = dedup_games(vec![
+        gog_hit_without_a_store_title(),
+        launcher_title_only("Some Game: Deluxe"),
+    ]);
+
+    assert_eq!(kept.len(), 1);
+    assert_eq!(kept[0].name, "Some Game: Deluxe");
+    assert_eq!(kept[0].title_source, TitleSource::Launcher);
+    assert_eq!(
+        kept[0].store_identity,
+        Some(StoreIdentity::new(Platform::Gog, "1091500"))
+    );
+}
+
+#[test]
+fn a_store_manifest_folder_title_does_not_outrank_a_launcher_title_either_order() {
+    let kept = dedup_games(vec![
+        launcher_title_only("Some Game: Deluxe"),
+        gog_hit_without_a_store_title(),
+    ]);
+
+    assert_eq!(kept.len(), 1);
+    assert_eq!(kept[0].name, "Some Game: Deluxe");
+    assert_eq!(kept[0].title_source, TitleSource::Launcher);
+    assert_eq!(
+        kept[0].store_identity,
+        Some(StoreIdentity::new(Platform::Gog, "1091500"))
     );
 }
