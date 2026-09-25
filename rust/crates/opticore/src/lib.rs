@@ -20,6 +20,7 @@ pub mod report;
 pub mod resolver;
 pub mod scan;
 pub mod selfupdate;
+pub mod steam_art;
 
 /// App version (CalVer), single source of truth for the workspace.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

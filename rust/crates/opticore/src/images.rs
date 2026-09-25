@@ -2,9 +2,11 @@
 //! (`cache/game_images/appid_<id>.jpg`, name-keyed legacy stems, existing
 //! caches carry over between the apps).
 //!
-//! Sources, in order: Steam CDN header.jpg → Steam Store API
-//! (header_image / capsule_image). Downloads are resized to max 300×450 and
-//! saved as JPEG q85, matching the Python pipeline.
+//! Sources, in order: an already cached file, Steam's own local library cache
+//! ([`crate::steam_art`]), Steam CDN header.jpg, Steam Store API (header_image /
+//! capsule_image), a store-supplied art URL, GOG's public search, Xbox in-install
+//! logos, and finally the executable's own icon. Downloads are resized to max
+//! 300×450 and saved as JPEG q85, matching the Python pipeline.
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -16,13 +18,23 @@ const CACHE_EXTENSIONS: &[&str] = &["jpg", "png", "jpeg", "webp"];
 
 pub struct ImageCache {
     cache_dir: PathBuf,
+    /// Steam's per-install `appcache/librarycache` directories, resolved once so
+    /// artwork lookup does not re-read the registry for every game.
+    steam_library_caches: Vec<PathBuf>,
 }
 
 impl ImageCache {
+    /// Uses the Steam installations found on this machine.
+    /// [`ImageCache::with_library_caches`] is the seam tests use.
     pub fn new(cache_dir: &Path) -> Self {
+        Self::with_library_caches(cache_dir, crate::steam_art::library_caches())
+    }
+
+    pub fn with_library_caches(cache_dir: &Path, steam_library_caches: Vec<PathBuf>) -> Self {
         let _ = std::fs::create_dir_all(cache_dir);
         Self {
             cache_dir: cache_dir.to_path_buf(),
+            steam_library_caches,
         }
     }
 
@@ -63,21 +75,30 @@ impl ImageCache {
             return Some(cached);
         }
 
-        // 1. Steam CDN / Store API when we have an appid
+        // 1. Steam's own library cache: offline, the right aspect ratio, and
+        //    keyed by the exact app id. Tried before the CDN so a Steam game gets
+        //    its portrait without a network round trip.
+        if let Some(appid) = request.appid {
+            if let Some(path) = self.local_steam_portrait(appid) {
+                return Some(path);
+            }
+        }
+
+        // 2. Steam CDN / Store API when we have an appid
         if let Some(appid) = request.appid {
             if let Some(path) = self.fetch_steam(appid) {
                 return Some(path);
             }
         }
 
-        // 2. Store-supplied art URL (Heroic library metadata)
+        // 3. Store-supplied art URL (Heroic library metadata)
         if let Some(url) = &request.art_url {
             if let Some(path) = self.download_and_cache(url, &self.name_stem(&request.name)) {
                 return Some(path);
             }
         }
 
-        // 3. GOG public search API for GOG installs
+        // 4. GOG public search API for GOG installs
         if request.platform_is_gog {
             if let Some(url) = gog_search_image(&request.name) {
                 if let Some(path) = self.download_and_cache(&url, &self.name_stem(&request.name)) {
@@ -86,7 +107,7 @@ impl ImageCache {
             }
         }
 
-        // 4. Xbox/Game Pass: the game ships its own store logos on disk
+        // 5. Xbox/Game Pass: the game ships its own store logos on disk
         if let Some(game_path) = &request.game_path {
             if let Some(local) = xbox_local_logo(game_path) {
                 if let Some(path) = self.cache_local_image(&local, &self.name_stem(&request.name)) {
@@ -95,7 +116,7 @@ impl ImageCache {
             }
         }
 
-        // 5. Last resort: the game executable's own icon
+        // 6. Last resort: the game executable's own icon
         if let Some(game_path) = &request.game_path {
             if let Some(icon) = exe_icon_image(game_path) {
                 let out_path = self
@@ -112,6 +133,14 @@ impl ImageCache {
 
     fn name_stem(&self, game_name: &str) -> String {
         Self::safe_name(game_name)
+    }
+
+    /// Steam's own locally cached portrait for this app id, stored in our cache
+    /// layout so the next run finds it without touching Steam again.
+    fn local_steam_portrait(&self, appid: u32) -> Option<PathBuf> {
+        let source = crate::steam_art::portrait_in(&self.steam_library_caches, appid)?;
+        let img = crate::steam_art::decode_portrait(&source)?;
+        self.encode_to_cache(img, &format!("appid_{appid}"))
     }
 
     fn fetch_steam(&self, appid: u32) -> Option<PathBuf> {
@@ -367,7 +396,7 @@ mod tests {
     #[test]
     fn cached_path_prefers_appid_stem() {
         let tmp = tempfile::tempdir().unwrap();
-        let cache = ImageCache::new(tmp.path());
+        let cache = ImageCache::with_library_caches(tmp.path(), Vec::new());
         std::fs::write(tmp.path().join("appid_123.jpg"), b"x").unwrap();
         std::fs::write(tmp.path().join("Some Game.png"), b"x").unwrap();
         assert_eq!(
@@ -391,7 +420,7 @@ mod tests {
     #[test]
     fn missing_cache_returns_none() {
         let tmp = tempfile::tempdir().unwrap();
-        let cache = ImageCache::new(tmp.path());
+        let cache = ImageCache::with_library_caches(tmp.path(), Vec::new());
         assert!(cache.cached_path("Nothing", Some(1)).is_none());
     }
 }
