@@ -34,10 +34,18 @@ fn mancfg_files(dir: &Path) -> impl Iterator<Item = std::path::PathBuf> {
         .filter(|p| p.extension().map(|e| e == "mancfg").unwrap_or(false))
 }
 
-/// Read the real game title from Epic metadata (DisplayName / AppName in
-/// .egstore/*.mancfg or top-level *.mancfg). Empty result → caller falls
-/// back to a prettified folder name.
-pub fn read_game_name(game_folder: &Path) -> Option<String> {
+/// Epic's own metadata for one installed game, read from a `.mancfg`.
+pub struct EpicMetadata {
+    /// The title Epic shows: `DisplayName`, else `AppName`.
+    pub title: String,
+    /// Epic's app name (`AppName`) — the stable id a `.mancfg` carries. `None`
+    /// when the manifest has no usable one; never a title-derived substitute.
+    pub app_name: Option<String>,
+}
+
+/// Read Epic metadata from `.egstore/*.mancfg` or top-level `*.mancfg`, taking
+/// the first manifest that carries a usable title.
+pub fn read_metadata(game_folder: &Path) -> Option<EpicMetadata> {
     let egstore = game_folder.join(".egstore");
     let candidates = mancfg_files(&egstore).chain(mancfg_files(game_folder));
     for mf in candidates {
@@ -53,10 +61,23 @@ pub fn read_game_name(game_folder: &Path) -> Option<String> {
             .and_then(Value::as_str)
             .unwrap_or("");
         if title.len() > 1 {
-            return Some(title.trim().to_string());
+            let app_name = data
+                .get("AppName")
+                .and_then(Value::as_str)
+                .filter(|name| !name.is_empty())
+                .map(str::to_string);
+            return Some(EpicMetadata {
+                title: title.trim().to_string(),
+                app_name,
+            });
         }
     }
     None
+}
+
+/// The title alone, for callers that need nothing else.
+pub fn read_game_name(game_folder: &Path) -> Option<String> {
+    read_metadata(game_folder).map(|meta| meta.title)
 }
 
 #[cfg(test)]
