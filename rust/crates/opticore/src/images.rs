@@ -3,10 +3,14 @@
 //! caches carry over between the apps).
 //!
 //! Sources, in order: an already cached file, Steam's own local library cache
-//! ([`crate::steam_art`]), Steam CDN header.jpg, Steam Store API (header_image /
-//! capsule_image), a store-supplied art URL, GOG's public search, Xbox in-install
-//! logos, and finally the executable's own icon. Downloads are resized to max
-//! 300×450 and saved as JPEG q85, matching the Python pipeline.
+//! ([`crate::steam_art`]), the Steam store's portrait for the app id (GetItems),
+//! Steam CDN header.jpg, Steam Store API (header_image / capsule_image), a
+//! store-supplied art URL, GOG's public search, Xbox in-install logos, and finally
+//! the executable's own icon. Downloads are resized to max 300×450 and saved as
+//! JPEG q85, matching the Python pipeline. Every request this cache makes —
+//! Steam, the store, GOG's search and every image download — goes through the
+//! injectable [`Fetcher`], so failures and hostile bodies are testable without a
+//! network, and every body it returns is bounded before it is parsed or decoded.
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -16,25 +20,44 @@ const MAX_SIZE: (u32, u32) = (300, 450);
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(10);
 const CACHE_EXTENSIONS: &[&str] = &["jpg", "png", "jpeg", "webp"];
 
+/// The HTTP fetch this cache uses, injectable so tests can supply mock responses,
+/// failures and oversized bodies, and so the order tests need no network.
+pub type Fetcher = std::sync::Arc<dyn Fn(&str) -> Option<Vec<u8>> + Send + Sync>;
+
 pub struct ImageCache {
     cache_dir: PathBuf,
     /// Steam's per-install `appcache/librarycache` directories, resolved once so
     /// artwork lookup does not re-read the registry for every game.
     steam_library_caches: Vec<PathBuf>,
+    fetcher: Fetcher,
 }
 
 impl ImageCache {
     /// Uses the Steam installations found on this machine.
-    /// [`ImageCache::with_library_caches`] is the seam tests use.
+    /// [`ImageCache::with_sources`] is the seam callers and tests use.
     pub fn new(cache_dir: &Path) -> Self {
         Self::with_library_caches(cache_dir, crate::steam_art::library_caches())
     }
 
     pub fn with_library_caches(cache_dir: &Path, steam_library_caches: Vec<PathBuf>) -> Self {
+        Self::with_sources(
+            cache_dir,
+            steam_library_caches,
+            std::sync::Arc::new(http_get),
+        )
+    }
+
+    /// Full injection: the local library caches and the HTTP fetch.
+    pub fn with_sources(
+        cache_dir: &Path,
+        steam_library_caches: Vec<PathBuf>,
+        fetcher: Fetcher,
+    ) -> Self {
         let _ = std::fs::create_dir_all(cache_dir);
         Self {
             cache_dir: cache_dir.to_path_buf(),
             steam_library_caches,
+            fetcher,
         }
     }
 
@@ -100,7 +123,7 @@ impl ImageCache {
 
         // 4. GOG public search API for GOG installs
         if request.platform_is_gog {
-            if let Some(url) = gog_search_image(&request.name) {
+            if let Some(url) = gog_search_image(&self.fetcher, &request.name) {
                 if let Some(path) = self.download_and_cache(&url, &self.name_stem(&request.name)) {
                     return Some(path);
                 }
@@ -144,9 +167,17 @@ impl ImageCache {
     }
 
     fn fetch_steam(&self, appid: u32) -> Option<PathBuf> {
-        // Primary: Steam CDN header
-        let cdn_url = format!("https://cdn.akamai.steamstatic.com/steam/apps/{appid}/header.jpg");
         let appid_stem = format!("appid_{appid}");
+
+        // Primary: the store's own portrait for this app id, when it has one
+        if let Some(url) = self.store_portrait_url(appid) {
+            if let Some(path) = self.download_and_cache(&url, &appid_stem) {
+                return Some(path);
+            }
+        }
+
+        // Fallback: Steam CDN header
+        let cdn_url = format!("https://cdn.akamai.steamstatic.com/steam/apps/{appid}/header.jpg");
         if let Some(path) = self.download_and_cache(&cdn_url, &appid_stem) {
             return Some(path);
         }
@@ -154,7 +185,10 @@ impl ImageCache {
         // Fallback: Store API for the actual hosted image URL
         let store_url =
             format!("https://store.steampowered.com/api/appdetails?appids={appid}&filters=basic");
-        let body = http_get(&store_url)?;
+        let body = (self.fetcher)(&store_url)?;
+        if !within_response_bound(&body) {
+            return None;
+        }
         let data: serde_json::Value = serde_json::from_slice(&body).ok()?;
         let app_info = data.get(appid.to_string())?;
         if app_info.get("success") != Some(&serde_json::Value::Bool(true)) {
@@ -174,6 +208,12 @@ impl ImageCache {
         None
     }
 
+    /// The store's portrait URL for this app id, when the store has one.
+    fn store_portrait_url(&self, appid: u32) -> Option<String> {
+        let body = (self.fetcher)(&store_items_url(appid))?;
+        store_item_portrait_url(&body, appid)
+    }
+
     fn encode_to_cache(&self, img: image::DynamicImage, stem: &str) -> Option<PathBuf> {
         let img = img.thumbnail(MAX_SIZE.0, MAX_SIZE.1);
         let rgb = image::DynamicImage::ImageRgb8(img.to_rgb8());
@@ -191,8 +231,8 @@ impl ImageCache {
         } else {
             url.to_string()
         };
-        let bytes = http_get(&url)?;
-        let img = image::load_from_memory(&bytes).ok()?;
+        let bytes = (self.fetcher)(&url)?;
+        let img = crate::steam_art::decode_portrait_bytes(&bytes)?;
         self.encode_to_cache(img, stem)
     }
 
@@ -214,7 +254,7 @@ pub struct ArtRequest {
 
 /// GOG's public catalogue search (no auth). Name-verified like the Steam
 /// store search so a wrong game's art can't win.
-fn gog_search_image(name: &str) -> Option<String> {
+fn gog_search_image(fetcher: &Fetcher, name: &str) -> Option<String> {
     fn norm(s: &str) -> String {
         s.to_lowercase()
             .chars()
@@ -233,7 +273,10 @@ fn gog_search_image(name: &str) -> Option<String> {
         })
         .collect();
     let url = format!("https://embed.gog.com/games/ajax/filtered?mediaType=game&search={encoded}");
-    let body = http_get(&url)?;
+    let body = fetcher(&url)?;
+    if !within_response_bound(&body) {
+        return None;
+    }
     let data: serde_json::Value = serde_json::from_slice(&body).ok()?;
     let query_norm = norm(name);
     for product in data.get("products").and_then(serde_json::Value::as_array)? {
@@ -373,6 +416,103 @@ pub(crate) fn http_agent() -> ureq::Agent {
         .timeout_global(Some(DOWNLOAD_TIMEOUT))
         .build()
         .into()
+}
+
+/// A store response this cache will parse. The bodies involved are kilobytes —
+/// the captured GetItems response for one app is 1.8 KB — so this is far above
+/// anything real, and it is the bound the specification promises for a response,
+/// separate from the bound on decoded image bytes.
+const MAX_STORE_RESPONSE_BYTES: u64 = 4 * 1024 * 1024;
+
+/// Whether a response body is small enough to parse at all.
+fn within_response_bound(body: &[u8]) -> bool {
+    body.len() as u64 <= MAX_STORE_RESPONSE_BYTES
+}
+
+/// Where a store asset path is served from. `asset_url_format` in a GetItems
+/// response is host-less, and this is the host the existing header fetch uses.
+const STORE_ASSET_BASE: &str = "https://cdn.akamai.steamstatic.com/";
+
+/// The GetItems request for one app id.
+///
+/// Verified live for app 620 on 2026-09-26: this encoded form answers
+/// `success: 1` with `assets.library_capsule = "library_600x900.jpg"`, and the
+/// resulting portrait URL answers 200 with `image/jpeg`.
+pub fn store_items_url(appid: u32) -> String {
+    let input = format!(
+        r#"{{"ids":[{{"appid":{appid}}}],"context":{{"language":"english","country_code":"US"}},"data_request":{{"include_assets":true}}}}"#
+    );
+    format!(
+        "https://api.steampowered.com/IStoreBrowseService/GetItems/v1/?input_json={}&format=json",
+        percent_encode(&input)
+    )
+}
+
+/// Percent-encodes a query-string value: everything outside the unreserved set.
+fn percent_encode(value: &str) -> String {
+    let mut out = String::with_capacity(value.len() * 3);
+    for byte in value.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char);
+            }
+            _ => out.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    out
+}
+
+/// Whether an item reports itself as resolved.
+///
+/// `success` is documented as a flag but is an integer bitfield in practice:
+/// measured live, 1 for app 620 and 15 for an app id that does not exist (whose
+/// item also carries `appid: 0`, which is what the equality check in
+/// [`store_item_portrait_url`] rejects). What counts as reported: a non-zero
+/// integer, or a boolean `true`. What does not: a missing field, `false`, `0`, a
+/// float such as `1.0` (a number is read as an `i64`), and a string. Both the
+/// boolean arm and the numeric boundary are pinned by a test.
+fn reports_success(value: Option<&serde_json::Value>) -> bool {
+    match value {
+        Some(serde_json::Value::Bool(flag)) => *flag,
+        Some(serde_json::Value::Number(number)) => number.as_i64().is_some_and(|n| n != 0),
+        _ => false,
+    }
+}
+
+/// The portrait URL for `appid`, read out of a GetItems response body.
+///
+/// The body is untrusted. The item must be the app id we asked about and must
+/// report success, and both the format string and the portrait file name must be
+/// present, before `${FILENAME}` in the format is replaced. Anything else yields
+/// nothing: no neighbouring item, no sibling asset key, no format string that
+/// does not ask for a file name.
+pub fn store_item_portrait_url(body: &[u8], appid: u32) -> Option<String> {
+    if !within_response_bound(body) {
+        return None;
+    }
+    let data: serde_json::Value = serde_json::from_slice(body).ok()?;
+    let items = data.get("response")?.get("store_items")?.as_array()?;
+    let item = items.iter().find(|item| {
+        item.get("appid").and_then(serde_json::Value::as_u64) == Some(u64::from(appid))
+    })?;
+    if !reports_success(item.get("success")) {
+        return None;
+    }
+    let assets = item.get("assets")?;
+    let format = assets
+        .get("asset_url_format")
+        .and_then(serde_json::Value::as_str)?;
+    let portrait = assets
+        .get("library_capsule")
+        .and_then(serde_json::Value::as_str)?;
+    if format.is_empty() || portrait.is_empty() {
+        return None;
+    }
+    let filled = format.replace("${FILENAME}", portrait);
+    if filled == format {
+        return None;
+    }
+    Some(format!("{STORE_ASSET_BASE}{filled}"))
 }
 
 fn http_get(url: &str) -> Option<Vec<u8>> {
