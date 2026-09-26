@@ -184,3 +184,19 @@ pre-existing ignored** across 12 binaries. The branches are green on their own t
 the T4 tree, 20 of them in `steam_store_art.rs`), and the `jev-loop` suite on the code the
 two agents now share is 23 passed / 2 skipped. Merging is the user's call; nothing is
 known to block it.
+
+## The other release branch conflicts with #33
+
+Another branch, `feature/dlssnr-editions` (Claude Code's, 7 commits ahead of `origin/main`
+and touching 42 files), diverges from `codex/game-identity-contracts` - 12 commits one way,
+7 the other - and the two **conflict on five files**:
+
+- `rust/crates/opticore/src/profiles.rs`
+- `rust/crates/opticore/tests/advice_profiles.rs`
+- `rust/crates/optiscaler-gui/src/advice_view.rs`
+- `rust/crates/optiscaler-gui/src/hardware_view.rs`
+- `rust/crates/optiscaler-gui/src/screens/games_grid.rs`
+
+A trial merge shows #34 and #35 apply on top of that branch cleanly, so the conflict is
+#33's alone; #33 also merges into `origin/main` cleanly. Which side wins in those five
+files is not a mechanical resolution and is the user's decision.
