@@ -379,3 +379,26 @@ fn an_oversized_appdetails_body_is_not_parsed() {
         "an oversized appdetails body must not be parsed: {asked:?}"
     );
 }
+
+// The success rule at its edges, against the captured body with only that field
+// changed: the service sends integers, `true` is also accepted, and a float, a
+// string, `0` and a missing field are not.
+#[test]
+fn the_success_boundary_is_integers_and_booleans() {
+    for (value, accepted) in [
+        ("true", true),
+        ("-1", true),
+        ("0", false),
+        ("1.0", false),
+        ("\"1\"", false),
+    ] {
+        let body = GET_ITEMS_620.replace("\"success\":1", &format!("\"success\":{value}"));
+        assert_ne!(body, GET_ITEMS_620, "the fixture must carry the value");
+        assert_eq!(
+            store_item_portrait_url(body.as_bytes(), APP_ID).is_some(),
+            accepted,
+            "success:{value} must {} report the item",
+            if accepted { "" } else { "not" }
+        );
+    }
+}

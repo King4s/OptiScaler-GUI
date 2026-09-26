@@ -467,8 +467,10 @@ fn percent_encode(value: &str) -> String {
 /// `success` is documented as a flag but is an integer bitfield in practice:
 /// measured live, 1 for app 620 and 15 for an app id that does not exist (whose
 /// item also carries `appid: 0`, which is what the equality check in
-/// [`store_item_portrait_url`] rejects). Any non-zero value counts as reported;
-/// anything else, including a missing field, does not.
+/// [`store_item_portrait_url`] rejects). What counts as reported: a non-zero
+/// integer, or a boolean `true`. What does not: a missing field, `false`, `0`, a
+/// float such as `1.0` (a number is read as an `i64`), and a string. Both the
+/// boolean arm and the numeric boundary are pinned by a test.
 fn reports_success(value: Option<&serde_json::Value>) -> bool {
     match value {
         Some(serde_json::Value::Bool(flag)) => *flag,

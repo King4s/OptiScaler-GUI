@@ -38,8 +38,9 @@ is already larger than the 300x450 the pipeline stores, so 1x is requested and
 ## Rules
 
 1. The portrait URL comes from `GetItems`, parsed as untrusted JSON: the item must
-   report success (the service sends the integer `1`, not a boolean; any non-zero
-   value counts), its `appid` must equal the requested app id, and both
+   report success — the service sends the integer `1` here, and the parser takes a
+   non-zero integer or a boolean `true` — its `appid` must equal the requested app
+   id, and both
    `assets.asset_url_format` and `assets.library_capsule` must be present and
    non-empty. Anything else yields nothing — no guessing from a sibling field, no
    use of a neighbouring item.
@@ -56,8 +57,9 @@ is already larger than the 300x450 the pipeline stores, so 1x is requested and
 6. The HTTP fetch is injectable, so failures, mock responses and image bounds are
    testable without a network, and the local-portrait order test stops depending
    on a live CDN. The response bound is pinned in-tree for the store parser and for
-   the appdetails rung, which is the one a stale `GetItems` body could otherwise
-   send straight into a fetch; the GOG search body keeps the same guard without a
+   the appdetails rung — without the guard, an oversized body from that rung's own
+   request would be parsed and its `header_image` fetched; the GOG search body keeps
+   the same guard without a
    test of its own — the guard is one shared helper, not a per-caller rule.
 
 ## Known defect on the rung below this one
