@@ -6,6 +6,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use opticore::images::{ArtRequest, ImageCache};
 use opticore::steam_art::{decode_portrait, library_caches_from, portrait_file_in, portrait_in};
@@ -181,12 +182,11 @@ fn an_image_declaring_pixels_over_the_bound_is_refused() {
     assert!(decode_portrait(&portrait).is_none());
 }
 
-/// The order is what this test is about: with a real app id the CDN and the store
-/// API both answer, so a source that ran before the local lookup leaves *their*
-/// art in the cache. The local fixture is a flat magenta plane, which no store
-/// header or capsule is, so the cached pixels say which source produced the file.
-/// (With the CDN unreachable the fallback chain ends at the local portrait either
-/// way, so the check bites whenever the network answers at all.)
+/// The order is what this test is about, and it needs no network to say so: the
+/// fetcher panics if it is called at all, so any source that ran before the local
+/// lookup fails the test instead of quietly winning it. The cached pixels then
+/// confirm the file came from our own fixture — a flat magenta plane, which no
+/// store header or capsule is.
 #[test]
 fn fetch_uses_the_local_portrait_before_any_network_source() {
     let steam_cache = library_cache();
@@ -196,9 +196,10 @@ fn fetch_uses_the_local_portrait_before_any_network_source() {
     );
 
     let cache_dir = library_cache();
-    let images = ImageCache::with_library_caches(
+    let images = ImageCache::with_sources(
         &cache_dir.path().join("art"),
         vec![steam_cache.path().to_path_buf()],
+        Arc::new(|url: &str| panic!("the network was asked for {url} before the local portrait")),
     );
 
     let found = images

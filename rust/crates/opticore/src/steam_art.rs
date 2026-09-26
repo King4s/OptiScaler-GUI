@@ -116,7 +116,18 @@ pub fn decode_portrait(path: &Path) -> Option<image::DynamicImage> {
         return None;
     }
     let bytes = read_bounded(path, MAX_PORTRAIT_BYTES)?;
+    decode_portrait_bytes(&bytes)
+}
 
+/// Decode portrait bytes from an untrusted source, e.g. a download.
+///
+/// Same bounds as [`decode_portrait`], applied to bytes that are already in
+/// memory: the byte bound first, then the pixel and allocation limits, so a
+/// small body cannot expand into an unbounded allocation.
+pub fn decode_portrait_bytes(bytes: &[u8]) -> Option<image::DynamicImage> {
+    if bytes.is_empty() || bytes.len() as u64 > MAX_PORTRAIT_BYTES {
+        return None;
+    }
     let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes));
     let mut limits = image::Limits::default();
     limits.max_image_width = Some(MAX_PORTRAIT_DIMENSION);
