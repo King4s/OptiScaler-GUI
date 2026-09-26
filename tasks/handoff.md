@@ -12,7 +12,7 @@ verified**, where the evidence is, and what is still open. `tasks/` lives on the
 | T1/T2 | `StoreIdentity { platform, store_id }` + identity- and path-aware dedup, title quality | `codex/game-identity-contracts` | #33 | open, mergeable, 15 files, +1717/−106 |
 | T2b | central path normalisation (`GameKey::path_key`) | same branch | #33 | same PR |
 | T3 | Steam portrait from the local `librarycache`, by exact app id | `codex/steam-local-art` | #34 | open, mergeable, 5 files, +481/−10, CI green |
-| T4 | Steam store portrait via `GetItems`, with fallback, bounds and an injectable fetch | `codex/steam-getitems-art` | #35 | open, mergeable, 5 files, +633/−20, base is #34 |
+| T4 | Steam store portrait via `GetItems`, with fallback, bounds and an injectable fetch | `codex/steam-getitems-art` | #35 | open, mergeable, 6 files, head `3e3f683d`, base is #34 |
 
 Evidence per branch, all re-run on the committed tree:
 
@@ -76,21 +76,42 @@ work — see the loop note below.
   re-derive `community_verified`; `game_at` never sets `discovery_source`; correction C
   does not follow Windows symlinks; the Rust scanner diverges from
   `src/scanner/game_scanner.py`.
-- **One unexplained test run**: one run reported four failures in `steam_store_art.rs`
-  against unmutated code; four later runs and the full gate were green and the panic
-  text was lost to a filter. Cause unknown. Do not treat it as fixed.
+- **Workspace test runs can lie while the shared build cache is dirty** (found and
+  fixed, but it will recur). The worktree builds into
+  `C:/Users/marci/.codex/cargo-target/opticore`; when several checkouts of this package
+  build there — reviewing subagents did, from older commits — cargo can serve a
+  `libopticore` built from other source, and the symptom is one test failing in
+  `cargo test --workspace` while passing under `-p opticore --test`. `cargo clean -p
+  opticore` cleared it and the same command was green (158 passed / 0 failed / 1
+  ignored). When a check result looks impossible, verify it against a fresh
+  `CARGO_TARGET_DIR` before believing it — and give any reviewing subagent a fresh target
+  directory rather than this shared one.
 
 ## Loop note (process, not code)
 
 The work was driven by jev-loop runs `20260925-235232` (identity), `20260926-011909`
 (T3) and `20260926-021849` (T4). All three hit the same server-side limitation: the
-review phase is offered only while `p_done` is high or when the *same* role re-runs with
-unchanged green checks, so a run that alternates roles after a review can never be sent
-back to review — the second and later verdicts are therefore subagent reviews the runs
-could not register. A fix (a `review_turns` fact plus skill notes) is written, tested and
-**uncommitted** in `F:/AI-Projekter/jev-loop`; it takes effect only after that MCP server
-restarts. Verify loop state with `loop_status` rather than assuming these runs are
-closed.
+review phase was offered only while `p_done` was high or when the *same* role re-ran with
+unchanged green checks, so a run that alternates roles after a review could never be sent
+back to review, and the second and later verdicts were subagent reviews the runs could
+not register.
+
+That is fixed, not worked around: a `review_turns` fact (default 3) now takes a run back
+to a reviewer once a recorded review has had that many executor turns since, Jev still
+answering the `review_now` question. The patch plus skill notes are **uncommitted** in
+`F:/AI-Projekter/jev-loop` but **live** — the MCP server was restarted and `loop_decide`
+answered `review` / `why: revisit` twice in run `20260926-021849`. The patch still wants
+a commit, and the running server needs another restart after any further edit.
+
+Run `20260926-021849` is deliberately **left open** at turn 11 (all checks green,
+`consecutive_fails` 0, `cfg.review_turns` 1). Its last registered verdict is
+`accept_with_findings` on wording only: the fourth review verified all four statements of
+its predecessor true and filed three low findings, of which the spec's `i64` range and the
+PR body's wording are fixed in `3e3f683d`, and the last one — the stale messages of
+`fd871a9d` and `8f598200` — needs the user's decision, because correcting them means
+rewriting pushed commits. Closing the run as `goal_met` is likewise the user's call; the
+alternative is one more review round, which by now finds word choices rather than
+behaviour. Check state with `loop_status` rather than assuming.
 
 ## Non-negotiable instructions
 
