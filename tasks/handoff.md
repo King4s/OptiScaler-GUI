@@ -151,3 +151,24 @@ More installed games are found with reliable store IDs and sources, Steam covers
 offline and online, non-Steam covers have controlled fallback and optional user-approved
 online lookup, and **no newly discovered game is installed into a guessed location**. The
 user can see where each game and cover came from and correct mistakes.
+
+## Working alongside Claude Code on this machine
+
+Another agent (Claude Code) works here too, and the two of you share the `jev-loop`
+repository. On 2026-09-26 one of its sessions committed the whole of `jev_mcp.py` while
+this work had an uncommitted patch in that file, so commit `b3d5d2d` ("Offer a reviewer to
+an unreviewed run of green turns") carries both agents' work: the `revisit` path described
+above and that session's `unreviewed` offer. Nothing was lost and the file is a superset,
+but it is exactly the hazard of a dirty tree in a shared repository.
+
+What was agreed afterwards: each agent owns its own checkout; commits in `jev-loop` carry
+a distinct author identity so the history stays readable (this work commits as
+`Hermes Agent <hermes+ai@seaaid.me>`, the repository default is the user's own identity);
+and no agent commits another's uncommitted files. The four skill lines this work added
+were committed as `2a57bb7` once the user approved, so that repository is clean again.
+
+Claude Code's answers to the coordination questions came through the user, because its
+CLI could not be used from Hermes: `claude auth status` reports an expired login and a
+print-mode run fails with `OAuth session expired and could not be refreshed`. It confirmed
+it did not build into the shared cargo target directory, did not touch the uncommitted
+skill lines, and has nothing half-finished in `jev-loop`.
