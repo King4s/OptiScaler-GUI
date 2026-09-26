@@ -79,8 +79,11 @@ work — see the loop note below.
 - **Workspace test runs can lie while the shared build cache is dirty** (found and
   fixed, but it will recur). The worktree builds into
   `C:/Users/marci/.codex/cargo-target/opticore`; when several checkouts of this package
-  build there — reviewing subagents did, from older commits — cargo can serve a
-  `libopticore` built from other source, and the symptom is one test failing in
+  build there, cargo can serve a `libopticore` built from other source. Verified cause:
+  the copies made for mutation and review runs carry this worktree's `.cargo/config.toml`
+  (which names that shared directory) and hold source predating the appdetails bound, so
+  any `cargo` call in them without an explicit `CARGO_TARGET_DIR` wrote there. The symptom
+  is one test failing in
   `cargo test --workspace` while passing under `-p opticore --test`. `cargo clean -p
   opticore` cleared it and the same command was green (158 passed / 0 failed / 1
   ignored). When a check result looks impossible, verify it against a fresh
