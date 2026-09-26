@@ -172,3 +172,15 @@ CLI could not be used from Hermes: `claude auth status` reports an expired login
 print-mode run fails with `OAuth session expired and could not be refreshed`. It confirmed
 it did not build into the shared cargo target directory, did not touch the uncommitted
 skill lines, and has nothing half-finished in `jev-loop`.
+
+## Merge readiness (verified, not assumed)
+
+The three branches merge into `main` in the order 33, 34, 35 with no conflicts: a trial
+merge in a throwaway worktree produced `101f9e66`, and on that tree - built with a fresh,
+private `CARGO_TARGET_DIR` so no stale artifact could flatter it - `cargo fmt --all
+--check` is clean, `cargo clippy --all-targets --workspace --locked -- -D warnings` exits
+0, and `cargo test --workspace --locked --no-fail-fast` is **204 passed / 0 failed / 1
+pre-existing ignored** across 12 binaries. The branches are green on their own too (158 on
+the T4 tree, 20 of them in `steam_store_art.rs`), and the `jev-loop` suite on the code the
+two agents now share is 23 passed / 2 skipped. Merging is the user's call; nothing is
+known to block it.
