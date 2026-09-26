@@ -381,8 +381,8 @@ fn an_oversized_appdetails_body_is_not_parsed() {
 }
 
 // The success rule at its edges, against the captured body with only that field
-// changed: the service sends integers, `true` is also accepted, and a float, a
-// string, `0` and a missing field are not.
+// changed: the service sends integers, `true` is also accepted, and a float, a string,
+// `0`, a value too large for the `i64` the parser reads and a missing field are not.
 #[test]
 fn the_success_boundary_is_integers_and_booleans() {
     for (value, accepted) in [
@@ -390,6 +390,7 @@ fn the_success_boundary_is_integers_and_booleans() {
         ("-1", true),
         ("0", false),
         ("1.0", false),
+        ("9223372036854775808", false),
         ("\"1\"", false),
     ] {
         let body = GET_ITEMS_620.replace("\"success\":1", &format!("\"success\":{value}"));

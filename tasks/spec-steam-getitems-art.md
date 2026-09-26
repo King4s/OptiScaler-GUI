@@ -39,7 +39,8 @@ is already larger than the 300x450 the pipeline stores, so 1x is requested and
 
 1. The portrait URL comes from `GetItems`, parsed as untrusted JSON: the item must
    report success — the service sends the integer `1` here, and the parser takes a
-   non-zero integer or a boolean `true` — its `appid` must equal the requested app
+   non-zero integer that fits in an `i64`, or a boolean `true` — its `appid` must
+   equal the requested app
    id, and both
    `assets.asset_url_format` and `assets.library_capsule` must be present and
    non-empty. Anything else yields nothing — no guessing from a sibling field, no
