@@ -1,16 +1,18 @@
 # Game discovery and artwork TODO
 
-Status: none of these tasks is implemented by this plan. T1, T2 and T2b are committed on
-branch `codex/game-identity-contracts` as `dc22034e`, `a07a3030` (title provenance) and
-`97f52d38` (one path-key function). The branch is pushed as PR #33 against `main` (open, not
-merged), and that PR records the acceptance criteria and the verification for all three.
+Status: T1, T2, T2b, T3 and T4 are **implemented, reviewed and pushed**; T0 is satisfied in
+practice (the work ran on branches cut from `origin/main` with green CI). T1/T2/T2b are
+`codex/game-identity-contracts` → PR #33, T3 is `codex/steam-local-art` → PR #34 and T4 is
+`codex/steam-getitems-art` → PR #35. None is merged; every acceptance criterion and its
+verification is recorded in its PR. `tasks/handoff.md` carries the current state, the open
+findings and the decisions that are the user's.
 
 For every task: write fixture tests first, keep the existing installer safety gate, run focused tests and review the diff. Complete only when acceptance criteria and verification are recorded in the PR.
 
-- [ ] **T0, XS, no dependency:** Rebase planning context onto current `origin/main`; document baseline and create a clean feature branch. Verify worktree status, branch, CI and beta tag before editing code.
-- [ ] **T1, M, T0:** Define store identity, scan provenance and art candidate contracts in `opticore` without removing `steam_appid` or breaking legacy config/cache. Verify serialization/back-compat and same-title fixture tests.
-- [ ] **T2, S, T1:** Make dedup path/store-ID aware; retain two installs with the same name, while removing duplicate scan hits for one install. Verify fixture tests and `scan_all` behavior.
-- [ ] **T2b, S, T2:** Fold path spellings in the dedup key. `GameKey.path_norm` is only
+- [x] **T0, XS, no dependency:** Rebase planning context onto current `origin/main`; document baseline and create a clean feature branch. Verify worktree status, branch, CI and beta tag before editing code. — Done in practice: the branches were cut from `origin/main` and every CI run on them is green; see hit handoff.
+- [x] **T1, M, T0:** Define store identity, scan provenance and art candidate contracts in `opticore` without removing `steam_appid` or breaking legacy config/cache. Verify serialization/back-compat and same-title fixture tests. — Delivered in PR #33 (15 files, +1888/−106), criteria and verification recorded there.
+- [x] **T2, S, T1:** Make dedup path/store-ID aware; retain two installs with the same name, while removing duplicate scan hits for one install. Verify fixture tests and `scan_all` behavior. — Delivered in PR #33; dedup now keys on `StoreIdentity` first, then a normalised path, then name+platform.
+- [x] **T2b, S, T2:** Fold path spellings in the dedup key. `GameKey.path_norm` is only — Delivered in PR #33 as central path normalisation (`GameKey::path_key`).
   `path.to_string_lossy().to_lowercase()`, which folds case and nothing else, so one install
   reported as `C:\Games\X` by a store root and as `C:/Games/X` by Heroic stays two entries.
   Every source hands the path over exactly as its store metadata spells it, and the Python
@@ -38,8 +40,8 @@ For every task: write fixture tests first, keep the existing installer safety ga
   read-compat resolves the new key first and the old spelling second, so nothing is rewritten.
   The fallback is exact, so a store that changes its own spelling between versions still orphans
   its entry. See `GameKey::path_key`, `Game::legacy_path_norm` and `LocalProfiles::gpu_for`.
-- [ ] **T3, M, T1:** Add exact-app-ID local Steam portrait cache lookup. Verify offline fixture, no global recursive scan, bounded decode and icon fallback.
-- [ ] **T4, M, T3:** Add Steam `GetItems` portrait lookup, with `appdetails`/header fallback. Verify mock responses for missing assets, wrong app ID, HTTP failure, oversized and malformed images; no UI blocking.
+- [x] **T3, M, T1:** Add exact-app-ID local Steam portrait cache lookup. Verify offline fixture, no global recursive scan, bounded decode and icon fallback. — Delivered in PR #34 (5 files, +481/−10, CI green, 14 new tests in `tests/steam_local_art.rs`).
+- [x] **T4, M, T3:** Add Steam `GetItems` portrait lookup, with `appdetails`/header fallback. Verify mock responses for missing assets, wrong app ID, HTTP failure, oversized and malformed images; no UI blocking. — Delivered in PR #35 (5 files, +662/−20, 20 new tests in `tests/steam_store_art.rs`).
 - [ ] **T5, M, T1:** Persist user scan roots and opt-out settings, show provenance, bound traversal and protect against out-of-root paths. Verify settings roundtrip and fixture scan.
 - [ ] **T6, M, T1+T5:** Amazon adapter. Verify local SQLite fixtures: installed/uninstalled, relocated, malformed/locked DB, no EXE guess.
 - [ ] **T7, M, T1+T5:** Ubisoft adapter. Verify registry/manifest fixtures, multiple libraries, launcher exclusion and no EXE guess.

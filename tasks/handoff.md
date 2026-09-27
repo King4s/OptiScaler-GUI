@@ -21,9 +21,9 @@ Evidence per branch, all re-run on the committed tree:
 - PR #34: 138 tests pass on that branch (14 new in `tests/steam_local_art.rs`), fmt and
   clippy clean; two reviews (`accept_with_findings`), five findings closed and
   mutation-verified.
-- PR #35: 157 tests pass (19 new in `tests/steam_store_art.rs`), fmt and clippy clean;
-  two reviews (`accept_with_findings`), six findings closed, and five further low
-  findings from the second review fixed in the same tree.
+- PR #35: 158 tests pass (20 new in `tests/steam_store_art.rs`), fmt and clippy clean;
+  four reviews (`accept_with_findings`), every finding closed, and the last round's
+  remaining item is the stale message of an earlier commit - see the loop note.
 
 Reviews are subagent reviews with no shared context, running against the working tree
 in copies they may not modify (`deleg_8f83dc56`, `deleg_6ecd1d1c`, `deleg_1918aa67`,
@@ -101,10 +101,12 @@ not register.
 
 That is fixed, not worked around: a `review_turns` fact (default 3) now takes a run back
 to a reviewer once a recorded review has had that many executor turns since, Jev still
-answering the `review_now` question. The patch plus skill notes are **uncommitted** in
-`F:/AI-Projekter/jev-loop` but **live** — the MCP server was restarted and `loop_decide`
-answered `review` / `why: revisit` twice in run `20260926-021849`. The patch still wants
-a commit, and the running server needs another restart after any further edit.
+answering the `review_now` question. The change is **committed and live** — an earlier
+Claude Code session committed this work's uncommitted patch together with its own
+`unreviewed` offer as `b3d5d2d`, and the four skill lines this work added followed as
+`2a57bb7`, so `F:/AI-Projekter/jev-loop` is clean. `loop_decide` answered `review` /
+`why: revisit` twice in run `20260926-021849`. Any further edit to `jev_mcp.py` needs the
+MCP server restarted before it takes effect.
 
 Run `20260926-021849` is deliberately **left open** at turn 11 (all checks green,
 `consecutive_fails` 0, `cfg.review_turns` 1). Its last registered verdict is
