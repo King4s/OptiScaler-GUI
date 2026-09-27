@@ -594,6 +594,13 @@ pub fn appdetails_image_url(body: &[u8], appid: u32) -> Option<String> {
 /// `…/apps/620/../80/header.jpg` is the reason: an HTTP client normalises it to app
 /// 80's artwork, which would be cached under this game's id.
 fn steam_app_path_names(url: &str, appid: u32) -> bool {
+    // The whole URI is read literally, query and fragment included: a control character, a
+    // space, a DEL or a non-ASCII byte anywhere makes it something the downloader's own URI
+    // parser will refuse, so it is not a candidate here either. Steam's asset URLs are
+    // plain ASCII with a `?t=…` tail.
+    if !url.bytes().all(|byte| byte.is_ascii_graphic()) {
+        return false;
+    }
     let Some((scheme, rest)) = url.split_once("://") else {
         return false;
     };
@@ -637,6 +644,15 @@ fn authority_is_plain(authority: &str) -> bool {
         Some((host, port)) => (host, Some(port)),
         None => (authority, None),
     };
+    // A host of nothing but digits and dots is an address literal, and the store serves its
+    // artwork from names. Refusing it keeps the question of whether the address is valid —
+    // `999.999.999.999` is a host this pipeline would otherwise follow — out of this code.
+    if host
+        .bytes()
+        .all(|byte| byte.is_ascii_digit() || byte == b'.')
+    {
+        return false;
+    }
     !host.is_empty()
         && host.split('.').all(|label| {
             !label.is_empty()

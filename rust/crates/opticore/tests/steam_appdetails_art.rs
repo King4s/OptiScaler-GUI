@@ -210,6 +210,13 @@ fn only_an_https_path_whose_apps_segment_names_the_app_id_is_accepted() {
         "https://foo_bar.com/store_item_assets/steam/apps/620/header.jpg",
         "https://[invalid]/store_item_assets/steam/apps/620/header.jpg",
         "https://[2001:db8::1]/store_item_assets/steam/apps/620/header.jpg",
+        // An address literal is not a name the store serves artwork from.
+        "https://999.999.999.999/store_item_assets/steam/apps/620/header.jpg",
+        "https://127.0.0.1/store_item_assets/steam/apps/620/header.jpg",
+        // A query the downloader's URI parser would refuse is not a candidate either.
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg?x=y z",
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg?x=é",
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg#a b",
         // An HTTP client normalises these away, so the file behind them may belong to
         // another app id even though the app id appears in the path.
         "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/../80/header.jpg",
@@ -461,6 +468,11 @@ fn the_review_counterexamples_are_closed() {
         r#"{"999":{"success":true,"data":{"steam_appid":620,"header_image":"https://[invalid]/apps/620/header.jpg"}}}"#,
         // Round 2: a port that is not a number.
         r#"{"999":{"success":true,"data":{"steam_appid":620,"header_image":"https://shared.akamai.steamstatic.com:abc/apps/620/header.jpg"}}}"#,
+        // Round 4: a NUL in the query, which the downloader's URI parser refuses while the
+        // path rule alone would have accepted the URL.
+        r#"{"999":{"success":true,"data":{"steam_appid":620,"header_image":"https://shared.akamai.steamstatic.com/steam/apps/620/header.jpg?x=\u0000"}}}"#,
+        // Round 4: an address literal as the host.
+        r#"{"999":{"success":true,"data":{"steam_appid":620,"header_image":"https://999.999.999.999/steam/apps/620/header.jpg"}}}"#,
     ] {
         assert_eq!(
             appdetails_image_url(refused.as_bytes(), APP_ID),

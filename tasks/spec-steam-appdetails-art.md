@@ -75,13 +75,17 @@ what makes the wrong-art half impossible rather than merely unobserved.
    an optional port that is a number in 0–65535 written as digits, and nothing else:
    `https://bad host/…`, a userinfo part, an underscore, brackets, an IPv6 literal,
    `https://:/…` with no host, `…:abc` with a port that is not a number, `…:+443` and
-   `…:65536` with a port no URL carries are all refused. Its path (what follows the
-   authority, before any query or fragment) must consist of non-empty plain segments: ASCII
-   alphanumerics plus `-`, `_` and `.`, with no `.` or `..` segment and no
+   `…:65536` with a port no URL carries are all refused. A host of nothing but digits and
+   dots is an address literal — the store serves its artwork from names — and is refused
+   rather than half-validated as an IPv4 address. The whole URI, query and fragment
+   included, must be printable ASCII: a control character, a space or a non-ASCII byte
+   anywhere is refused, because the downloader's own URI parser refuses it. Its path (what
+   follows the authority, before any query or fragment) must consist of non-empty plain
+   segments: ASCII alphanumerics plus `-`, `_` and `.`, with no `.` or `..` segment and no
    percent-encoding. The requested app id is then looked for in that path only, as a whole
    segment directly after an `apps` segment, so a host spelled `apps` cannot stand in for
    one.
-   This is narrower than "looks like a URL" on purpose, and three review rounds are why.
+   This is narrower than "looks like a URL" on purpose, and four review rounds are why.
    Round 1 falsified the first, purely textual rule with three inputs the tests had not
    covered: `https://apps/620/header.jpg`, where the authority was mistaken for a path
    segment; `https://bad host/apps/620/header.jpg`, which is not a URL yet was accepted
@@ -95,8 +99,12 @@ what makes the wrong-art half impossible rather than merely unobserved.
    had introduced: a port above 65535 was accepted although no URL carries one, and a
    header whose bytes cannot be downloaded no longer fell back to the capsule beside it.
    Both are fixed and pinned; the second is why the parser returns an ordered list of
-   candidates instead of one URL. A URL that cannot be read literally is a miss: it costs a
-   cover, never correctness.
+   candidates instead of one URL. Round 4 found that the query was discarded before
+   validation — a NUL in `?x=…` was accepted although the downloader refuses that URI — and
+   that `https://999.999.999.999/…` passed as a host. Both are fixed, which is what makes
+   the whole-URI and address-literal rules above part of the specification rather than
+   incidental. A URL that cannot be read literally is a miss: it costs a cover, never
+   correctness.
 5. `header_image` comes before `capsule_image`, and the usable fields are returned as an
    ordered list: a field that is missing, not a string, or unusable contributes nothing and
    the next one is tried. The caller tries them in that order as well, so a header whose
