@@ -703,16 +703,55 @@ fn authority_is_plain(authority: &str) -> bool {
 
 /// Whether every path segment is one this pipeline will follow: non-empty, not a dot
 /// segment (the HTTP client would normalise those away and could land on another app's
-/// file), and built only from the characters Steam's asset paths use.
+/// file), built from the characters Steam's asset paths use, and free of percent escapes
+/// that could become something else.
 fn path_is_plain(path: &str) -> bool {
-    path.split('/').all(|segment| {
-        !segment.is_empty()
-            && segment != "."
-            && segment != ".."
-            && segment
-                .chars()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, '-' | '_' | '.'))
-    })
+    path.split('/').all(segment_is_plain)
+}
+
+/// Whether one path segment is one this pipeline will follow.
+///
+/// A `%` escape is judged by what it stands for, not by the fact that it is written out:
+/// `%2e` is a dot, `%2f` a slash, `%5c` a backslash and `%25` a percent sign, so a segment
+/// holding one of those can be normalised — or decoded a second time by whoever serves it —
+/// into a different path than the one that was checked, which is the one thing these rules
+/// exist to prevent. Any other escape is just a byte of a file name: `%68eader.jpg` *is*
+/// `header.jpg`, the downloader fetches it like any other URL, and refusing it would cost a
+/// cover for nothing. A truncated or non-hex escape is refused, because it is not a URL a
+/// client can send at all.
+fn segment_is_plain(segment: &str) -> bool {
+    if segment.is_empty() || segment == "." || segment == ".." {
+        return false;
+    }
+    let bytes = segment.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            let Some(escape) = bytes.get(index + 1..index + 3) else {
+                return false;
+            };
+            if !escape.iter().all(|byte| byte.is_ascii_hexdigit()) {
+                return false;
+            }
+            let (first, second) = (
+                escape[0].to_ascii_lowercase(),
+                escape[1].to_ascii_lowercase(),
+            );
+            if matches!(
+                (first, second),
+                (b'2', b'e' | b'f') | (b'5', b'c') | (b'2', b'5')
+            ) {
+                return false;
+            }
+            index += 3;
+            continue;
+        }
+        if !(bytes[index].is_ascii_alphanumeric() || matches!(bytes[index], b'-' | b'_' | b'.')) {
+            return false;
+        }
+        index += 1;
+    }
+    true
 }
 
 /// Whether a byte is one a URI may contain: RFC 3986's unreserved and reserved characters

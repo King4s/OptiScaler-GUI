@@ -243,9 +243,17 @@ fn only_an_https_path_whose_apps_segment_names_the_app_id_is_accepted() {
         // another app id even though the app id appears in the path.
         "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/../80/header.jpg",
         "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/%2e%2e/80/header.jpg",
+        // An escape is judged by what it stands for: these four can be decoded into a path
+        // character (`.` `/` `\` `%`), the rest of the escapes are just file-name bytes.
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/%2E%2E/80/header.jpg",
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620%2f..%2f80/header.jpg",
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/%5Chello.jpg",
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/he%25ader.jpg",
+        // A truncated or non-hex escape is not a URL a client can send.
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/he%6.jpg",
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/he%zzader.jpg",
         "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/./header.jpg",
         "https://shared.akamai.steamstatic.com/store_item_assets/steam//apps/620/header.jpg",
-        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header%20x.jpg",
     ] {
         let body = body_for("620", "true", Some(refused), None);
         assert_eq!(
@@ -263,6 +271,12 @@ fn only_an_https_path_whose_apps_segment_names_the_app_id_is_accepted() {
         // The reserved characters a real query uses are URI characters, not invalid ones.
         "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg?t=1790187113&x=~a-_.b",
         "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg?t=1%202",
+        // An escape in the path that stands for an ordinary file-name byte is fine: this is
+        // the live 620 artwork with its file name written `%68eader.jpg`, and the downloader
+        // fetches the very same 41,191 bytes.
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/faffc0f560786e2f05104a8d2fac837c6969bf13/%68eader.jpg?t=1790187113",
+        // Likewise an escaped space: a space is a byte of a file name, not a separator.
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header%20x.jpg",
         // Every host the store serves artwork from is under its own domain, and host names
         // are case-insensitive, exactly as the scheme is.
         "https://cdn.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg",
@@ -293,11 +307,34 @@ fn malformed_and_oversized_bodies_yield_nothing() {
         assert_eq!(appdetails_image_url(body, APP_ID), None);
     }
 
-    let oversized = vec![b' '; 4 * 1024 * 1024 + 1];
+    // The bound is on the body, not on the JSON: a valid response of exactly the bound is
+    // parsed, and the same response padded one byte past it is refused. (Filling the body
+    // with spaces, as this test used to, proves nothing — that is not JSON at all, so serde
+    // refuses it with or without a bound.)
+    let body_of_len = |target: usize| -> String {
+        let body = format!(
+            "{{\"999\":{{\"success\":true,\"data\":{{\"steam_appid\":620,\"header_image\":\"{HEADER_620}\",\"pad\":\"\"}}}}}}"
+        );
+        assert!(body.len() < target);
+        body.replace(
+            "\"pad\":\"\"",
+            &format!("\"pad\":\"{}\"", "x".repeat(target - body.len())),
+        )
+    };
+
+    let at_bound = body_of_len(4 * 1024 * 1024);
+    assert_eq!(at_bound.len(), 4 * 1024 * 1024);
     assert_eq!(
-        appdetails_image_url(&oversized, APP_ID),
+        appdetails_image_url(at_bound.as_bytes(), APP_ID),
+        Some(HEADER_620.to_string()),
+        "a valid body of exactly the bound is parsed"
+    );
+
+    let over_bound = body_of_len(4 * 1024 * 1024 + 1);
+    assert_eq!(
+        appdetails_image_url(over_bound.as_bytes(), APP_ID),
         None,
-        "a body over the shared store response bound is not parsed"
+        "one byte over the bound is refused, however valid the JSON is"
     );
 }
 
@@ -562,6 +599,27 @@ fn the_review_counterexamples_are_closed() {
         Some("HTTPS://shared.akamai.steamstatic.com/steam/apps/620/header.jpg".to_string()),
         "a valid HTTPS URL must not be refused for the case of its scheme"
     );
+
+    // The other half of a falsification: a body an earlier round showed the code must
+    // *accept*, kept verbatim so a later narrowing of the rules cannot quietly refuse it.
+    for (body, expected) in [
+        // Round 7: the store's own host written in capitals — DNS is case-insensitive.
+        (
+            r#"{"999":{"success":true,"data":{"steam_appid":620,"header_image":"https://SHARED.AKAMAI.STEAMSTATIC.COM/steam/apps/620/header.jpg"}}}"#,
+            "https://SHARED.AKAMAI.STEAMSTATIC.COM/steam/apps/620/header.jpg",
+        ),
+        // Round 8: the live 620 file name written `%68eader.jpg` — the same 41,191 bytes.
+        (
+            r#"{"999":{"success":true,"data":{"steam_appid":620,"header_image":"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/faffc0f560786e2f05104a8d2fac837c6969bf13/%68eader.jpg?t=1790187113"}}}"#,
+            "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/faffc0f560786e2f05104a8d2fac837c6969bf13/%68eader.jpg?t=1790187113",
+        ),
+    ] {
+        assert_eq!(
+            appdetails_image_url(body.as_bytes(), APP_ID),
+            Some(expected.to_string()),
+            "a body an earlier round required must still be accepted"
+        );
+    }
 }
 
 #[test]

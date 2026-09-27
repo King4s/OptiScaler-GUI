@@ -18,10 +18,14 @@ curl -s "https://store.steampowered.com/api/appdetails?appids=620&filters=basic"
 curl -s "https://store.steampowered.com/api/appdetails?appids=100&filters=basic" -o appdetails-100.json
 ```
 
-| asked for | response key | `success` | `data.steam_appid` | `data.name` | `data.header_image` path |
+| asked for | response key | `success` | `data.steam_appid` | `data.name` | `data.header_image` (full path, as observed) |
 |---|---|---|---|---|---|
-| `appids=620` | `323180` | `true` | `620` | Portal 2 | `/steam/apps/620/…/header.jpg` |
-| `appids=100` | `100` | `true` | `80` | Counter-Strike: Condition Zero | `/steam/apps/80/header.jpg` |
+| `appids=620` | `323180` | `true` | `620` | Portal 2 | `/store_item_assets/steam/apps/620/faffc0f560786e2f05104a8d2fac837c6969bf13/header.jpg?t=1790187113` |
+| `appids=100` | `100` | `true` | `80` | Counter-Strike: Condition Zero | `/store_item_assets/steam/apps/80/header.jpg?t=1745368574` |
+
+(`/store_item_assets` is the prefix the store serves today; an earlier draft of this table
+showed the path from `/steam/apps/…` on and was corrected after a reviewer compared the
+column against the committed fixtures.)
 
 Both facts matter, and they are the two ways the rung was wrong:
 
@@ -84,10 +88,17 @@ what makes the wrong-art half impossible rather than merely unobserved.
    they are not URI characters, and the downloader's own parser refuses such a request
    before it leaves the process. Its path (what
    follows the authority, before any query or fragment) must consist of non-empty plain
-   segments: ASCII alphanumerics plus `-`, `_` and `.`, with no `.` or `..` segment and no
-   percent-encoding. The requested app id is then looked for in that path only, as a whole
-   segment directly after an `apps` segment, so a host spelled `apps` cannot stand in for
-   one.
+   segments: ASCII alphanumerics plus `-`, `_` and `.`, with no `.` or `..` segment. A
+   segment may carry `%` escapes, but `%25`, `%2e`, `%2f` and `%5c` are refused whatever
+   their case: those four stand for a path character — `.`, `/`, `\`, `%` — so the path that
+   was checked and the path the origin serves could differ, which is the one thing these
+   rules exist to prevent. Every other escape is a file-name byte: `%68eader.jpg` *is*
+   `header.jpg`, and a reviewer showed the downloader returning the same 41,191 bytes for
+   that URL, so it is accepted. A truncated or non-hex escape is refused, because it is not
+   a URL a client can send. The requested app id is then looked for in that path only, as a
+   whole segment directly after an `apps` segment, compared literally — path segments are
+   case-sensitive, unlike the host and the scheme — so neither a host spelled `apps` nor a
+   segment spelled `APPS` can stand in for one.
    This is narrower than "looks like a URL" on purpose, and four review rounds are why.
    Round 1 falsified the first, purely textual rule with three inputs the tests had not
    covered: `https://apps/620/header.jpg`, where the authority was mistaken for a path
@@ -110,8 +121,11 @@ what makes the wrong-art half impossible rather than merely unobserved.
    `<` in the query was accepted although the downloader refuses that request — and that
    the agent followed redirects, so a 302 to another app's file was cached and returned as
    this app's cover. The first is why the rule above names a character set rather than a
-   byte range; the second is rule 8. A URL that cannot be read literally is a miss: it costs
-   a cover, never correctness.
+   byte range; the second is rule 8. Round 8 falsified the escape ban as blunt rather than
+   precise: it refused the live 620 artwork with its file name written `%68eader.jpg`,
+   which the downloader fetches as the same 41,191 bytes, so the rule now names the four
+   escapes that can change a path instead of all of them. A URL that cannot be read
+   literally is a miss: it costs a cover, never correctness.
 5. The candidate URL's host must be the store's own: `steamstatic.com` itself or a subdomain
    of it, compared **case-insensitively** — host names are, exactly as the scheme is, and a
    reviewer falsified a case-sensitive version by uppercasing the host in the 620 fixture,
@@ -138,7 +152,11 @@ what makes the wrong-art half impossible rather than merely unobserved.
    download fails still leaves the capsule beside it — the fallback the rung already had.
 7. A body larger than the shared store response bound (4 MiB) is not parsed. Every
    refusal is a miss: the rung returns nothing, `fetch_steam` falls through to the
-   later sources, and nothing surfaces as an error.
+   later sources, and nothing surfaces as an error. The bound is pinned by two valid
+   bodies, one of exactly 4 MiB (parsed, its URL returned) and one of 4 MiB and a byte
+   (refused): padding a body with spaces, as the first version of that test did, proves
+   nothing, because that is not JSON with or without a bound — a reviewer caught the
+   test claiming more than it showed.
 8. The downloader follows no redirects. A redirect is the one route to foreign bytes that
    this code cannot see — the URL that was checked and the file that arrives would differ —
    so a URL that answers with a redirect is a miss: the shared agent is built with
@@ -146,20 +164,31 @@ what makes the wrong-art half impossible rather than merely unobserved.
    foreign host whose path lies about the app id is the other one, and rule 5 is what closes
    it — an open image proxy was measured doing exactly that (`200 image/jpeg`, app 80's
    artwork under a path naming app 620).
-   What was measured on 2026-09-27 is narrower than "no artwork URL redirects": the store
-   API and the GetItems API answered `200` directly, and 84 distinct appdetails header and
-   capsule URLs — every candidate URL from 26 live responses — answered `200` with no
-   redirect. URLs the *GetItems* rung builds were not part of that measurement, and an
-   independent sample of them found two `404`s (the portrait URLs for app 570 and app 220,
-   whose `cdn.akamai.steamstatic.com` fallback answers `200`, so the chain still finds a
-   cover). The in-tree pin is the agent's own configuration, asserted by
+   What was measured on 2026-09-27 is narrower than "no artwork URL redirects". On the Steam
+   side: the store API and the GetItems API answered `200` directly; every candidate URL in
+   my own swatches of live responses — 52 distinct header/capsule URLs out of 51 bodies, 26
+   of which reported success, plus 38 distinct out of a second 20-body sample — answered
+   `200` with no redirect; and the reviewers' samples of 100, 100 and 274 live bodies each
+   found artwork hosts on `shared.akamai.steamstatic.com` only. An earlier draft of this
+   rule credited 84 URLs to 26 responses, which is arithmetically impossible (26 responses
+   carry at most 52 candidates); the 84 was my own corpus pooled with a reviewer's and is
+   now counted per sample, as a reviewer pointed out.
+   Not measured: URLs the *GetItems* rung builds — an independent sample found two `404`s
+   there (the portrait URLs for apps 570 and 220, whose `cdn.akamai.steamstatic.com`
+   fallback answers `200`, so the chain still finds a cover) — and the Heroic, GOG and Xbox
+   sources, whose URLs this rule also governs through the shared agent. A reviewer could not
+   measure those either (GOG's public endpoint returned no products that day), so "costs
+   nothing today" is verified on the Steam side only; for the other sources the honest
+   statement is that a redirect would now cost a cover instead of risking a wrong one. The
+   in-tree pin is the agent's own configuration, asserted by
    `the_artwork_downloader_follows_no_redirects`; the behaviour behind it — a `200` URL is
-   cached and the same file behind a `302` is a miss — was verified against a loopback
-   server outside this suite, because a test that opens a socket is not one this suite
-   keeps. This is the one rule here that reaches beyond the rung, because the agent and the
-   fetcher are shared by every source in `ImageCache`. It is recorded as a deliberate
-   widening rather than hidden: the fetcher seam hands back bytes with no notion of where
-   they came from, so a redirect cannot be judged by the rung that asked for the bytes.
+   cached and the same file behind a `302` is a miss, with the origin seeing only the
+   first request — was verified against a loopback server outside this suite, twice and
+   independently, because a test that opens a socket is not one this suite keeps. This is
+   the one rule here that reaches beyond the rung, because the agent and the fetcher are
+   shared by every source in `ImageCache`. It is recorded as a deliberate widening rather
+   than hidden: the fetcher seam hands back bytes with no notion of where they came from, so
+   a redirect cannot be judged by the rung that asked for the bytes.
 9. The request URL stays what it is today
    (`https://store.steampowered.com/api/appdetails?appids=<id>&filters=basic`), now
    built by `appdetails_url(appid)` so the test suite can assert it.
