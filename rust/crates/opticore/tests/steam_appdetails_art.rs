@@ -213,6 +213,11 @@ fn only_an_https_path_whose_apps_segment_names_the_app_id_is_accepted() {
         // An address literal is not a name the store serves artwork from.
         "https://999.999.999.999/store_item_assets/steam/apps/620/header.jpg",
         "https://127.0.0.1/store_item_assets/steam/apps/620/header.jpg",
+        // A host the store does not own is not the store, however well its path is shaped.
+        "https://evil.example/store_item_assets/steam/apps/620/header.jpg",
+        "https://steamstatic.com.evil.example/store_item_assets/steam/apps/620/header.jpg",
+        "https://notsteamstatic.com/store_item_assets/steam/apps/620/header.jpg",
+        "https://akamai.steamstatic.com./store_item_assets/steam/apps/620/header.jpg",
         // A query the downloader's URI parser would refuse is not a candidate either.
         "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg?x=y z",
         "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg?x=é",
@@ -252,6 +257,9 @@ fn only_an_https_path_whose_apps_segment_names_the_app_id_is_accepted() {
         // The reserved characters a real query uses are URI characters, not invalid ones.
         "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg?t=1790187113&x=~a-_.b",
         "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg?t=1%202",
+        // Every host the store serves artwork from is under its own domain.
+        "https://cdn.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg",
+        "https://steamstatic.com/store_item_assets/steam/apps/620/header.jpg",
     ] {
         let body = body_for("620", "true", Some(accepted), None);
         assert_eq!(
@@ -323,6 +331,41 @@ fn the_candidates_come_in_order_and_only_from_this_app() {
 
     // The live 100 body offers no candidate at all for the app it was asked about.
     assert!(appdetails_image_urls(APP_DETAILS_100.as_bytes(), 100).is_empty());
+}
+
+#[test]
+fn a_foreign_host_never_supplies_the_cover() {
+    // Review round 6's counterexample, end to end: a body that claims app 620 and names a
+    // host the store does not own, whose path does name the app id. The rung must neither
+    // fetch it nor write anything for it, even though that host is ready to serve artwork.
+    let tmp = tempfile::tempdir().unwrap();
+    let log: Log = Arc::new(Mutex::new(Vec::new()));
+    let foreign_body = r#"{"999":{"success":true,"data":{"steam_appid":620,"header_image":"https://evil.example/steam/apps/620/header.jpg"}}}"#;
+    let cache = cache_in(
+        tmp.path(),
+        &log,
+        vec![
+            (
+                "store.steampowered.com/api/appdetails",
+                foreign_body.as_bytes().to_vec(),
+            ),
+            ("evil.example", PORTRAIT_PNG.to_vec()),
+        ],
+    );
+
+    assert!(
+        cache.fetch(&request("Portal 2", Some(APP_ID))).is_none(),
+        "a URL on a host the store does not own is a miss"
+    );
+    let urls = log.lock().unwrap().clone();
+    assert!(
+        !urls.iter().any(|url| url.contains("evil.example")),
+        "the foreign host must never be asked for artwork: {urls:?}"
+    );
+    assert!(
+        !tmp.path().join("appid_620.jpg").exists(),
+        "nothing may be written for the foreign host"
+    );
 }
 
 type Log = Arc<Mutex<Vec<String>>>;
@@ -490,6 +533,9 @@ fn the_review_counterexamples_are_closed() {
         // Round 5: a `<` in the query. Printable, so a "printable ASCII" rule let it through,
         // but not a URI character, so the downloader refused the request.
         r#"{"999":{"success":true,"data":{"steam_appid":620,"header_image":"https://shared.akamai.steamstatic.com/steam/apps/620/header.jpg?x=<"}}}"#,
+        // Round 6: a foreign host whose path names this app id. Shape alone cannot tell it
+        // from the store's own CDN, so the host itself has to be the store's.
+        r#"{"999":{"success":true,"data":{"steam_appid":620,"header_image":"https://evil.example/steam/apps/620/header.jpg"}}}"#,
     ] {
         assert_eq!(
             appdetails_image_url(refused.as_bytes(), APP_ID),

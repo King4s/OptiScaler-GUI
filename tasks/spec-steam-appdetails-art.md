@@ -110,33 +110,49 @@ what makes the wrong-art half impossible rather than merely unobserved.
    `<` in the query was accepted although the downloader refuses that request — and that
    the agent followed redirects, so a 302 to another app's file was cached and returned as
    this app's cover. The first is why the rule above names a character set rather than a
-   byte range; the second is rule 7, and it is the only rule in this list that reaches
-   beyond this rung. A URL that cannot be read literally is a miss: it costs a cover, never
-   correctness.
-5. `header_image` comes before `capsule_image`, and the usable fields are returned as an
+   byte range; the second is rule 8. A URL that cannot be read literally is a miss: it costs
+   a cover, never correctness.
+5. The candidate URL's host must be the store's own: `steamstatic.com` itself or a subdomain
+   of it. The path rule says which app id a URL claims to serve and the scheme rule says how,
+   but neither says *who* serves it, so a response naming another host — review round 6 used
+   `https://evil.example/steam/apps/620/header.jpg`, whose path is shaped perfectly — would
+   otherwise have that host's bytes written as this game's cover. Measured 2026-09-27: all
+   84 live appdetails artwork URLs are on `shared.akamai.steamstatic.com` and the URL the CDN
+   rung builds is on `cdn.akamai.steamstatic.com`, so pinning to the domain costs nothing
+   today; a lookalike such as `steamstatic.com.evil.example`, `notsteamstatic.com` or a host
+   with a trailing dot is refused. This is the rule that turns "the artwork of this app id"
+   from a statement about a path into a statement about the store.
+6. `header_image` comes before `capsule_image`, and the usable fields are returned as an
    ordered list: a field that is missing, not a string, or unusable contributes nothing and
    the next one is tried. The caller tries them in that order as well, so a header whose
    download fails still leaves the capsule beside it — the fallback the rung already had.
-6. A body larger than the shared store response bound (4 MiB) is not parsed. Every
+7. A body larger than the shared store response bound (4 MiB) is not parsed. Every
    refusal is a miss: the rung returns nothing, `fetch_steam` falls through to the
    later sources, and nothing surfaces as an error.
-7. The downloader follows no redirects. A redirect is the one way bytes fetched for a URL
+8. The downloader follows no redirects. A redirect is the one way bytes fetched for a URL
    whose path names this app id can belong to another app id, and nothing in this code
    sees where a request ended up, so a URL that answers with a redirect is a miss: the
    shared agent is built with `max_redirects(0)` and `http_get` accepts only `200`.
-   Measured 2026-09-27: the store API, the GetItems API and 84 distinct live artwork URLs
-   all answer `200` with no redirect, so the rule cost nothing on the day it was added —
-   and if the CDN ever starts redirecting, the cost is a cover, never the wrong one.
-   This is the one rule here that reaches beyond the rung, because the agent and the
+   What was measured on 2026-09-27 is narrower than "no artwork URL redirects": the store
+   API and the GetItems API answered `200` directly, and 84 distinct appdetails header and
+   capsule URLs — every candidate URL from 26 live responses — answered `200` with no
+   redirect. URLs the *GetItems* rung builds were not part of that measurement, and an
+   independent sample of them found two `404`s (the portrait URLs for app 570 and app 220,
+   whose `cdn.akamai.steamstatic.com` fallback answers `200`, so the chain still finds a
+   cover). The in-tree pin is the agent's own configuration, asserted by
+   `the_artwork_downloader_follows_no_redirects`; the behaviour behind it — a `200` URL is
+   cached and the same file behind a `302` is a miss — was verified against a loopback
+   server outside this suite, because a test that opens a socket is not one this suite
+   keeps. This is the one rule here that reaches beyond the rung, because the agent and the
    fetcher are shared by every source in `ImageCache`. It is recorded as a deliberate
    widening rather than hidden: the fetcher seam hands back bytes with no notion of where
    they came from, so a redirect cannot be judged by the rung that asked for the bytes.
-8. The request URL stays what it is today
+9. The request URL stays what it is today
    (`https://store.steampowered.com/api/appdetails?appids=<id>&filters=basic`), now
    built by `appdetails_url(appid)` so the test suite can assert it.
-9. The rung keeps its place in the source order: local Steam `librarycache` portrait →
-   store `GetItems` portrait → CDN `header.jpg` → `appdetails` → Heroic/GOG/Xbox →
-   EXE icon.
+10. The rung keeps its place in the source order: local Steam `librarycache` portrait →
+    store `GetItems` portrait → CDN `header.jpg` → `appdetails` → Heroic/GOG/Xbox →
+    EXE icon.
 
 ## What changes in the pipeline
 

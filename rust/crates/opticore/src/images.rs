@@ -618,6 +618,13 @@ fn steam_app_path_names(url: &str, appid: u32) -> bool {
     if !authority_is_plain(authority) {
         return false;
     }
+    // The path says which app id a URL claims to serve; it says nothing about who serves it.
+    // Shape alone cannot tell the store's CDN from anyone else's `…/steam/apps/620/…`, so
+    // the host is pinned to the store's own artwork domain — otherwise the bytes of whatever
+    // host the response names would be written as this game's cover.
+    if !host_is_the_stores_artwork_cdn(authority) {
+        return false;
+    }
     let Some(after_authority) = rest[authority.len()..].strip_prefix('/') else {
         return false;
     };
@@ -635,6 +642,22 @@ fn steam_app_path_names(url: &str, appid: u32) -> bool {
         previous = segment;
     }
     false
+}
+
+/// Whether an authority is one of the store's own artwork hosts.
+///
+/// The path rule says which app id a URL claims to serve; it says nothing about who serves
+/// it. Without this check a response naming any host would have that host's bytes written
+/// under this game's id — `https://evil.example/steam/apps/620/header.jpg` is exactly that
+/// — so the authority must be the store's own domain: `steamstatic.com` itself or a
+/// subdomain of it, which is where every piece of artwork this pipeline has ever fetched
+/// lives (`shared.akamai.steamstatic.com` in the live corpus,
+/// `cdn.akamai.steamstatic.com` in the URL the CDN rung builds). A lookalike such as
+/// `steamstatic.com.evil.example` or `notsteamstatic.com` does not end with that and is
+/// refused.
+fn host_is_the_stores_artwork_cdn(authority: &str) -> bool {
+    let host = authority.split(':').next().unwrap_or_default();
+    host == "steamstatic.com" || host.ends_with(".steamstatic.com")
 }
 
 /// Whether the authority is a host name with an optional port — and nothing else.
