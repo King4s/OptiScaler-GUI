@@ -657,6 +657,10 @@ fn steam_app_path_names(url: &str, appid: u32) -> bool {
 /// refused.
 fn host_is_the_stores_artwork_cdn(authority: &str) -> bool {
     let host = authority.split(':').next().unwrap_or_default();
+    // Host names are case-insensitive — `Shared.Akamai.Steamstatic.com` is the same host as
+    // the lowercase spelling, and the downloader fetches it — so the comparison is too, just
+    // like the scheme's. A lookalike written in any case still fails it.
+    let host = host.to_ascii_lowercase();
     host == "steamstatic.com" || host.ends_with(".steamstatic.com")
 }
 

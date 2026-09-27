@@ -218,6 +218,12 @@ fn only_an_https_path_whose_apps_segment_names_the_app_id_is_accepted() {
         "https://steamstatic.com.evil.example/store_item_assets/steam/apps/620/header.jpg",
         "https://notsteamstatic.com/store_item_assets/steam/apps/620/header.jpg",
         "https://akamai.steamstatic.com./store_item_assets/steam/apps/620/header.jpg",
+        // Case does not help a lookalike either.
+        "https://Steamstatic.com.Evil.Example/store_item_assets/steam/apps/620/header.jpg",
+        // An open image proxy: its path says `apps/620` while the URL in its query hands back
+        // another app's bytes (measured: 200 image/jpeg, 20,694 bytes of app 80's artwork).
+        // The host pin is the rule that refuses it.
+        "https://wsrv.nl/store_item_assets/steam/apps/620/header.jpg?url=https%3A%2F%2Fshared.akamai.steamstatic.com%2Fstore_item_assets%2Fsteam%2Fapps%2F80%2Fheader.jpg",
         // A query the downloader's URI parser would refuse is not a candidate either.
         "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg?x=y z",
         "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg?x=é",
@@ -257,9 +263,12 @@ fn only_an_https_path_whose_apps_segment_names_the_app_id_is_accepted() {
         // The reserved characters a real query uses are URI characters, not invalid ones.
         "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg?t=1790187113&x=~a-_.b",
         "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg?t=1%202",
-        // Every host the store serves artwork from is under its own domain.
+        // Every host the store serves artwork from is under its own domain, and host names
+        // are case-insensitive, exactly as the scheme is.
         "https://cdn.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg",
         "https://steamstatic.com/store_item_assets/steam/apps/620/header.jpg",
+        "https://Shared.Akamai.Steamstatic.com/store_item_assets/steam/apps/620/header.jpg",
+        "https://SHARED.AKAMAI.STEAMSTATIC.COM/store_item_assets/steam/apps/620/header.jpg",
     ] {
         let body = body_for("620", "true", Some(accepted), None);
         assert_eq!(
@@ -536,6 +545,9 @@ fn the_review_counterexamples_are_closed() {
         // Round 6: a foreign host whose path names this app id. Shape alone cannot tell it
         // from the store's own CDN, so the host itself has to be the store's.
         r#"{"999":{"success":true,"data":{"steam_appid":620,"header_image":"https://evil.example/steam/apps/620/header.jpg"}}}"#,
+        // Round 6/7 (codex): an open image proxy, whose path says the app id while the URL in
+        // its query serves another app's artwork. Refused by the host pin, not by the path.
+        r#"{"999":{"success":true,"data":{"steam_appid":620,"header_image":"https://wsrv.nl/store_item_assets/steam/apps/620/header.jpg?url=https%3A%2F%2Fshared.akamai.steamstatic.com%2Fstore_item_assets%2Fsteam%2Fapps%2F80%2Fheader.jpg"}}}"#,
     ] {
         assert_eq!(
             appdetails_image_url(refused.as_bytes(), APP_ID),

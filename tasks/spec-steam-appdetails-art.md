@@ -113,15 +113,25 @@ what makes the wrong-art half impossible rather than merely unobserved.
    byte range; the second is rule 8. A URL that cannot be read literally is a miss: it costs
    a cover, never correctness.
 5. The candidate URL's host must be the store's own: `steamstatic.com` itself or a subdomain
-   of it. The path rule says which app id a URL claims to serve and the scheme rule says how,
-   but neither says *who* serves it, so a response naming another host — review round 6 used
-   `https://evil.example/steam/apps/620/header.jpg`, whose path is shaped perfectly — would
-   otherwise have that host's bytes written as this game's cover. Measured 2026-09-27: all
-   84 live appdetails artwork URLs are on `shared.akamai.steamstatic.com` and the URL the CDN
-   rung builds is on `cdn.akamai.steamstatic.com`, so pinning to the domain costs nothing
-   today; a lookalike such as `steamstatic.com.evil.example`, `notsteamstatic.com` or a host
-   with a trailing dot is refused. This is the rule that turns "the artwork of this app id"
-   from a statement about a path into a statement about the store.
+   of it, compared **case-insensitively** — host names are, exactly as the scheme is, and a
+   reviewer falsified a case-sensitive version by uppercasing the host in the 620 fixture,
+   from which the downloader fetched the identical 41,191-byte image. The path rule says
+   which app id a URL claims to serve and the scheme rule says how, but neither says *who*
+   serves it: round 6 used `https://evil.example/steam/apps/620/header.jpg`, whose path is
+   shaped perfectly, and a later round an open image proxy,
+   `https://wsrv.nl/apps/620/header.jpg?url=…`, whose path names app 620 while the URL in
+   its query serves app 80's artwork — measured here as `200 image/jpeg`, 20,694 bytes, and
+   the image is Counter-Strike: Condition Zero (app 80), against app 80's own header at
+   27,592 bytes. Without the pin, either host's bytes would be written as this game's cover.
+   What the pin costs today: nothing that was measured. Every appdetails artwork URL seen so
+   far is on `shared.akamai.steamstatic.com`: 84 distinct URLs from one 51-body sample here,
+   38 more from a second 20-body sample here, and the 192 distinct URLs an independent
+   reviewer read out of 100 bodies — none on any other host — while the URL the CDN rung
+   builds is on `cdn.akamai.steamstatic.com`. Lookalikes
+   fail whatever their case: `steamstatic.com.evil.example`, `notsteamstatic.com`,
+   `Steamstatic.com.Evil.Example`, a host with a trailing dot. This is the rule that turns
+   "the artwork of this app id" from a statement about a path into a statement about the
+   store.
 6. `header_image` comes before `capsule_image`, and the usable fields are returned as an
    ordered list: a field that is missing, not a string, or unusable contributes nothing and
    the next one is tried. The caller tries them in that order as well, so a header whose
@@ -129,10 +139,13 @@ what makes the wrong-art half impossible rather than merely unobserved.
 7. A body larger than the shared store response bound (4 MiB) is not parsed. Every
    refusal is a miss: the rung returns nothing, `fetch_steam` falls through to the
    later sources, and nothing surfaces as an error.
-8. The downloader follows no redirects. A redirect is the one way bytes fetched for a URL
-   whose path names this app id can belong to another app id, and nothing in this code
-   sees where a request ended up, so a URL that answers with a redirect is a miss: the
-   shared agent is built with `max_redirects(0)` and `http_get` accepts only `200`.
+8. The downloader follows no redirects. A redirect is the one route to foreign bytes that
+   this code cannot see — the URL that was checked and the file that arrives would differ —
+   so a URL that answers with a redirect is a miss: the shared agent is built with
+   `max_redirects(0)` and `http_get` accepts only `200`. It is not the only route overall: a
+   foreign host whose path lies about the app id is the other one, and rule 5 is what closes
+   it — an open image proxy was measured doing exactly that (`200 image/jpeg`, app 80's
+   artwork under a path naming app 620).
    What was measured on 2026-09-27 is narrower than "no artwork URL redirects": the store
    API and the GetItems API answered `200` directly, and 84 distinct appdetails header and
    capsule URLs — every candidate URL from 26 live responses — answered `200` with no
@@ -153,6 +166,21 @@ what makes the wrong-art half impossible rather than merely unobserved.
 10. The rung keeps its place in the source order: local Steam `librarycache` portrait →
     store `GetItems` portrait → CDN `header.jpg` → `appdetails` → Heroic/GOG/Xbox →
     EXE icon.
+
+## Not this change (limits, deliberately left alone)
+
+Two things reviewers found are real, and are *not* fixed here, because each belongs to
+another change with its own spec:
+
+- `ImageCache::fetch` also has an `art_url` source that caches a caller-supplied URL under a
+  name-derived stem without either identity check: a caller passing the name `appid_620`
+  together with app 80's art URL writes `appid_620.jpg`. That predates this change and is
+  the Heroic/GOG source's contract with local launcher manifests — a caller inside this
+  program, not a network response — and the appdetails rung itself checks identity twice.
+- The GetItems portrait rung (`store_item_portrait_url`) rests on a single identity source,
+  the item's own `appid`, while building its URL from `asset_url_format`, so a GetItems body
+  could name another app's asset path. That is that rung's own change and its own spec;
+  folding it in here would put two unrelated changes in one diff.
 
 ## What changes in the pipeline
 
