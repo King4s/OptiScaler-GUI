@@ -191,6 +191,18 @@ fn only_an_https_path_whose_apps_segment_names_the_app_id_is_accepted() {
         "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/80/header.jpg?t=620",
         "https://cdn620.example/store_item_assets/steam/apps/80/header.jpg",
         "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620x/header.jpg",
+        // A host spelled `apps` is not a path segment.
+        "https://apps/620/header.jpg",
+        // A URL whose authority is not a host cannot be the store's.
+        "https://bad host/store_item_assets/steam/apps/620/header.jpg",
+        "https://user@shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg",
+        // An HTTP client normalises these away, so the file behind them may belong to
+        // another app id even though the app id appears in the path.
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/../80/header.jpg",
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/%2e%2e/80/header.jpg",
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/./header.jpg",
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam//apps/620/header.jpg",
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header%20x.jpg",
     ] {
         let body = body_for("620", "true", Some(refused), None);
         assert_eq!(
@@ -200,11 +212,19 @@ fn only_an_https_path_whose_apps_segment_names_the_app_id_is_accepted() {
         );
     }
 
-    let accepted = body_for("620", "true", Some(HEADER_620), None);
-    assert_eq!(
-        appdetails_image_url(accepted.as_bytes(), APP_ID),
-        Some(HEADER_620.to_string())
-    );
+    for accepted in [
+        HEADER_620,
+        // Schemes are case-insensitive, and the port is part of the authority.
+        "HTTPS://shared.akamai.steamstatic.com/steam/apps/620/header.jpg",
+        "https://shared.akamai.steamstatic.com:443/store_item_assets/steam/apps/620/header.jpg",
+    ] {
+        let body = body_for("620", "true", Some(accepted), None);
+        assert_eq!(
+            appdetails_image_url(body.as_bytes(), APP_ID),
+            Some(accepted.to_string()),
+            "{accepted} must be accepted"
+        );
+    }
 }
 
 #[test]
@@ -374,5 +394,72 @@ fn a_refusal_leaves_the_source_order_unchanged() {
         kinds,
         vec!["store portrait", "cdn header", "appdetails"],
         "the rung keeps its place and a refusal does not abort the chain"
+    );
+}
+
+#[test]
+fn the_review_round_one_counterexamples_are_closed() {
+    // The exact bodies review round 1 used, verbatim, so a later reviewer can see the
+    // findings are pinned rather than quietly patched over.
+    for refused in [
+        r#"{"999":{"success":true,"data":{"steam_appid":620,"header_image":"https://apps/620/header.jpg"}}}"#,
+        r#"{"999":{"success":true,"data":{"steam_appid":620,"header_image":"https://bad host/apps/620/header.jpg"}}}"#,
+        r#"{"999":{"success":true,"data":{"steam_appid":620,"header_image":"https://shared.akamai.steamstatic.com/steam/apps/620/../80/header.jpg"}}}"#,
+    ] {
+        assert_eq!(
+            appdetails_image_url(refused.as_bytes(), APP_ID),
+            None,
+            "{refused} must be refused"
+        );
+    }
+
+    let uppercase_scheme = r#"{"999":{"success":true,"data":{"steam_appid":620,"header_image":"HTTPS://shared.akamai.steamstatic.com/steam/apps/620/header.jpg"}}}"#;
+    assert_eq!(
+        appdetails_image_url(uppercase_scheme.as_bytes(), APP_ID),
+        Some("HTTPS://shared.akamai.steamstatic.com/steam/apps/620/header.jpg".to_string()),
+        "a valid HTTPS URL must not be refused for the case of its scheme"
+    );
+}
+
+#[test]
+fn a_dot_segment_cannot_smuggle_another_apps_artwork_into_the_cache() {
+    // An HTTP client normalises /apps/620/../80/header.jpg to app 80's file, so a path
+    // that only appears to name app 620 would still cache app 80's bytes under
+    // appid_620.jpg. The rung must refuse the URL outright.
+    let body = body_for(
+        "620",
+        "true",
+        Some("https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/../80/header.jpg"),
+        None,
+    );
+
+    let tmp = tempfile::tempdir().unwrap();
+    let log: Log = Arc::new(Mutex::new(Vec::new()));
+    let cache = cache_in(
+        tmp.path(),
+        &log,
+        vec![
+            (
+                "store.steampowered.com/api/appdetails",
+                body.as_bytes().to_vec(),
+            ),
+            ("store_item_assets/steam/apps/80", PORTRAIT_PNG.to_vec()),
+        ],
+    );
+
+    assert_eq!(cache.fetch(&request("Portal 2", Some(APP_ID))), None);
+
+    let urls = log.lock().unwrap().clone();
+    assert!(
+        urls.iter().any(|url| url.contains("api/appdetails")),
+        "the rung must have been consulted: {urls:?}"
+    );
+    assert!(
+        !urls.iter().any(|url| url.contains("apps/80")),
+        "app 80's artwork must never be requested through a dot segment: {urls:?}"
+    );
+    assert!(
+        tmp.path().read_dir().unwrap().next().is_none(),
+        "nothing may be written for this app id"
     );
 }

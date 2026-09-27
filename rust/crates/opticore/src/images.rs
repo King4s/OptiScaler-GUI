@@ -562,15 +562,34 @@ pub fn appdetails_image_url(body: &[u8], appid: u32) -> Option<String> {
 /// Whether an image URL is an absolute https URL whose path holds `appid` as a whole
 /// segment directly after an `apps` segment.
 ///
-/// The app id is looked for in the path only. A mention in the host or in the query
-/// string (`?t=…`) is not the artwork's app id, and a relative or protocol-relative
-/// URL names no app id at all — the shared downloader still repairs those for the
-/// Heroic and GOG sources, which is not this rung's business.
+/// The app id is looked for in the **path only**, after the authority has been taken
+/// off, so a host that happens to be spelled `apps` cannot stand in for a path
+/// segment. The URL has to be absolute and its scheme `https`, compared
+/// case-insensitively — schemes are case-insensitive, and `HTTPS://…` from the store
+/// is still the store. Everything the URI carries is read literally, so the path may
+/// only consist of the plain, non-empty segments Steam's asset paths actually use: a
+/// `.` or `..` segment, a percent-encoded one, an empty one between double slashes,
+/// a space or a userinfo part in the authority are all refused rather than resolved.
+/// `…/apps/620/../80/header.jpg` is the reason: an HTTP client normalises it to app
+/// 80's artwork, which would be cached under this game's id.
 fn steam_app_path_names(url: &str, appid: u32) -> bool {
-    let Some(rest) = url.strip_prefix("https://") else {
+    let Some((scheme, rest)) = url.split_once("://") else {
         return false;
     };
-    let path = rest.split(['?', '#']).next().unwrap_or_default();
+    if !scheme.eq_ignore_ascii_case("https") {
+        return false;
+    }
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    if !authority_is_plain(authority) {
+        return false;
+    }
+    let Some(after_authority) = rest[authority.len()..].strip_prefix('/') else {
+        return false;
+    };
+    let path = after_authority.split(['?', '#']).next().unwrap_or_default();
+    if path.is_empty() || !path_is_plain(path) {
+        return false;
+    }
     let wanted = appid.to_string();
     let mut segments = path.split('/');
     let mut previous = segments.next().unwrap_or_default();
@@ -581,6 +600,30 @@ fn steam_app_path_names(url: &str, appid: u32) -> bool {
         previous = segment;
     }
     false
+}
+
+/// Whether the authority is a plain host: non-empty and free of anything that is not
+/// part of a host, a port or an IPv6 literal. `https://bad host/…` is not a URL this
+/// pipeline will follow.
+fn authority_is_plain(authority: &str) -> bool {
+    !authority.is_empty()
+        && authority
+            .chars()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, '-' | '.' | ':' | '[' | ']'))
+}
+
+/// Whether every path segment is one this pipeline will follow: non-empty, not a dot
+/// segment (the HTTP client would normalise those away and could land on another app's
+/// file), and built only from the characters Steam's asset paths use.
+fn path_is_plain(path: &str) -> bool {
+    path.split('/').all(|segment| {
+        !segment.is_empty()
+            && segment != "."
+            && segment != ".."
+            && segment
+                .chars()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, '-' | '_' | '.'))
+    })
 }
 
 fn http_get(url: &str) -> Option<Vec<u8>> {

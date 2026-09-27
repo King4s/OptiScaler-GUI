@@ -65,19 +65,37 @@ what makes the wrong-art half impossible rather than merely unobserved.
    Requiring both is the point: the label says what the payload claims to be, the path
    says what will be downloaded, and the file is cached under the requested app id.
    Two sources that can disagree must agree.
-3. A candidate URL must be an absolute `https://` URL. Protocol-relative (`//…`),
-   `http://` and relative URLs contribute nothing. (The shared downloader still
-   repairs protocol-relative URLs for Heroic and GOG; this rung does not accept them,
-   because nothing in a live appdetails response is protocol-relative.)
-4. `header_image` is preferred, then `capsule_image`. A field that is missing, not a
+3. A candidate URL must be an absolute URL whose scheme is `https`, compared
+   case-insensitively (`HTTPS://…` from the store is still the store). Relative and
+   protocol-relative (`//…`) URLs contribute nothing. (The shared downloader still
+   repairs protocol-relative URLs for the Heroic and GOG sources; this rung does not
+   accept them, because nothing in a live appdetails response is protocol-relative.)
+4. The URL is read literally and never normalised. Its authority must be a plain host:
+   non-empty, and only host, port or IPv6-literal characters — `https://bad host/…` and
+   a userinfo part are not URLs this rung follows. Its path (what follows the authority,
+   before any query or fragment) must consist of non-empty plain segments: ASCII
+   alphanumerics plus `-`, `_` and `.`, with no `.` or `..` segment and no
+   percent-encoding. The requested app id is then looked for in that path only, as a
+   whole segment directly after an `apps` segment, so a host spelled `apps` cannot stand
+   in for one.
+   This is narrower than "looks like a URL" on purpose. Review round 1 falsified the
+   earlier, purely textual rule with three inputs the tests had not covered:
+   `https://apps/620/header.jpg`, where the authority was mistaken for a path segment;
+   `https://bad host/apps/620/header.jpg`, which is not a URL yet was accepted while a
+   valid `HTTPS://…` was refused; and `…/steam/apps/620/../80/header.jpg`, where an HTTP
+   client normalises the path to app 80's file — app 80's bytes would have been cached
+   as `appid_620.jpg`, which is the one outcome this whole change exists to prevent. A
+   path that cannot be read literally is now a miss: it costs a cover, never
+   correctness.
+5. `header_image` is preferred, then `capsule_image`. A field that is missing, not a
    string, or empty contributes nothing, and the second field is tried.
-5. A body larger than the shared store response bound (4 MiB) is not parsed. Every
+6. A body larger than the shared store response bound (4 MiB) is not parsed. Every
    refusal is a miss: the rung returns nothing, `fetch_steam` falls through to the
    later sources, and nothing surfaces as an error.
-6. The request URL stays what it is today
+7. The request URL stays what it is today
    (`https://store.steampowered.com/api/appdetails?appids=<id>&filters=basic`), now
    built by `appdetails_url(appid)` so the test suite can assert it.
-7. The rung keeps its place in the source order: local Steam `librarycache` portrait →
+8. The rung keeps its place in the source order: local Steam `librarycache` portrait →
    store `GetItems` portrait → CDN `header.jpg` → `appdetails` → Heroic/GOG/Xbox →
    EXE icon.
 
