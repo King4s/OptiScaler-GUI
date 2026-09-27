@@ -77,9 +77,12 @@ what makes the wrong-art half impossible rather than merely unobserved.
    `https://:/…` with no host, `…:abc` with a port that is not a number, `…:+443` and
    `…:65536` with a port no URL carries are all refused. A host of nothing but digits and
    dots is an address literal — the store serves its artwork from names — and is refused
-   rather than half-validated as an IPv4 address. The whole URI, query and fragment
-   included, must be printable ASCII: a control character, a space or a non-ASCII byte
-   anywhere is refused, because the downloader's own URI parser refuses it. Its path (what
+   rather than half-validated as an IPv4 address. Every byte of the whole URI, query and
+   fragment included, must be one a URI may contain: RFC 3986's unreserved and reserved
+   characters plus `%`. A space, a control byte, a non-ASCII byte, and equally `<`, `>`,
+   `"`, a backslash, `^`, a backtick, `{`, `|` or `}` is refused — those are printable, but
+   they are not URI characters, and the downloader's own parser refuses such a request
+   before it leaves the process. Its path (what
    follows the authority, before any query or fragment) must consist of non-empty plain
    segments: ASCII alphanumerics plus `-`, `_` and `.`, with no `.` or `..` segment and no
    percent-encoding. The requested app id is then looked for in that path only, as a whole
@@ -103,7 +106,12 @@ what makes the wrong-art half impossible rather than merely unobserved.
    validation — a NUL in `?x=…` was accepted although the downloader refuses that URI — and
    that `https://999.999.999.999/…` passed as a host. Both are fixed, which is what makes
    the whole-URI and address-literal rules above part of the specification rather than
-   incidental. A URL that cannot be read literally is a miss: it costs a cover, never
+   incidental. Round 5 found that "printable ASCII" is broader than "a URI character" — a
+   `<` in the query was accepted although the downloader refuses that request — and that
+   the agent followed redirects, so a 302 to another app's file was cached and returned as
+   this app's cover. The first is why the rule above names a character set rather than a
+   byte range; the second is rule 7, and it is the only rule in this list that reaches
+   beyond this rung. A URL that cannot be read literally is a miss: it costs a cover, never
    correctness.
 5. `header_image` comes before `capsule_image`, and the usable fields are returned as an
    ordered list: a field that is missing, not a string, or unusable contributes nothing and
@@ -112,10 +120,21 @@ what makes the wrong-art half impossible rather than merely unobserved.
 6. A body larger than the shared store response bound (4 MiB) is not parsed. Every
    refusal is a miss: the rung returns nothing, `fetch_steam` falls through to the
    later sources, and nothing surfaces as an error.
-7. The request URL stays what it is today
+7. The downloader follows no redirects. A redirect is the one way bytes fetched for a URL
+   whose path names this app id can belong to another app id, and nothing in this code
+   sees where a request ended up, so a URL that answers with a redirect is a miss: the
+   shared agent is built with `max_redirects(0)` and `http_get` accepts only `200`.
+   Measured 2026-09-27: the store API, the GetItems API and 84 distinct live artwork URLs
+   all answer `200` with no redirect, so the rule cost nothing on the day it was added —
+   and if the CDN ever starts redirecting, the cost is a cover, never the wrong one.
+   This is the one rule here that reaches beyond the rung, because the agent and the
+   fetcher are shared by every source in `ImageCache`. It is recorded as a deliberate
+   widening rather than hidden: the fetcher seam hands back bytes with no notion of where
+   they came from, so a redirect cannot be judged by the rung that asked for the bytes.
+8. The request URL stays what it is today
    (`https://store.steampowered.com/api/appdetails?appids=<id>&filters=basic`), now
    built by `appdetails_url(appid)` so the test suite can assert it.
-8. The rung keeps its place in the source order: local Steam `librarycache` portrait →
+9. The rung keeps its place in the source order: local Steam `librarycache` portrait →
    store `GetItems` portrait → CDN `header.jpg` → `appdetails` → Heroic/GOG/Xbox →
    EXE icon.
 

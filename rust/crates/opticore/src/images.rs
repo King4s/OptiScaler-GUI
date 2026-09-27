@@ -402,6 +402,12 @@ pub(crate) fn http_agent() -> ureq::Agent {
                 .provider(ureq::tls::TlsProvider::NativeTls)
                 .build(),
         )
+        // No redirects. A redirect is the one way a file that was fetched for one artwork
+        // URL can belong to an app id other than the one in that URL, and nothing here can
+        // see where the request ended up, so a redirected asset is a miss instead of a
+        // cover. Measured on 2026-09-27: the live store API, the GetItems API and 84 real
+        // asset URLs all answer 200 directly, so this costs nothing today.
+        .max_redirects(0)
         .timeout_global(Some(DOWNLOAD_TIMEOUT))
         .build()
         .into()
@@ -594,11 +600,12 @@ pub fn appdetails_image_url(body: &[u8], appid: u32) -> Option<String> {
 /// `…/apps/620/../80/header.jpg` is the reason: an HTTP client normalises it to app
 /// 80's artwork, which would be cached under this game's id.
 fn steam_app_path_names(url: &str, appid: u32) -> bool {
-    // The whole URI is read literally, query and fragment included: a control character, a
-    // space, a DEL or a non-ASCII byte anywhere makes it something the downloader's own URI
-    // parser will refuse, so it is not a candidate here either. Steam's asset URLs are
-    // plain ASCII with a `?t=…` tail.
-    if !url.bytes().all(|byte| byte.is_ascii_graphic()) {
+    // The whole URI is read literally, query and fragment included, and every byte must be
+    // one a URI may contain (RFC 3986's unreserved, reserved and percent characters). A
+    // space, a `<`, a `>`, a quote, a backslash, a backtick, a brace or any control or
+    // non-ASCII byte is not part of a URI, and the locked downloader refuses such a URL
+    // before the request leaves the process.
+    if !url.bytes().all(is_uri_character) {
         return false;
     }
     let Some((scheme, rest)) = url.split_once("://") else {
@@ -681,6 +688,39 @@ fn path_is_plain(path: &str) -> bool {
     })
 }
 
+/// Whether a byte is one a URI may contain: RFC 3986's unreserved and reserved characters
+/// plus the percent sign that introduces an escape. Everything else — a space, `<`, `>`,
+/// `"`, `\`, `^`, a backtick, `{`, `|`, `}`, a DEL, a control byte, any non-ASCII byte — is
+/// not, which is what the downloader's URI parser enforces too.
+fn is_uri_character(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric()
+        || matches!(
+            byte,
+            b'-' | b'.'
+                | b'_'
+                | b'~'
+                | b':'
+                | b'/'
+                | b'?'
+                | b'#'
+                | b'['
+                | b']'
+                | b'@'
+                | b'!'
+                | b'$'
+                | b'&'
+                | b'\''
+                | b'('
+                | b')'
+                | b'*'
+                | b'+'
+                | b','
+                | b';'
+                | b'='
+                | b'%'
+        )
+}
+
 fn http_get(url: &str) -> Option<Vec<u8>> {
     let mut resp = http_agent().get(url).call().ok()?;
     if resp.status() != 200 {
@@ -713,6 +753,16 @@ mod tests {
             cache.cached_path("Some Game", None).unwrap(),
             tmp.path().join("Some Game.png")
         );
+    }
+
+    #[test]
+    fn the_artwork_downloader_follows_no_redirects() {
+        // A redirect is invisible to every caller here: whatever the response holds would be
+        // cached under the app id of the URL that was checked, not the app id it came from.
+        // The rule therefore lives in the agent's configuration rather than in a check on a
+        // response that cannot see where it came from — with no redirects followed, a 3xx is
+        // returned as-is and `http_get` accepts only 200.
+        assert_eq!(http_agent().config().max_redirects(), 0);
     }
 
     #[test]

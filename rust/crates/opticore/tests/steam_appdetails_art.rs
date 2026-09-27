@@ -217,6 +217,17 @@ fn only_an_https_path_whose_apps_segment_names_the_app_id_is_accepted() {
         "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg?x=y z",
         "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg?x=é",
         "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg#a b",
+        // "Printable ASCII" is not the same as "a URI character": these are all printable and
+        // all outside RFC 3986's set, which is the set the downloader enforces.
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg?x=<",
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg?x=>",
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg?x=\"",
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg?x=\\",
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg?x={",
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg?x=|",
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg?x=}",
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg?x=`",
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg?x=^",
         // An HTTP client normalises these away, so the file behind them may belong to
         // another app id even though the app id appears in the path.
         "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/../80/header.jpg",
@@ -238,6 +249,9 @@ fn only_an_https_path_whose_apps_segment_names_the_app_id_is_accepted() {
         // Schemes are case-insensitive, and the port is part of the authority.
         "HTTPS://shared.akamai.steamstatic.com/steam/apps/620/header.jpg",
         "https://shared.akamai.steamstatic.com:443/store_item_assets/steam/apps/620/header.jpg",
+        // The reserved characters a real query uses are URI characters, not invalid ones.
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg?t=1790187113&x=~a-_.b",
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg?t=1%202",
     ] {
         let body = body_for("620", "true", Some(accepted), None);
         assert_eq!(
@@ -473,6 +487,9 @@ fn the_review_counterexamples_are_closed() {
         r#"{"999":{"success":true,"data":{"steam_appid":620,"header_image":"https://shared.akamai.steamstatic.com/steam/apps/620/header.jpg?x=\u0000"}}}"#,
         // Round 4: an address literal as the host.
         r#"{"999":{"success":true,"data":{"steam_appid":620,"header_image":"https://999.999.999.999/steam/apps/620/header.jpg"}}}"#,
+        // Round 5: a `<` in the query. Printable, so a "printable ASCII" rule let it through,
+        // but not a URI character, so the downloader refused the request.
+        r#"{"999":{"success":true,"data":{"steam_appid":620,"header_image":"https://shared.akamai.steamstatic.com/steam/apps/620/header.jpg?x=<"}}}"#,
     ] {
         assert_eq!(
             appdetails_image_url(refused.as_bytes(), APP_ID),
