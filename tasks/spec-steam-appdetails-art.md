@@ -70,23 +70,28 @@ what makes the wrong-art half impossible rather than merely unobserved.
    protocol-relative (`//…`) URLs contribute nothing. (The shared downloader still
    repairs protocol-relative URLs for the Heroic and GOG sources; this rung does not
    accept them, because nothing in a live appdetails response is protocol-relative.)
-4. The URL is read literally and never normalised. Its authority must be a plain host:
-   non-empty, and only host, port or IPv6-literal characters — `https://bad host/…` and
-   a userinfo part are not URLs this rung follows. Its path (what follows the authority,
-   before any query or fragment) must consist of non-empty plain segments: ASCII
+4. The URL is read literally and never normalised. Its authority must be a host name —
+   dotted labels of letters, digits and hyphens, none empty and none hyphen-edged — with
+   an optional port of at most five digits, and nothing else: `https://bad host/…`, a
+   userinfo part, an underscore, brackets, an IPv6 literal, `https://:/…` with no host and
+   `…:abc` with a port that is not a number are all refused. Its path (what follows the
+   authority, before any query or fragment) must consist of non-empty plain segments: ASCII
    alphanumerics plus `-`, `_` and `.`, with no `.` or `..` segment and no
-   percent-encoding. The requested app id is then looked for in that path only, as a
-   whole segment directly after an `apps` segment, so a host spelled `apps` cannot stand
-   in for one.
-   This is narrower than "looks like a URL" on purpose. Review round 1 falsified the
-   earlier, purely textual rule with three inputs the tests had not covered:
-   `https://apps/620/header.jpg`, where the authority was mistaken for a path segment;
-   `https://bad host/apps/620/header.jpg`, which is not a URL yet was accepted while a
-   valid `HTTPS://…` was refused; and `…/steam/apps/620/../80/header.jpg`, where an HTTP
-   client normalises the path to app 80's file — app 80's bytes would have been cached
-   as `appid_620.jpg`, which is the one outcome this whole change exists to prevent. A
-   path that cannot be read literally is now a miss: it costs a cover, never
-   correctness.
+   percent-encoding. The requested app id is then looked for in that path only, as a whole
+   segment directly after an `apps` segment, so a host spelled `apps` cannot stand in for
+   one.
+   This is narrower than "looks like a URL" on purpose, and two review rounds are why.
+   Round 1 falsified the first, purely textual rule with three inputs the tests had not
+   covered: `https://apps/620/header.jpg`, where the authority was mistaken for a path
+   segment; `https://bad host/apps/620/header.jpg`, which is not a URL yet was accepted
+   while a valid `HTTPS://…` was refused; and `…/steam/apps/620/../80/header.jpg`, where an
+   HTTP client normalises the path to app 80's file — app 80's bytes would have been cached
+   as `appid_620.jpg`, which is the one outcome this change exists to prevent. Round 2 then
+   falsified the fix's authority check as a character whitelist rather than a host check:
+   `https://:/apps/620/header.jpg` (no host at all),
+   `https://[invalid]/apps/620/header.jpg` and `…steamstatic.com:abc/apps/620/header.jpg`
+   were all still accepted. A URL that cannot be read literally is a miss: it costs a
+   cover, never correctness.
 5. `header_image` is preferred, then `capsule_image`. A field that is missing, not a
    string, or empty contributes nothing, and the second field is tried.
 6. A body larger than the shared store response bound (4 MiB) is not parsed. Every

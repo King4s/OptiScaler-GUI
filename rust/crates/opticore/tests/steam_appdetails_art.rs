@@ -196,6 +196,15 @@ fn only_an_https_path_whose_apps_segment_names_the_app_id_is_accepted() {
         // A URL whose authority is not a host cannot be the store's.
         "https://bad host/store_item_assets/steam/apps/620/header.jpg",
         "https://user@shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg",
+        // A host with nothing before the port, a port that is not a number, a port out of
+        // range, a hyphen-edged or underscored label, brackets, and an IPv6 literal.
+        "https://:/store_item_assets/steam/apps/620/header.jpg",
+        "https://shared.akamai.steamstatic.com:abc/store_item_assets/steam/apps/620/header.jpg",
+        "https://shared.akamai.steamstatic.com:123456/store_item_assets/steam/apps/620/header.jpg",
+        "https://bad-.host/store_item_assets/steam/apps/620/header.jpg",
+        "https://foo_bar.com/store_item_assets/steam/apps/620/header.jpg",
+        "https://[invalid]/store_item_assets/steam/apps/620/header.jpg",
+        "https://[2001:db8::1]/store_item_assets/steam/apps/620/header.jpg",
         // An HTTP client normalises these away, so the file behind them may belong to
         // another app id even though the app id appears in the path.
         "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/../80/header.jpg",
@@ -398,13 +407,22 @@ fn a_refusal_leaves_the_source_order_unchanged() {
 }
 
 #[test]
-fn the_review_round_one_counterexamples_are_closed() {
-    // The exact bodies review round 1 used, verbatim, so a later reviewer can see the
-    // findings are pinned rather than quietly patched over.
+fn the_review_counterexamples_are_closed() {
+    // The exact bodies the two review rounds used, verbatim, so a later reviewer can see
+    // the findings are pinned rather than quietly patched over.
     for refused in [
+        // Round 1: the authority mistaken for a path segment.
         r#"{"999":{"success":true,"data":{"steam_appid":620,"header_image":"https://apps/620/header.jpg"}}}"#,
+        // Round 1: an authority that is not a host.
         r#"{"999":{"success":true,"data":{"steam_appid":620,"header_image":"https://bad host/apps/620/header.jpg"}}}"#,
+        // Round 1: dot segments an HTTP client normalises to app 80's file.
         r#"{"999":{"success":true,"data":{"steam_appid":620,"header_image":"https://shared.akamai.steamstatic.com/steam/apps/620/../80/header.jpg"}}}"#,
+        // Round 2: an authority that passes a character check but has no host.
+        r#"{"999":{"success":true,"data":{"steam_appid":620,"header_image":"https://:/apps/620/header.jpg"}}}"#,
+        // Round 2: brackets that are not a valid IPv6 literal.
+        r#"{"999":{"success":true,"data":{"steam_appid":620,"header_image":"https://[invalid]/apps/620/header.jpg"}}}"#,
+        // Round 2: a port that is not a number.
+        r#"{"999":{"success":true,"data":{"steam_appid":620,"header_image":"https://shared.akamai.steamstatic.com:abc/apps/620/header.jpg"}}}"#,
     ] {
         assert_eq!(
             appdetails_image_url(refused.as_bytes(), APP_ID),

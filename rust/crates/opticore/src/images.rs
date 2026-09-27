@@ -602,14 +602,32 @@ fn steam_app_path_names(url: &str, appid: u32) -> bool {
     false
 }
 
-/// Whether the authority is a plain host: non-empty and free of anything that is not
-/// part of a host, a port or an IPv6 literal. `https://bad host/…` is not a URL this
-/// pipeline will follow.
+/// Whether the authority is a host name with an optional port — and nothing else.
+///
+/// A character check is not enough: `https://:/path` has an empty host and
+/// `https://host:abc/path` has a port that is not a number, and neither is a destination
+/// this pipeline may follow. The host must be dotted labels of letters, digits and
+/// hyphens with no empty or hyphen-edged label (`shared.akamai.steamstatic.com` is the
+/// shape the store serves its artwork from), the port at most five digits. Brackets,
+/// userinfo, an underscore and an IPv6 literal are all refused: Steam serves no artwork
+/// from any of them, and a URL this code cannot read literally is a miss, never a guess.
 fn authority_is_plain(authority: &str) -> bool {
-    !authority.is_empty()
-        && authority
-            .chars()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, '-' | '.' | ':' | '[' | ']'))
+    let (host, port) = match authority.split_once(':') {
+        Some((host, port)) => (host, Some(port)),
+        None => (authority, None),
+    };
+    !host.is_empty()
+        && host.split('.').all(|label| {
+            !label.is_empty()
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+                && label
+                    .chars()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == '-')
+        })
+        && port.is_none_or(|port| {
+            !port.is_empty() && port.len() <= 5 && port.chars().all(|byte| byte.is_ascii_digit())
+        })
 }
 
 /// Whether every path segment is one this pipeline will follow: non-empty, not a dot
