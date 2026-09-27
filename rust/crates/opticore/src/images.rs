@@ -184,13 +184,17 @@ impl ImageCache {
 
         // Fallback: Store API for the actual hosted image URL.
         //
-        // The rung answers with the artwork of the app id this game was looked up
-        // for or with nothing: the response is keyed the way the store chooses and
-        // the candidate URL's own path has to name the app id, both of which
-        // `appdetails_image_url` enforces before anything is downloaded.
+        // The rung answers with the artwork of the app id this game was looked up for, or
+        // with nothing, and its own candidates are tried in order: a header whose bytes
+        // cannot be downloaded still leaves the capsule beside it, which is what this rung
+        // did before the parsing moved into `appdetails_image_urls`.
         let body = (self.fetcher)(&appdetails_url(appid))?;
-        let url = appdetails_image_url(&body, appid)?;
-        self.download_and_cache(&url, &appid_stem)
+        for url in appdetails_image_urls(&body, appid) {
+            if let Some(path) = self.download_and_cache(&url, &appid_stem) {
+                return Some(path);
+            }
+        }
+        None
     }
 
     /// The store's portrait URL for this app id, when the store has one.
@@ -509,7 +513,7 @@ pub fn appdetails_url(appid: u32) -> String {
     format!("https://store.steampowered.com/api/appdetails?appids={appid}&filters=basic")
 }
 
-/// The image URL for `appid`, read out of an appdetails response body.
+/// The image URLs for `appid`, in the order the rung should try them.
 ///
 /// The body is untrusted, and the response is keyed the way the store chooses
 /// rather than by the id that was asked for: measured live on 2026-09-27,
@@ -526,14 +530,22 @@ pub fn appdetails_url(appid: u32) -> String {
 /// images. Either check alone rejects that body; neither may be dropped, so that a
 /// label and a path which disagree can never hand one game another game's cover.
 ///
-/// `header_image` is preferred, then `capsule_image`; a missing, non-string or empty
-/// field contributes nothing and the next one is tried.
-pub fn appdetails_image_url(body: &[u8], appid: u32) -> Option<String> {
+/// `header_image` comes before `capsule_image`; a missing, non-string or unusable
+/// field contributes nothing and the next one is tried. The list is what lets a
+/// caller keep the rung's own fallback: when the header cannot be downloaded, the
+/// capsule beside it is still worth a try.
+pub fn appdetails_image_urls(body: &[u8], appid: u32) -> Vec<String> {
+    let mut urls = Vec::new();
     if !within_response_bound(body) {
-        return None;
+        return urls;
     }
-    let data: serde_json::Value = serde_json::from_slice(body).ok()?;
-    for entry in data.as_object()?.values() {
+    let Ok(data) = serde_json::from_slice::<serde_json::Value>(body) else {
+        return urls;
+    };
+    let Some(entries) = data.as_object() else {
+        return urls;
+    };
+    for entry in entries.values() {
         if !reports_success(entry.get("success")) {
             continue;
         }
@@ -551,12 +563,21 @@ pub fn appdetails_image_url(body: &[u8], appid: u32) -> Option<String> {
             let Some(url) = payload.get(key).and_then(serde_json::Value::as_str) else {
                 continue;
             };
-            if steam_app_path_names(url, appid) {
-                return Some(url.to_string());
+            if steam_app_path_names(url, appid) && !urls.iter().any(|seen| seen == url) {
+                urls.push(url.to_string());
             }
         }
     }
-    None
+    urls
+}
+
+/// The first image URL for `appid`: its `header_image` when that is usable, otherwise the
+/// `capsule_image` beside it, otherwise nothing.
+///
+/// See [`appdetails_image_urls`] for the rules the candidate has to satisfy and for the
+/// two live shapes they are built on.
+pub fn appdetails_image_url(body: &[u8], appid: u32) -> Option<String> {
+    appdetails_image_urls(body, appid).into_iter().next()
 }
 
 /// Whether an image URL is an absolute https URL whose path holds `appid` as a whole
@@ -626,7 +647,7 @@ fn authority_is_plain(authority: &str) -> bool {
                     .all(|byte| byte.is_ascii_alphanumeric() || byte == '-')
         })
         && port.is_none_or(|port| {
-            !port.is_empty() && port.len() <= 5 && port.chars().all(|byte| byte.is_ascii_digit())
+            port.chars().all(|byte| byte.is_ascii_digit()) && port.parse::<u16>().is_ok()
         })
 }
 

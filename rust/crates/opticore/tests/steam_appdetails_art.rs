@@ -9,7 +9,9 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use opticore::images::{appdetails_image_url, appdetails_url, ArtRequest, Fetcher, ImageCache};
+use opticore::images::{
+    appdetails_image_url, appdetails_image_urls, appdetails_url, ArtRequest, Fetcher, ImageCache,
+};
 
 /// The live response for `appids=620`, verbatim: keyed `323180`, payload Portal 2.
 const APP_DETAILS_620: &str = include_str!("fixtures/appdetails-620.json");
@@ -201,6 +203,9 @@ fn only_an_https_path_whose_apps_segment_names_the_app_id_is_accepted() {
         "https://:/store_item_assets/steam/apps/620/header.jpg",
         "https://shared.akamai.steamstatic.com:abc/store_item_assets/steam/apps/620/header.jpg",
         "https://shared.akamai.steamstatic.com:123456/store_item_assets/steam/apps/620/header.jpg",
+        "https://shared.akamai.steamstatic.com:65536/store_item_assets/steam/apps/620/header.jpg",
+        "https://shared.akamai.steamstatic.com:99999/store_item_assets/steam/apps/620/header.jpg",
+        "https://shared.akamai.steamstatic.com:+443/store_item_assets/steam/apps/620/header.jpg",
         "https://bad-.host/store_item_assets/steam/apps/620/header.jpg",
         "https://foo_bar.com/store_item_assets/steam/apps/620/header.jpg",
         "https://[invalid]/store_item_assets/steam/apps/620/header.jpg",
@@ -264,6 +269,39 @@ fn the_request_asks_for_the_app_id_with_basic_filters() {
     assert!(url.starts_with("https://store.steampowered.com/api/appdetails?"));
     assert!(url.contains("appids=620"));
     assert!(url.contains("filters=basic"));
+}
+
+#[test]
+fn the_candidates_come_in_order_and_only_from_this_app() {
+    let both = body_for("620", "true", Some(HEADER_620), Some(CAPSULE_620));
+    assert_eq!(
+        appdetails_image_urls(both.as_bytes(), APP_ID),
+        vec![HEADER_620.to_string(), CAPSULE_620.to_string()]
+    );
+
+    let capsule_only = body_for("620", "true", None, Some(CAPSULE_620));
+    assert_eq!(
+        appdetails_image_urls(capsule_only.as_bytes(), APP_ID),
+        vec![CAPSULE_620.to_string()]
+    );
+
+    // A header that belongs to another app is not a candidate; the capsule beside it is.
+    let other_apps_header = body_for(
+        "620",
+        "true",
+        Some("https://shared.akamai.steamstatic.com/steam/apps/80/header.jpg"),
+        Some(CAPSULE_620),
+    );
+    assert_eq!(
+        appdetails_image_urls(other_apps_header.as_bytes(), APP_ID),
+        vec![CAPSULE_620.to_string()]
+    );
+
+    let neither = body_for("620", "true", None, None);
+    assert!(appdetails_image_urls(neither.as_bytes(), APP_ID).is_empty());
+
+    // The live 100 body offers no candidate at all for the app it was asked about.
+    assert!(appdetails_image_urls(APP_DETAILS_100.as_bytes(), 100).is_empty());
 }
 
 type Log = Arc<Mutex<Vec<String>>>;
@@ -436,6 +474,47 @@ fn the_review_counterexamples_are_closed() {
         appdetails_image_url(uppercase_scheme.as_bytes(), APP_ID),
         Some("HTTPS://shared.akamai.steamstatic.com/steam/apps/620/header.jpg".to_string()),
         "a valid HTTPS URL must not be refused for the case of its scheme"
+    );
+}
+
+#[test]
+fn a_header_whose_bytes_fail_still_leaves_the_capsule() {
+    // The rung tried header_image, then capsule_image, when the first download missed.
+    // Moving the parsing out of `fetch_steam` must not cost that fallback: this pins the
+    // live 620 body, whose header URL is left unmatched (a 404) while its capsule answers.
+    let tmp = tempfile::tempdir().unwrap();
+    let log: Log = Arc::new(Mutex::new(Vec::new()));
+    let cache = cache_in(
+        tmp.path(),
+        &log,
+        vec![
+            (
+                "store.steampowered.com/api/appdetails",
+                APP_DETAILS_620.as_bytes().to_vec(),
+            ),
+            ("capsule_231x87.jpg", PORTRAIT_PNG.to_vec()),
+        ],
+    );
+
+    let path = cache
+        .fetch(&request("Portal 2", Some(APP_ID)))
+        .expect("the capsule beside a dead header must still be tried");
+
+    assert_eq!(
+        path.file_name().and_then(|name| name.to_str()),
+        Some("appid_620.jpg")
+    );
+
+    let urls = log.lock().unwrap().clone();
+    let header_at = urls
+        .iter()
+        .position(|url| url.contains("faffc0f560786e2f05104a8d2fac837c6969bf13"));
+    let capsule_at = urls
+        .iter()
+        .position(|url| url.contains("capsule_231x87.jpg"));
+    assert!(
+        matches!((header_at, capsule_at), (Some(header), Some(capsule)) if header < capsule),
+        "the header is tried first and the capsule after it fails: {urls:?}"
     );
 }
 

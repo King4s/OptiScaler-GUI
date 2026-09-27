@@ -72,15 +72,16 @@ what makes the wrong-art half impossible rather than merely unobserved.
    accept them, because nothing in a live appdetails response is protocol-relative.)
 4. The URL is read literally and never normalised. Its authority must be a host name —
    dotted labels of letters, digits and hyphens, none empty and none hyphen-edged — with
-   an optional port of at most five digits, and nothing else: `https://bad host/…`, a
-   userinfo part, an underscore, brackets, an IPv6 literal, `https://:/…` with no host and
-   `…:abc` with a port that is not a number are all refused. Its path (what follows the
+   an optional port that is a number in 0–65535 written as digits, and nothing else:
+   `https://bad host/…`, a userinfo part, an underscore, brackets, an IPv6 literal,
+   `https://:/…` with no host, `…:abc` with a port that is not a number, `…:+443` and
+   `…:65536` with a port no URL carries are all refused. Its path (what follows the
    authority, before any query or fragment) must consist of non-empty plain segments: ASCII
    alphanumerics plus `-`, `_` and `.`, with no `.` or `..` segment and no
    percent-encoding. The requested app id is then looked for in that path only, as a whole
    segment directly after an `apps` segment, so a host spelled `apps` cannot stand in for
    one.
-   This is narrower than "looks like a URL" on purpose, and two review rounds are why.
+   This is narrower than "looks like a URL" on purpose, and three review rounds are why.
    Round 1 falsified the first, purely textual rule with three inputs the tests had not
    covered: `https://apps/620/header.jpg`, where the authority was mistaken for a path
    segment; `https://bad host/apps/620/header.jpg`, which is not a URL yet was accepted
@@ -90,10 +91,16 @@ what makes the wrong-art half impossible rather than merely unobserved.
    falsified the fix's authority check as a character whitelist rather than a host check:
    `https://:/apps/620/header.jpg` (no host at all),
    `https://[invalid]/apps/620/header.jpg` and `…steamstatic.com:abc/apps/620/header.jpg`
-   were all still accepted. A URL that cannot be read literally is a miss: it costs a
+   were all still accepted. Round 3 found two more, one of them a regression this change
+   had introduced: a port above 65535 was accepted although no URL carries one, and a
+   header whose bytes cannot be downloaded no longer fell back to the capsule beside it.
+   Both are fixed and pinned; the second is why the parser returns an ordered list of
+   candidates instead of one URL. A URL that cannot be read literally is a miss: it costs a
    cover, never correctness.
-5. `header_image` is preferred, then `capsule_image`. A field that is missing, not a
-   string, or empty contributes nothing, and the second field is tried.
+5. `header_image` comes before `capsule_image`, and the usable fields are returned as an
+   ordered list: a field that is missing, not a string, or unusable contributes nothing and
+   the next one is tried. The caller tries them in that order as well, so a header whose
+   download fails still leaves the capsule beside it — the fallback the rung already had.
 6. A body larger than the shared store response bound (4 MiB) is not parsed. Every
    refusal is a miss: the rung returns nothing, `fetch_steam` falls through to the
    later sources, and nothing surfaces as an error.
@@ -107,11 +114,14 @@ what makes the wrong-art half impossible rather than merely unobserved.
 ## What changes in the pipeline
 
 `ImageCache::fetch_steam` no longer parses the response inline. It asks the injected
-fetcher for `appdetails_url(appid)`, passes the body to `appdetails_image_url`, and
-caches the accepted URL under `appid_<id>` through the existing `download_and_cache`
-(bounded decode). The explicit `within_response_bound` check that used to sit in
-`fetch_steam` is now inside the parser, where it also covers a caller that is not this
-rung.
+fetcher for `appdetails_url(appid)`, passes the body to `appdetails_image_urls`, and
+tries the returned candidates in order, caching the first one that downloads under
+`appid_<id>` through the existing `download_and_cache` (bounded decode). When none
+downloads, the rung returns nothing and the chain continues. `appdetails_image_url` is
+the single-candidate view of the same rules (header first, capsule as the fallback) for
+callers and tests that want one answer. The explicit `within_response_bound` check that
+used to sit in `fetch_steam` is now inside the parser, where it also covers a caller that
+is not this rung.
 
 ## Live verification (manual, for a reviewer)
 
