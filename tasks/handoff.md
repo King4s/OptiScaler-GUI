@@ -103,10 +103,11 @@ That is fixed, not worked around: a `review_turns` fact (default 3) now takes a 
 to a reviewer once a recorded review has had that many executor turns since, Jev still
 answering the `review_now` question. The change is **committed and live** — an earlier
 Claude Code session committed this work's uncommitted patch together with its own
-`unreviewed` offer as `b3d5d2d`, and the four skill lines this work added followed as
-`2a57bb7`, so `F:/AI-Projekter/jev-loop` is clean. `loop_decide` answered `review` /
-`why: revisit` twice in run `20260926-021849`. Any further edit to `jev_mcp.py` needs the
-MCP server restarted before it takes effect.
+`unreviewed` offer as `b3d5d2d`; the four skill lines this work added followed as `2a57bb7`,
+which is still in the history but has since been superseded by the reorganisation into
+`skill/jev` (see the tooling section). `loop_decide` answered `review` / `why: revisit`
+twice in run `20260926-021849`. Any further edit to `jev_mcp.py` needs the MCP server
+restarted before it takes effect.
 
 Run `20260926-021849` is deliberately **left open** at turn 11 (all checks green,
 `consecutive_fails` 0, `cfg.review_turns` 1). Its last registered verdict is
@@ -132,12 +133,57 @@ transactional backups/rollback, conservative legacy manifests, no inferred compa
 from images or DLL names, no anti-cheat modification, no extra mods. Offline-first,
 privacy-first. No DLSS 5/AMD-NR branch.
 
+## Tooling: the loop skill was replaced by Jev-AI-Skill
+
+The loop tooling this work used has been replaced. The project (formerly `jev-loop`,
+formerly `jev`) is now **`King4s/Jev-AI-Skill`**; the installed skill is named **`jev`** and
+covers Loop, Route and Git. The MCP identity deliberately did **not** change: the server is
+still `jev-loop` and its five tools (`loop_start`, `loop_decide`, `loop_record_turn`,
+`loop_record_review`, `loop_status`) behave as before, so an older session and a new one can
+both drive the same run.
+
+Installed and verified on 2026-09-27 with the repository's own `install.ps1`:
+
+- Skill copies: Claude Code `~/.claude/skills/jev`, Codex `~/.agents/skills/jev`, Hermes
+  `C:/Users/marci/AppData/Local/hermes/skills/jev`. The legacy `jev-loop` skill folders were
+  migrated away by the installer's `--legacy` handling.
+- MCP re-registered for all three clients; Hermes reported **5 tools connected and enabled**.
+- `python jev_mcp.py --check` → `jev-loop 2026.09.27.0056: OK (model jev-1.13.0, p=0.98)`.
+
+Two things a next session must know:
+
+- **Windows: set `HERMES_HOME` before running the installer.** `install.ps1` writes Hermes's
+  skill to `$HERMES_HOME` when set and to `~/.hermes` otherwise — this installation lives in
+  `C:/Users/marci/AppData/Local/hermes`, so run it as
+  `HERMES_HOME="C:/Users/marci/AppData/Local/hermes" powershell -File install.ps1`, or the
+  skill lands outside Hermes's real home. Re-run the installer after every `git pull`.
+- **A restart is what makes it take effect** — a new Hermes session, and restarted Claude
+  Code and Codex. The Hermes MCP entry now reads `command: python` (it used to be an absolute
+  `Python313\python.exe`); both interpreters have `mcp` installed and `python` resolves to
+  the Hermes venv first. No `env` block was added: the server reads the TypeSafe key from
+  `~/.config/jev-loop/typesafe_api_key`, which is what the passing check exercised.
+
+The local clone is still the directory `F:/AI-Projekter/jev-loop` with the remote
+`git@github.com:King4s/Jev-AI-Skill.git`. Pre-install copies of the Hermes `config.yaml` and
+`~/.codex/config.toml` are in
+`C:/Users/marci/AppData/Local/hermes/cache/scratch/jev-preinstall-20260927-142232/`.
+
 ## First actions for the next AI
 
+0. Start a fresh session so the `jev` skill and the re-registered MCP server are loaded,
+   then read `loop_status` for run `20260926-021849` (open, all checks green, one verdict on
+   wording) instead of assuming its state.
 1. Inspect `git status`, `git worktree list`, current `origin/main`, release/CI status and
    this plan; choose a clean `codex/` feature branch. Avoid editing the dirty original
    checkout.
 2. Land or rebase #33, #34 and #35 (no file overlap), retargeting #35 to `main` after #34.
+   Five decisions are the user's and are not to be taken silently: which side wins the five
+   files that conflict with `feature/dlssnr-editions`; whether run `20260926-021849` is
+   closed as `goal_met` or given one more review round; whether the stale messages of
+   `fd871a9d` and `8f598200` are rewritten; whether CI run #84 on `main` (Python job: 23
+   tests pass, then the interpreter segfaults; flaky - the same job passed on #33) is simply
+   re-run or gets the `faulthandler` line; and who commits anything further in the loop
+   repository.
 3. Then T5 and one store adapter per PR. Give the broken `appdetails` rung its own change
    with live verification, since the chain's later sources depend on it.
 4. Keep `tasks/todo.md` and this file updated with completed tasks and test evidence. Test
@@ -183,8 +229,7 @@ private `CARGO_TARGET_DIR` so no stale artifact could flatter it - `cargo fmt --
 --check` is clean, `cargo clippy --all-targets --workspace --locked -- -D warnings` exits
 0, and `cargo test --workspace --locked --no-fail-fast` is **204 passed / 0 failed / 1
 pre-existing ignored** across 12 binaries. The branches are green on their own too (158 on
-the T4 tree, 20 of them in `steam_store_art.rs`), and the `jev-loop` suite on the code the
-two agents now share is 23 passed / 2 skipped. Merging is the user's call; nothing is
+the T4 tree, 20 of them in `steam_store_art.rs`). Merging is the user's call; nothing is
 known to block it.
 
 ## The other release branch conflicts with #33
