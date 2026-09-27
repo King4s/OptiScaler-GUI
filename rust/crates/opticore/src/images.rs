@@ -608,6 +608,11 @@ fn steam_app_path_names(url: &str, appid: u32) -> bool {
     if !url.bytes().all(is_uri_character) {
         return false;
     }
+    // `%` is a URI character, but an escape has to be two hex digits: `?x=%zz` and a `%` at
+    // the end are not URLs a client can send, whatever their characters are.
+    if !escapes_are_well_formed(url) {
+        return false;
+    }
     let Some((scheme, rest)) = url.split_once("://") else {
         return false;
     };
@@ -743,7 +748,16 @@ fn segment_is_plain(segment: &str) -> bool {
             if matches!((first, second), (b'2', b'f') | (b'5', b'c') | (b'2', b'5')) {
                 return false;
             }
-            decoded.push(hex_value(first) << 4 | hex_value(second));
+            let value = hex_value(first) << 4 | hex_value(second);
+            // An escape may only spell a byte a file name can hold — a printable ASCII byte or
+            // a space. Anything else is a control byte, or part of a multi-byte encoding whose
+            // meaning depends on who decodes it: `%c0%ae%c0%ae` is `.` `.` to a lenient
+            // decoder, which would resolve the path away from this app's file, so it is
+            // refused here rather than left to a proxy's decoding.
+            if !(0x20..=0x7e).contains(&value) {
+                return false;
+            }
+            decoded.push(value);
             index += 3;
             continue;
         }
@@ -762,6 +776,32 @@ fn hex_value(digit: u8) -> u8 {
         b'0'..=b'9' => digit - b'0',
         _ => digit - b'a' + 10,
     }
+}
+
+/// Whether every `%` in a URI introduces a two-hex-digit escape.
+///
+/// A URI character check is not enough on its own: `%` is one, so `?x=%zz`, `?x=%` and
+/// `?x=%2` all pass it although no client can send them. The downloader's own parser refuses
+/// those requests, which would make the rung a miss anyway — but a rule that accepts a URL the
+/// downloader refuses is a rule whose answer depends on which layer you ask, so the whole URI
+/// is checked here, query and fragment included.
+fn escapes_are_well_formed(url: &str) -> bool {
+    let bytes = url.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            let Some(escape) = bytes.get(index + 1..index + 3) else {
+                return false;
+            };
+            if !escape.iter().all(|byte| byte.is_ascii_hexdigit()) {
+                return false;
+            }
+            index += 3;
+            continue;
+        }
+        index += 1;
+    }
+    true
 }
 
 /// Whether a byte is one a URI may contain: RFC 3986's unreserved and reserved characters

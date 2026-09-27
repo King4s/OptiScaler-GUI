@@ -256,6 +256,18 @@ fn only_an_https_path_whose_apps_segment_names_the_app_id_is_accepted() {
         // A truncated or non-hex escape is not a URL a client can send.
         "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/he%6.jpg",
         "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/he%zzader.jpg",
+        // An escape has to be well formed anywhere in the URI, not only in the path: the
+        // downloader refuses these requests, so accepting them here would make the answer
+        // depend on which layer was asked.
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg?x=%zz",
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg?x=%",
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg?x=%2",
+        // An escape may only spell a byte a file name can hold: `%c0%ae` is half of an overlong
+        // `.`, and a lenient decoder would resolve `%c0%ae%c0%ae` to `..` and leave this app's
+        // path for another one.
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/%c0%ae%c0%ae/80/header.jpg",
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header%ff.jpg",
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header%0Atab.jpg",
         "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/./header.jpg",
         "https://shared.akamai.steamstatic.com/store_item_assets/steam//apps/620/header.jpg",
     ] {
