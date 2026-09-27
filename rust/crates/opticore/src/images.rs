@@ -602,9 +602,12 @@ pub fn appdetails_image_url(body: &[u8], appid: u32) -> Option<String> {
 fn steam_app_path_names(url: &str, appid: u32) -> bool {
     // The whole URI is read literally, query and fragment included, and every byte must be
     // one a URI may contain (RFC 3986's unreserved, reserved and percent characters). A
-    // space, a `<`, a `>`, a quote, a backslash, a backtick, a brace or any control or
-    // non-ASCII byte is not part of a URI, and the locked downloader refuses such a URL
-    // before the request leaves the process.
+    // space, a `<`, a `>` or a control byte is not part of a URI, and the downloader's own
+    // parser refuses a URL carrying one — measured here, not assumed. The rest of the set is
+    // this rule being narrower than that parser rather than equal to it: it also refuses `|`,
+    // a backtick and braces, which `http::Uri::try_from` accepts, so those refusals cost a
+    // cover where the store serves one and are kept only because a URL this code cannot read
+    // literally is a miss rather than a guess.
     if !url.bytes().all(is_uri_character) {
         return false;
     }
@@ -781,10 +784,18 @@ fn hex_value(digit: u8) -> u8 {
 /// Whether every `%` in a URI introduces a two-hex-digit escape.
 ///
 /// A URI character check is not enough on its own: `%` is one, so `?x=%zz`, `?x=%` and
-/// `?x=%2` all pass it although no client can send them. The downloader's own parser refuses
-/// those requests, which would make the rung a miss anyway — but a rule that accepts a URL the
-/// downloader refuses is a rule whose answer depends on which layer you ask, so the whole URI
-/// is checked here, query and fragment included.
+/// `?x=%2` all pass it, although RFC 3986 requires every percent sign to introduce two hex
+/// digits — `pct-encoded = "%" HEXDIG HEXDIG`.
+///
+/// The reason is the grammar, not the downloader, and a reviewer was right to falsify the
+/// sentence that used to stand here. Measured on 2026-09-27: `http::Uri::try_from` returns
+/// `Ok` for all three of those URLs, and a real request through the downloader's own agent
+/// config to `…/header.jpg?t=1790187113%zz` came back `200` with the same 41,191 bytes as the
+/// clean URL. So this bound is **strict-only**: it refuses URLs that would work, and its cost
+/// is a cover in the hypothetical where the store emits a malformed escape. It is kept
+/// because a URL that is not a URI is a URL whose meaning depends on who reads it, and the
+/// measured cost is zero — no artwork candidate in any live sample measured here (52, 38,
+/// 188, 192, 196, 198 and 358 candidates in different samples) carries an escape at all.
 fn escapes_are_well_formed(url: &str) -> bool {
     let bytes = url.as_bytes();
     let mut index = 0;

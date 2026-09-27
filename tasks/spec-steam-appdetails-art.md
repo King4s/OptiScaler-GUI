@@ -84,9 +84,11 @@ what makes the wrong-art half impossible rather than merely unobserved.
    rather than half-validated as an IPv4 address. Every byte of the whole URI, query and
    fragment included, must be one a URI may contain: RFC 3986's unreserved and reserved
    characters plus `%`. A space, a control byte, a non-ASCII byte, and equally `<`, `>`,
-   `"`, a backslash, `^`, a backtick, `{`, `|` or `}` is refused — those are printable, but
-   they are not URI characters, and the downloader's own parser refuses such a request
-   before it leaves the process. Its path (what
+   `"`, a backslash, `^`, a backtick, `{`, `|` or `}` is refused. For a space or a `<` the
+   downloader's own parser refuses such a request as well — measured, not assumed — while for
+   `|`, a backtick and braces this rule is *narrower* than that parser, which accepts them:
+   those refusals carry a cost, and they are kept only because a URL this code cannot read
+   literally is a miss rather than a guess. Its path (what
    follows the authority, before any query or fragment) must consist of non-empty plain
    segments: ASCII alphanumerics plus `-`, `_` and `.`, with no `.` or `..` segment. A
    segment may carry `%` escapes, and each is judged by what it decodes to. Two are refused
@@ -96,17 +98,29 @@ what makes the wrong-art half impossible rather than merely unobserved.
    decoded a second time by someone else. A dot is judged by the segment it forms: `%2e`,
    `%2e%2e` and `.%2e` are refused when the decoded segment *is* `.` or `..`, the shape a
    client normalises away, while `header%2Ejpg` and `%68eader.jpg` decode to ordinary file
-   names and are accepted — a reviewer fetched the same 41,191 bytes for both. Two further
-   bounds apply to escapes. Every `%` in the URI, query and fragment included, must
-   introduce two hex digits: `?x=%zz` and a trailing `%` are not URLs a client can send, and
-   a rule that accepts one while the downloader refuses it is a rule whose answer depends on
-   which layer you ask. And an escape may only spell a byte a file name can hold — printable
-   ASCII or a space — because `%c0%ae%c0%ae` is `..` to a decoder that accepts overlong
-   UTF-8, which would resolve the path away from this app's file. A truncated or non-hex
-   escape is refused for the same reason, in the path or anywhere else. The requested app id
-   is then looked for in that path only, as a whole segment directly after an `apps` segment,
-   compared literally — path segments are case-sensitive, unlike the host and the scheme — so
-   neither a host spelled `apps` nor a segment spelled `APPS` can stand in for one.
+   names and are accepted — a reviewer fetched the same 41,191 bytes for both.
+   Two further bounds apply to escapes, and they apply in different places on purpose. Every
+   `%` in the URI, query and fragment included, must introduce two hex digits, because RFC
+   3986 says a percent sign does (`pct-encoded = "%" HEXDIG HEXDIG`) and a URL that is not a
+   URI is one whose meaning depends on who reads it. That bound is **strict-only**: measured
+   2026-09-27, `http::Uri::try_from` returns `Ok` for `?x=%zz`, `?x=%` and `?x=%2`, and a
+   request through the downloader's own agent config to `…?t=1790187113%zz` answered `200`
+   with the same 41,191 bytes as the clean URL. So it refuses URLs that would work; the price
+   is a cover in the hypothetical where the store emits a malformed escape, and the measured
+   cost is zero, because no artwork candidate in any sample here (52, 38, 188, 192, 196, 198
+   and 358 candidates, in different samples) carries an escape at all. The second bound — an
+   escape may only spell a byte a file name can hold, printable ASCII or a space — applies to
+   **path segments only**. The query is not held to it (`?x=%0a`, `?x=%c0%ae%c0%ae`, `?x=%2f`
+   are accepted), because the query cannot change which file the path resolves to: the app id
+   is read from the path and the host is pinned. In a path, `%c0%ae%c0%ae` is `..` to a
+   decoder that accepts overlong UTF-8, which would resolve the path away from this app's
+   file; the live CDN answers `404` for such a path instead of decoding it, so the hazard is
+   not one today's server shows — and the path is refused anyway, because a path this code
+   cannot read literally is a miss, never a guess. A truncated or non-hex escape is refused
+   wherever it appears, for the grammar's reason above. The requested app id is then looked
+   for in that path only, as a whole segment directly after an `apps` segment, compared
+   literally — path segments are case-sensitive, unlike the host and the scheme — so neither a
+   host spelled `apps` nor a segment spelled `APPS` can stand in for one.
    This is narrower than "looks like a URL" on purpose, and ten review rounds are why.
    Round 1 falsified the first, purely textual rule with three inputs the tests had not
    covered: `https://apps/620/header.jpg`, where the authority was mistaken for a path
@@ -136,12 +150,17 @@ what makes the wrong-art half impossible rather than merely unobserved.
    ever spells a dot *inside* a file name — so the rule now refuses a dot escape only when
    the decoded segment is itself `.` or `..`. A URL that cannot be read literally is a miss:
    it costs a cover, never correctness, but a rule that refuses a URL the store actually
-   serves is a rule with a price, and two rounds were spent measuring that price. Round 10
-   closed the two escape bounds the reviewer who accepted `74761c0d` named as residual: a
+   served is a rule with a price, and two rounds were spent measuring that price. Round 10
+   closed the two escape bounds the reviewer who accepted `74761c0d` named as residual — a
    malformed `%` anywhere in the URI (`?x=%zz`, a trailing `%`) and an escape spelling a byte
-   a file name cannot hold (`%c0%ae%c0%ae`, an overlong `.` that a lenient decoder resolves to
-   `..`). Both were closed rather than recorded as limits, because neither costs a live URL:
-   no appdetails artwork URL in any sample measured here carries an escape at all.
+   a file name cannot hold (`%c0%ae%c0%ae`, an overlong `.`) — and then falsified the sentence
+   written for the first of them: both the comment and this spec claimed the downloader
+   refuses such requests, and it does not. `http::Uri::try_from` returns `Ok` for all three,
+   and a live request for `…?t=1790187113%zz` answered `200` with the same bytes as the clean
+   URL. The bound stays, with the reason it actually has — the RFC's grammar — and with its
+   cost stated rather than denied: it refuses URLs that work, at a measured cost of zero live
+   candidates. The same round showed this code is *narrower* than the downloader in three more
+   places (`|`, a backtick, braces), which the URI-character paragraph above now says.
 5. The candidate URL's host must be the store's own: `steamstatic.com` itself or a subdomain
    of it, compared **case-insensitively** — host names are, exactly as the scheme is, and a
    reviewer falsified a case-sensitive version by uppercasing the host in the 620 fixture,
