@@ -243,6 +243,10 @@ fn only_an_https_path_whose_apps_segment_names_the_app_id_is_accepted() {
         // another app id even though the app id appears in the path.
         "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/../80/header.jpg",
         "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/%2e%2e/80/header.jpg",
+        // An escape that *forms* a dot segment is refused for the same reason as the literal
+        // `../`: a client normalises the path away and lands on another app's file.
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/%2e/header.jpg",
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/.%2e/80/header.jpg",
         // An escape is judged by what it stands for: these four can be decoded into a path
         // character (`.` `/` `\` `%`), the rest of the escapes are just file-name bytes.
         "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/%2E%2E/80/header.jpg",
@@ -277,6 +281,10 @@ fn only_an_https_path_whose_apps_segment_names_the_app_id_is_accepted() {
         "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/faffc0f560786e2f05104a8d2fac837c6969bf13/%68eader.jpg?t=1790187113",
         // Likewise an escaped space: a space is a byte of a file name, not a separator.
         "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header%20x.jpg",
+        // And an escaped dot inside a file name: it decodes to `header.jpg`, an ordinary name
+        // a reviewer fetched 41,191 bytes for. The dot only matters when the whole decoded
+        // segment is `.` or `..`.
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/faffc0f560786e2f05104a8d2fac837c6969bf13/header%2Ejpg?t=1790187113",
         // Every host the store serves artwork from is under its own domain, and host names
         // are case-insensitive, exactly as the scheme is.
         "https://cdn.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg",

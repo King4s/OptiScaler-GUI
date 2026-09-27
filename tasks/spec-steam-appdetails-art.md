@@ -89,17 +89,20 @@ what makes the wrong-art half impossible rather than merely unobserved.
    before it leaves the process. Its path (what
    follows the authority, before any query or fragment) must consist of non-empty plain
    segments: ASCII alphanumerics plus `-`, `_` and `.`, with no `.` or `..` segment. A
-   segment may carry `%` escapes, but `%25`, `%2e`, `%2f` and `%5c` are refused whatever
-   their case: those four stand for a path character — `.`, `/`, `\`, `%` — so the path that
-   was checked and the path the origin serves could differ, which is the one thing these
-   rules exist to prevent. Every other escape is a file-name byte: `%68eader.jpg` *is*
-   `header.jpg`, and a reviewer showed the downloader returning the same 41,191 bytes for
-   that URL, so it is accepted. A truncated or non-hex escape is refused, because it is not
-   a URL a client can send. The requested app id is then looked for in that path only, as a
-   whole segment directly after an `apps` segment, compared literally — path segments are
-   case-sensitive, unlike the host and the scheme — so neither a host spelled `apps` nor a
-   segment spelled `APPS` can stand in for one.
-   This is narrower than "looks like a URL" on purpose, and four review rounds are why.
+   segment may carry `%` escapes, and each is judged by what it decodes to. Two are refused
+   outright, because they change how the path is cut up or how often it is decoded: `%2f`
+   and `%5c` are separators — a server that decodes before it splits would see different
+   segments than the ones checked — and `%25` is a percent sign, which lets the path be
+   decoded a second time by someone else. A dot is judged by the segment it forms: `%2e`,
+   `%2e%2e` and `.%2e` are refused when the decoded segment *is* `.` or `..`, the shape a
+   client normalises away, while `header%2Ejpg` and `%68eader.jpg` decode to ordinary file
+   names and are accepted — a reviewer fetched the same 41,191 bytes for both. A truncated
+   or non-hex escape is refused, because it is not a URL a client can send. The requested app
+   id is then looked for in that path only, as a whole segment directly after an `apps`
+   segment, compared literally — path segments are case-sensitive, unlike the host and the
+   scheme — so neither a host spelled `apps` nor a segment spelled `APPS` can stand in for
+   one.
+   This is narrower than "looks like a URL" on purpose, and nine review rounds are why.
    Round 1 falsified the first, purely textual rule with three inputs the tests had not
    covered: `https://apps/620/header.jpg`, where the authority was mistaken for a path
    segment; `https://bad host/apps/620/header.jpg`, which is not a URL yet was accepted
@@ -123,9 +126,12 @@ what makes the wrong-art half impossible rather than merely unobserved.
    this app's cover. The first is why the rule above names a character set rather than a
    byte range; the second is rule 8. Round 8 falsified the escape ban as blunt rather than
    precise: it refused the live 620 artwork with its file name written `%68eader.jpg`,
-   which the downloader fetches as the same 41,191 bytes, so the rule now names the four
-   escapes that can change a path instead of all of them. A URL that cannot be read
-   literally is a miss: it costs a cover, never correctness.
+   which the downloader fetches as the same 41,191 bytes. Round 9 then falsified the
+   narrower version the same way — it still refused `header%2Ejpg`, where the escape only
+   ever spells a dot *inside* a file name — so the rule now refuses a dot escape only when
+   the decoded segment is itself `.` or `..`. A URL that cannot be read literally is a miss:
+   it costs a cover, never correctness, but a rule that refuses a URL the store actually
+   serves is a rule with a price, and two rounds were spent measuring that price.
 5. The candidate URL's host must be the store's own: `steamstatic.com` itself or a subdomain
    of it, compared **case-insensitively** — host names are, exactly as the scheme is, and a
    reviewer falsified a case-sensitive version by uppercasing the host in the 620 fixture,
@@ -138,10 +144,10 @@ what makes the wrong-art half impossible rather than merely unobserved.
    the image is Counter-Strike: Condition Zero (app 80), against app 80's own header at
    27,592 bytes. Without the pin, either host's bytes would be written as this game's cover.
    What the pin costs today: nothing that was measured. Every appdetails artwork URL seen so
-   far is on `shared.akamai.steamstatic.com`: 84 distinct URLs from one 51-body sample here,
-   38 more from a second 20-body sample here, and the 192 distinct URLs an independent
-   reviewer read out of 100 bodies — none on any other host — while the URL the CDN rung
-   builds is on `cdn.akamai.steamstatic.com`. Lookalikes
+   far is on `shared.akamai.steamstatic.com`: 52 distinct URLs from my own 51-body sample and
+   38 more from a second 20-body sample, plus 188, 192, 196 and 198 distinct URLs in the
+   independent reviewers' samples of 274, 100, 100 and 100 bodies — none on any other host —
+   while the URL the CDN rung builds is on `cdn.akamai.steamstatic.com`. Lookalikes
    fail whatever their case: `steamstatic.com.evil.example`, `notsteamstatic.com`,
    `Steamstatic.com.Evil.Example`, a host with a trailing dot. This is the rule that turns
    "the artwork of this app id" from a statement about a path into a statement about the

@@ -711,19 +711,22 @@ fn path_is_plain(path: &str) -> bool {
 
 /// Whether one path segment is one this pipeline will follow.
 ///
-/// A `%` escape is judged by what it stands for, not by the fact that it is written out:
-/// `%2e` is a dot, `%2f` a slash, `%5c` a backslash and `%25` a percent sign, so a segment
-/// holding one of those can be normalised — or decoded a second time by whoever serves it —
-/// into a different path than the one that was checked, which is the one thing these rules
-/// exist to prevent. Any other escape is just a byte of a file name: `%68eader.jpg` *is*
-/// `header.jpg`, the downloader fetches it like any other URL, and refusing it would cost a
-/// cover for nothing. A truncated or non-hex escape is refused, because it is not a URL a
-/// client can send at all.
+/// A `%` escape is judged by what it stands for, and the segment is judged by what it
+/// decodes to. Two escapes are refused outright, because they change how the path is cut up
+/// or how often it is decoded: `%2f` and `%5c` are separators (a server that decodes before
+/// it splits would see a different segment than the one checked) and `%25` is a percent
+/// sign, which lets someone else decode the path a second time. A dot is different: `%2e`
+/// only matters when the *decoded* segment is `.` or `..`, which is the shape a client
+/// normalises away — `%2e%2e` and `.%2e` are refused for that reason, while `header%2Ejpg`
+/// decodes to an ordinary file name and is accepted, exactly like the `%68eader.jpg` a
+/// reviewer showed the downloader returning the same 41,191 bytes for. A truncated or
+/// non-hex escape is refused, because it is not a URL a client can send at all.
 fn segment_is_plain(segment: &str) -> bool {
-    if segment.is_empty() || segment == "." || segment == ".." {
+    if segment.is_empty() {
         return false;
     }
     let bytes = segment.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
     let mut index = 0;
     while index < bytes.len() {
         if bytes[index] == b'%' {
@@ -737,21 +740,28 @@ fn segment_is_plain(segment: &str) -> bool {
                 escape[0].to_ascii_lowercase(),
                 escape[1].to_ascii_lowercase(),
             );
-            if matches!(
-                (first, second),
-                (b'2', b'e' | b'f') | (b'5', b'c') | (b'2', b'5')
-            ) {
+            if matches!((first, second), (b'2', b'f') | (b'5', b'c') | (b'2', b'5')) {
                 return false;
             }
+            decoded.push(hex_value(first) << 4 | hex_value(second));
             index += 3;
             continue;
         }
         if !(bytes[index].is_ascii_alphanumeric() || matches!(bytes[index], b'-' | b'_' | b'.')) {
             return false;
         }
+        decoded.push(bytes[index]);
         index += 1;
     }
-    true
+    !matches!(decoded.as_slice(), b"." | b"..")
+}
+
+/// The value of one hexadecimal digit. Callers have already checked it is one.
+fn hex_value(digit: u8) -> u8 {
+    match digit {
+        b'0'..=b'9' => digit - b'0',
+        _ => digit - b'a' + 10,
+    }
 }
 
 /// Whether a byte is one a URI may contain: RFC 3986's unreserved and reserved characters
