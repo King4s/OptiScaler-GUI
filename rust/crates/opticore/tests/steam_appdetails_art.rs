@@ -1,0 +1,378 @@
+//! Fixture tests for the appdetails rung of the Steam artwork source (`opticore::images`).
+//!
+//! The two response bodies are the live `appdetails?filters=basic` answers captured on
+//! 2026-09-27 for app ids 620 and 100 — see `tasks/spec-steam-appdetails-art.md` for the
+//! capture commands and the readings. The image bytes are synthetic. Every HTTP call goes
+//! through an injected fetcher, so no test reads the network, the registry or this
+//! machine's Steam installs.
+
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+
+use opticore::images::{appdetails_image_url, appdetails_url, ArtRequest, Fetcher, ImageCache};
+
+/// The live response for `appids=620`, verbatim: keyed `323180`, payload Portal 2.
+const APP_DETAILS_620: &str = include_str!("fixtures/appdetails-620.json");
+
+/// The live response for `appids=100`, verbatim: keyed `100`, payload app 80.
+const APP_DETAILS_100: &str = include_str!("fixtures/appdetails-100.json");
+
+const APP_ID: u32 = 620;
+
+/// The `header_image` the live 620 response carries, and the `capsule_image` beside it.
+const HEADER_620: &str = "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/faffc0f560786e2f05104a8d2fac837c6969bf13/header.jpg?t=1790187113";
+const CAPSULE_620: &str = "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/bd23943dcd0280aa2cdc066e2f86d2185cfd4cce/capsule_231x87.jpg?t=1790187113";
+
+/// A real 6x9 magenta PNG: a valid download to cache.
+const PORTRAIT_PNG: &[u8] = &[
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x09, 0x08, 0x02, 0x00, 0x00, 0x00, 0x9e, 0xf8, 0xca,
+    0xca, 0x00, 0x00, 0x00, 0x11, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0xf8, 0xcf, 0xf0, 0x1f,
+    0x0d, 0x31, 0x0c, 0x52, 0x21, 0x00, 0xf0, 0xa6, 0x6b, 0x95, 0x1a, 0xa4, 0x0b, 0xb6, 0x00, 0x00,
+    0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+];
+
+/// A synthetic response whose entry is always keyed `999`, so every case below also
+/// exercises the fact that the key is not the app id.
+fn body_for(
+    steam_appid: &str,
+    success: &str,
+    header: Option<&str>,
+    capsule: Option<&str>,
+) -> String {
+    let mut data = String::from("{\"name\":\"Synthetic\"");
+    data.push_str(&format!(",\"steam_appid\":{steam_appid}"));
+    if let Some(url) = header {
+        data.push_str(&format!(",\"header_image\":\"{url}\""));
+    }
+    if let Some(url) = capsule {
+        data.push_str(&format!(",\"capsule_image\":\"{url}\""));
+    }
+    data.push('}');
+    format!("{{\"999\":{{\"success\":{success},\"data\":{data}}}}}")
+}
+
+#[test]
+fn the_captured_shapes_are_the_defect_this_change_fixes() {
+    // If either reading stops holding, the rules below are built on sand and the
+    // fixtures must be re-captured rather than adjusted.
+    assert!(
+        APP_DETAILS_620.starts_with(r#"{"323180":"#),
+        "the 620 response must answer under another id"
+    );
+    assert!(APP_DETAILS_620.contains(r#""steam_appid":620"#));
+    assert!(
+        APP_DETAILS_100.starts_with(r#"{"100":"#),
+        "the 100 response must answer under its own key"
+    );
+    assert!(
+        APP_DETAILS_100.contains(r#""steam_appid":80"#),
+        "and must carry app 80's payload, which is why the key cannot be trusted"
+    );
+}
+
+#[test]
+fn the_live_answer_keyed_by_another_id_is_used() {
+    assert_eq!(
+        appdetails_image_url(APP_DETAILS_620.as_bytes(), APP_ID),
+        Some(HEADER_620.to_string()),
+        "the payload of the single returned entry is the app we asked about"
+    );
+}
+
+#[test]
+fn the_live_answer_carrying_another_apps_artwork_is_refused() {
+    assert_eq!(
+        appdetails_image_url(APP_DETAILS_100.as_bytes(), 100),
+        None,
+        "app 80's artwork must not be handed to app 100"
+    );
+    assert_eq!(
+        appdetails_image_url(APP_DETAILS_100.as_bytes(), APP_ID),
+        None,
+        "and not to any other app either"
+    );
+}
+
+#[test]
+fn header_image_is_preferred_and_capsule_image_is_the_fallback() {
+    let both = body_for("620", "true", Some(HEADER_620), Some(CAPSULE_620));
+    assert_eq!(
+        appdetails_image_url(both.as_bytes(), APP_ID),
+        Some(HEADER_620.to_string())
+    );
+
+    let capsule_only = body_for("620", "true", None, Some(CAPSULE_620));
+    assert_eq!(
+        appdetails_image_url(capsule_only.as_bytes(), APP_ID),
+        Some(CAPSULE_620.to_string())
+    );
+
+    // An unusable header_image does not stop the capsule beside it from being used.
+    let unusable_header = body_for(
+        "620",
+        "true",
+        Some("http://shared.akamai.steamstatic.com/steam/apps/620/header.jpg"),
+        Some(CAPSULE_620),
+    );
+    assert_eq!(
+        appdetails_image_url(unusable_header.as_bytes(), APP_ID),
+        Some(CAPSULE_620.to_string())
+    );
+
+    // A field that is present but not a string is not a URL.
+    let numeric_header = format!(
+        "{{\"999\":{{\"success\":true,\"data\":{{\"steam_appid\":620,\"header_image\":620,\"capsule_image\":\"{CAPSULE_620}\"}}}}}}"
+    );
+    assert_eq!(
+        appdetails_image_url(numeric_header.as_bytes(), APP_ID),
+        Some(CAPSULE_620.to_string())
+    );
+
+    let empty_both = body_for("620", "true", Some(""), Some(""));
+    assert_eq!(appdetails_image_url(empty_both.as_bytes(), APP_ID), None);
+}
+
+#[test]
+fn success_must_be_reported() {
+    for not_reported in ["false", "0", "\"true\"", "null"] {
+        let body = body_for("620", not_reported, Some(HEADER_620), None);
+        assert_eq!(
+            appdetails_image_url(body.as_bytes(), APP_ID),
+            None,
+            "success {not_reported} is not a report"
+        );
+    }
+    let missing = format!(
+        "{{\"999\":{{\"data\":{{\"steam_appid\":620,\"header_image\":\"{HEADER_620}\"}}}}}}"
+    );
+    assert_eq!(appdetails_image_url(missing.as_bytes(), APP_ID), None);
+
+    let missing_data = r#"{"999":{"success":true}}"#;
+    assert_eq!(appdetails_image_url(missing_data.as_bytes(), APP_ID), None);
+
+    // A non-zero integer is a report, as it is on the store rung.
+    let integer = body_for("620", "1", Some(HEADER_620), None);
+    assert_eq!(
+        appdetails_image_url(integer.as_bytes(), APP_ID),
+        Some(HEADER_620.to_string())
+    );
+}
+
+#[test]
+fn the_requested_id_must_be_the_payloads_own_label() {
+    // The label disagrees with the path: refuse rather than let two sources contradict.
+    let other_label = body_for("80", "true", Some(HEADER_620), None);
+    assert_eq!(appdetails_image_url(other_label.as_bytes(), APP_ID), None);
+
+    let string_label = body_for("\"620\"", "true", Some(HEADER_620), None);
+    assert_eq!(appdetails_image_url(string_label.as_bytes(), APP_ID), None);
+
+    // The store labelled nothing, so there is no id to agree with the path.
+    let absent_label = format!(
+        "{{\"999\":{{\"success\":true,\"data\":{{\"name\":\"Synthetic\",\"header_image\":\"{HEADER_620}\"}}}}}}"
+    );
+    assert_eq!(appdetails_image_url(absent_label.as_bytes(), APP_ID), None);
+
+    // Asked for through the wrong app id, the same body is not evidence for 730.
+    let agreed = body_for("620", "true", Some(HEADER_620), None);
+    assert_eq!(appdetails_image_url(agreed.as_bytes(), 730), None);
+}
+
+#[test]
+fn only_an_https_path_whose_apps_segment_names_the_app_id_is_accepted() {
+    for refused in [
+        "http://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg",
+        "//shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/header.jpg",
+        "steam/apps/620/header.jpg",
+        "/steam/apps/620/header.jpg",
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/6200/header.jpg",
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/foo/620/header.jpg",
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/80/header.jpg?t=620",
+        "https://cdn620.example/store_item_assets/steam/apps/80/header.jpg",
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620x/header.jpg",
+    ] {
+        let body = body_for("620", "true", Some(refused), None);
+        assert_eq!(
+            appdetails_image_url(body.as_bytes(), APP_ID),
+            None,
+            "{refused} must be refused"
+        );
+    }
+
+    let accepted = body_for("620", "true", Some(HEADER_620), None);
+    assert_eq!(
+        appdetails_image_url(accepted.as_bytes(), APP_ID),
+        Some(HEADER_620.to_string())
+    );
+}
+
+#[test]
+fn malformed_and_oversized_bodies_yield_nothing() {
+    for body in [
+        &b""[..],
+        &b"{"[..],
+        &b"[]"[..],
+        &b"null"[..],
+        &b"\"620\""[..],
+        &b"{}"[..],
+        &b"not json"[..],
+    ] {
+        assert_eq!(appdetails_image_url(body, APP_ID), None);
+    }
+
+    let oversized = vec![b' '; 4 * 1024 * 1024 + 1];
+    assert_eq!(
+        appdetails_image_url(&oversized, APP_ID),
+        None,
+        "a body over the shared store response bound is not parsed"
+    );
+}
+
+#[test]
+fn the_request_asks_for_the_app_id_with_basic_filters() {
+    let url = appdetails_url(APP_ID);
+    assert!(url.starts_with("https://store.steampowered.com/api/appdetails?"));
+    assert!(url.contains("appids=620"));
+    assert!(url.contains("filters=basic"));
+}
+
+type Log = Arc<Mutex<Vec<String>>>;
+
+/// A fetcher that records every URL and answers from `responses`, matched by
+/// substring. An unmatched URL is a failed request, like a 404.
+fn fetcher(log: &Log, responses: Vec<(&'static str, Vec<u8>)>) -> Fetcher {
+    let log = Arc::clone(log);
+    Arc::new(move |url: &str| {
+        log.lock().unwrap().push(url.to_string());
+        responses
+            .iter()
+            .find(|(needle, _)| url.contains(needle))
+            .map(|(_, bytes)| bytes.clone())
+    })
+}
+
+fn request(name: &str, appid: Option<u32>) -> ArtRequest {
+    ArtRequest {
+        name: name.to_string(),
+        appid,
+        art_url: None,
+        platform_is_gog: false,
+        game_path: None,
+    }
+}
+
+fn cache_in(
+    dir: &std::path::Path,
+    log: &Log,
+    responses: Vec<(&'static str, Vec<u8>)>,
+) -> ImageCache {
+    ImageCache::with_sources(dir, Vec::<PathBuf>::new(), fetcher(log, responses))
+}
+
+#[test]
+fn the_rung_caches_the_live_620_answer_under_the_requested_app_id() {
+    let tmp = tempfile::tempdir().unwrap();
+    let log: Log = Arc::new(Mutex::new(Vec::new()));
+    let cache = cache_in(
+        tmp.path(),
+        &log,
+        vec![
+            (
+                "store.steampowered.com/api/appdetails",
+                APP_DETAILS_620.as_bytes().to_vec(),
+            ),
+            ("store_item_assets/steam/apps/620", PORTRAIT_PNG.to_vec()),
+        ],
+    );
+
+    let path = cache
+        .fetch(&request("Portal 2", Some(APP_ID)))
+        .expect("the live 620 answer must produce a cached image");
+
+    assert_eq!(
+        path.file_name().and_then(|name| name.to_str()),
+        Some("appid_620.jpg")
+    );
+    let urls = log.lock().unwrap().clone();
+    assert!(
+        urls.iter()
+            .any(|url| url.contains("store.steampowered.com/api/appdetails")),
+        "the rung must be the one that produced it: {urls:?}"
+    );
+}
+
+#[test]
+fn the_rung_never_downloads_another_apps_artwork() {
+    let tmp = tempfile::tempdir().unwrap();
+    let log: Log = Arc::new(Mutex::new(Vec::new()));
+    let cache = cache_in(
+        tmp.path(),
+        &log,
+        vec![
+            (
+                "store.steampowered.com/api/appdetails",
+                APP_DETAILS_100.as_bytes().to_vec(),
+            ),
+            ("store_item_assets/steam/apps/80", PORTRAIT_PNG.to_vec()),
+        ],
+    );
+
+    assert_eq!(
+        cache.fetch(&request("Counter-Strike: Condition Zero", Some(100))),
+        None,
+        "a refused rung yields no cover"
+    );
+
+    let urls = log.lock().unwrap().clone();
+    assert!(
+        urls.iter().any(|url| url.contains("api/appdetails")),
+        "the rung must have been consulted, or this test passes for the wrong reason: {urls:?}"
+    );
+    assert!(
+        !urls.iter().any(|url| url.contains("apps/80")),
+        "app 80's artwork must never be requested: {urls:?}"
+    );
+    assert!(
+        tmp.path().read_dir().unwrap().next().is_none(),
+        "a refusal must write nothing into the cache"
+    );
+}
+
+#[test]
+fn a_refusal_leaves_the_source_order_unchanged() {
+    let tmp = tempfile::tempdir().unwrap();
+    let log: Log = Arc::new(Mutex::new(Vec::new()));
+    let cache = cache_in(
+        tmp.path(),
+        &log,
+        vec![(
+            "store.steampowered.com/api/appdetails",
+            APP_DETAILS_100.as_bytes().to_vec(),
+        )],
+    );
+
+    assert_eq!(cache.fetch(&request("Synthetic", Some(100))), None);
+
+    let kinds: Vec<&str> = log
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|url| {
+            if url.contains("GetItems") {
+                "store portrait"
+            } else if url.contains("cdn.akamai.steamstatic.com") {
+                "cdn header"
+            } else if url.contains("api/appdetails") {
+                "appdetails"
+            } else {
+                "other"
+            }
+        })
+        .collect();
+    assert_eq!(
+        kinds,
+        vec!["store portrait", "cdn header", "appdetails"],
+        "the rung keeps its place and a refusal does not abort the chain"
+    );
+}

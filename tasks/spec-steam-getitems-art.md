@@ -74,7 +74,10 @@ unreliable in both directions, and the second one is the worse: when the key doe
 match, the payload can belong to another app, so `appids=100` answers keyed `100`
 with `data.steam_appid` 80 and the rung would return app 80's artwork for app 100.
 This is pre-existing and unchanged here; it is written down rather than fixed so it
-gets its own change and its own live verification.
+gets its own change and its own live verification. That change is
+`tasks/spec-steam-appdetails-art.md`, which replaces the key lookup with a rule that
+requires the payload's own `steam_appid` and the artwork URL's path to name the
+requested app id.
 
 ## Why the seam is part of this task
 

@@ -182,30 +182,15 @@ impl ImageCache {
             return Some(path);
         }
 
-        // Fallback: Store API for the actual hosted image URL
-        let store_url =
-            format!("https://store.steampowered.com/api/appdetails?appids={appid}&filters=basic");
-        let body = (self.fetcher)(&store_url)?;
-        if !within_response_bound(&body) {
-            return None;
-        }
-        let data: serde_json::Value = serde_json::from_slice(&body).ok()?;
-        let app_info = data.get(appid.to_string())?;
-        if app_info.get("success") != Some(&serde_json::Value::Bool(true)) {
-            return None;
-        }
-        for key in ["header_image", "capsule_image"] {
-            if let Some(url) = app_info
-                .get("data")
-                .and_then(|d| d.get(key))
-                .and_then(serde_json::Value::as_str)
-            {
-                if let Some(path) = self.download_and_cache(url, &appid_stem) {
-                    return Some(path);
-                }
-            }
-        }
-        None
+        // Fallback: Store API for the actual hosted image URL.
+        //
+        // The rung answers with the artwork of the app id this game was looked up
+        // for or with nothing: the response is keyed the way the store chooses and
+        // the candidate URL's own path has to name the app id, both of which
+        // `appdetails_image_url` enforces before anything is downloaded.
+        let body = (self.fetcher)(&appdetails_url(appid))?;
+        let url = appdetails_image_url(&body, appid)?;
+        self.download_and_cache(&url, &appid_stem)
     }
 
     /// The store's portrait URL for this app id, when the store has one.
@@ -513,6 +498,89 @@ pub fn store_item_portrait_url(body: &[u8], appid: u32) -> Option<String> {
         return None;
     }
     Some(format!("{STORE_ASSET_BASE}{filled}"))
+}
+
+/// The appdetails request for one app id.
+///
+/// The same request the rung made inline before this was extracted, apart from the
+/// app id itself: `filters=basic` already carries `steam_appid`, `header_image` and
+/// `capsule_image`, which is everything [`appdetails_image_url`] reads.
+pub fn appdetails_url(appid: u32) -> String {
+    format!("https://store.steampowered.com/api/appdetails?appids={appid}&filters=basic")
+}
+
+/// The image URL for `appid`, read out of an appdetails response body.
+///
+/// The body is untrusted, and the response is keyed the way the store chooses
+/// rather than by the id that was asked for: measured live on 2026-09-27,
+/// `appids=620` answers under the key `323180` with Portal 2's payload, so reading
+/// it by `appid.to_string()` finds nothing for most games. The entry key is
+/// therefore ignored and every entry is considered.
+///
+/// Identity is required twice before a candidate is used, because the key is not
+/// evidence: `data.steam_appid` must equal `appid` (the store's own label for the
+/// payload) *and* the URL's path must hold `appid` directly after an `apps` segment
+/// (the path the bytes are served from, and the app id the result is cached under).
+/// The second measured shape is why both are needed: `appids=100` answers under the
+/// key `100` with `steam_appid` 80, app 80's name and app 80's header and capsule
+/// images. Either check alone rejects that body; neither may be dropped, so that a
+/// label and a path which disagree can never hand one game another game's cover.
+///
+/// `header_image` is preferred, then `capsule_image`; a missing, non-string or empty
+/// field contributes nothing and the next one is tried.
+pub fn appdetails_image_url(body: &[u8], appid: u32) -> Option<String> {
+    if !within_response_bound(body) {
+        return None;
+    }
+    let data: serde_json::Value = serde_json::from_slice(body).ok()?;
+    for entry in data.as_object()?.values() {
+        if !reports_success(entry.get("success")) {
+            continue;
+        }
+        let Some(payload) = entry.get("data") else {
+            continue;
+        };
+        if payload
+            .get("steam_appid")
+            .and_then(serde_json::Value::as_u64)
+            != Some(u64::from(appid))
+        {
+            continue;
+        }
+        for key in ["header_image", "capsule_image"] {
+            let Some(url) = payload.get(key).and_then(serde_json::Value::as_str) else {
+                continue;
+            };
+            if steam_app_path_names(url, appid) {
+                return Some(url.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Whether an image URL is an absolute https URL whose path holds `appid` as a whole
+/// segment directly after an `apps` segment.
+///
+/// The app id is looked for in the path only. A mention in the host or in the query
+/// string (`?t=…`) is not the artwork's app id, and a relative or protocol-relative
+/// URL names no app id at all — the shared downloader still repairs those for the
+/// Heroic and GOG sources, which is not this rung's business.
+fn steam_app_path_names(url: &str, appid: u32) -> bool {
+    let Some(rest) = url.strip_prefix("https://") else {
+        return false;
+    };
+    let path = rest.split(['?', '#']).next().unwrap_or_default();
+    let wanted = appid.to_string();
+    let mut segments = path.split('/');
+    let mut previous = segments.next().unwrap_or_default();
+    for segment in segments {
+        if previous == "apps" && segment == wanted {
+            return true;
+        }
+        previous = segment;
+    }
+    false
 }
 
 fn http_get(url: &str) -> Option<Vec<u8>> {
