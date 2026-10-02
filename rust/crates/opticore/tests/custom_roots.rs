@@ -127,21 +127,23 @@ fn custom_root_and_store_hits_for_same_game_deduplicate() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join("library");
     let install = game(&root, "Example Game");
+    let canonical_install = install.canonicalize().unwrap();
     let custom = scan_roots(&[enabled(root)]);
     let custom_entry = custom
         .entries
         .into_iter()
-        .find(|entry| entry.path == install.canonicalize().unwrap())
+        .find(|entry| entry.path == canonical_install)
         .expect("custom root finds the game");
     let custom_game = Game::new(custom_entry.name, custom_entry.path, Platform::Manual);
     #[cfg(windows)]
     let store_path = {
-        let path = install.to_string_lossy();
+        let path = canonical_install.to_string_lossy();
+        assert!(path.starts_with(r"\\?\"), "canonical path: {path}");
         let plain = path.strip_prefix(r"\\?\").unwrap_or(&path);
         PathBuf::from(plain)
     };
     #[cfg(not(windows))]
-    let store_path = install;
+    let store_path = canonical_install;
     let mut store_game = Game::new("Example Game", store_path, Platform::Steam);
     store_game.store_identity = Some(StoreIdentity::steam(123));
     store_game.title_source = TitleSource::Store;
