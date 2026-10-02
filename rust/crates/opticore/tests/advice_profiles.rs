@@ -1,10 +1,13 @@
 use opticore::advice::{self, AdviceStatus, Recommendation};
 use opticore::hardware::{GpuProfile, HardwareProfile};
 use opticore::ini;
+use opticore::model::{Game, Platform};
 use opticore::observations::GameObservation;
 use opticore::profiles::LocalProfiles;
+use opticore::report::UserTestResult;
 use serde_json::{json, Value};
 use std::fs;
+use std::path::PathBuf;
 
 const RULES: &str = include_str!("../data/advice-rules.json");
 const EN: &str = include_str!("../../../../src/translations/en.json");
@@ -247,6 +250,92 @@ fn invalid_and_conflicting_rule_fixtures_fail_closed() {
     let items = advice::evaluate_rules(&fixture.to_string(), None, &observation, "en");
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].id, "rules-version-unknown");
+}
+
+#[test]
+fn a_saved_gpu_choice_and_test_result_resolve_under_the_old_path_spelling() {
+    // The path key now folds separators and trailing separators, so an install a
+    // store root spelled `C:\Games\...` and a launcher spelled `C:/Games/...`
+    // can be on disk under either spelling, and both have to keep resolving.
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("profiles.json");
+    let mut profiles = LocalProfiles::default();
+    // Saved by an older build that kept the launcher's spelling as the key.
+    profiles
+        .game_gpus
+        .insert("c:/games/forward".to_string(), "gpu-0".to_string());
+    profiles
+        .game_results
+        .insert("c:/games/forward".to_string(), UserTestResult::Passed);
+    // Saved under the key this build writes.
+    profiles
+        .game_gpus
+        .insert(r"c:\games\native".to_string(), "gpu-1".to_string());
+    profiles.save(&path).unwrap();
+    let loaded = LocalProfiles::load(&path).unwrap();
+
+    let native = Game::new("Native", PathBuf::from(r"C:\Games\Native"), Platform::Steam);
+    assert_eq!(native.key.path_norm, r"c:\games\native");
+    assert_eq!(loaded.gpu_for(&native).map(String::as_str), Some("gpu-1"));
+
+    let forward = Game::new(
+        "Forward",
+        PathBuf::from("C:/Games/Forward"),
+        Platform::Steam,
+    );
+    assert_eq!(forward.key.path_norm, r"c:\games\forward");
+    assert_eq!(forward.legacy_path_norm(), "c:/games/forward");
+    assert_eq!(loaded.gpu_for(&forward).map(String::as_str), Some("gpu-0"));
+    assert_eq!(loaded.result_for(&forward), Some(&UserTestResult::Passed));
+
+    // The fallback reads an old key; it does not invent a match.
+    let untouched = Game::new(
+        "Other",
+        PathBuf::from(r"C:\Games\Untouched"),
+        Platform::Steam,
+    );
+    assert_eq!(loaded.gpu_for(&untouched), None);
+    assert_eq!(loaded.result_for(&untouched), None);
+}
+
+#[test]
+fn clearing_gpu_choice_removes_normalized_and_legacy_keys_after_reload() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("profiles.json");
+    let forward = Game::new(
+        "Forward",
+        PathBuf::from("C:/Games/Forward"),
+        Platform::Steam,
+    );
+    let trailing = Game::new(
+        "Trailing",
+        PathBuf::from("C:/Games/Trailing/"),
+        Platform::Steam,
+    );
+    let mut profiles = LocalProfiles::default();
+    for game in [&forward, &trailing] {
+        profiles
+            .game_gpus
+            .insert(game.key.path_norm.clone(), "gpu-new".into());
+        profiles
+            .game_gpus
+            .insert(game.legacy_path_norm(), "gpu-old".into());
+    }
+    profiles.game_gpus.insert("unrelated".into(), "keep".into());
+    profiles.set_gpu_for(&forward, None);
+    profiles.set_gpu_for(&trailing, None);
+    profiles.save(&path).unwrap();
+
+    let loaded = LocalProfiles::load(&path).unwrap();
+    for game in [&forward, &trailing] {
+        assert_eq!(loaded.gpu_for(game), None);
+        assert!(!loaded.game_gpus.contains_key(&game.key.path_norm));
+        assert!(!loaded.game_gpus.contains_key(&game.legacy_path_norm()));
+    }
+    assert_eq!(
+        loaded.game_gpus.get("unrelated").map(String::as_str),
+        Some("keep")
+    );
 }
 
 #[test]

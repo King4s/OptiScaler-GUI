@@ -1,6 +1,6 @@
 # Troubleshooting
 
-This guide describes the current Rust beta behavior. `2026.9.0 Standard` is local beta progress, not a public release. Neither a detected install nor a log message guarantees that a particular game, GPU, driver, or configuration works.
+This guide describes the Rust beta behavior. `2026.9.0-beta.1` is a public prerelease; `2026.9.0-beta.2` is an unpublished local candidate pending final checks. Neither a detected install nor a log message guarantees that a particular game, GPU, driver, or configuration works.
 
 ## Overlay does not open
 
@@ -34,3 +34,9 @@ This guide describes the current Rust beta behavior. `2026.9.0 Standard` is loca
 ## Report a reproducible problem
 
 Use the game's **Compatibility report** section to select your test result, preview the complete JSON and choose **Save report**. The report includes limited hardware, store/build and OptiScaler version fields, plus separate installed, loaded-log and user-test status. It omits paths, filesystem-derived game names and raw logs; unknown values remain unknown. Review the preview before sharing because a custom GPU name might still contain personal text. Include reproduction steps separately. Attach logs or the selected EXE/target only after checking them for private information. Compatibility is not established for all games. Fatekeeper was reported working by the user on 2026-09-25, but its exact test setup and overlay/uninstall results were not recorded.
+
+## Artwork is missing or remains landscape
+
+- Existing cached images take precedence over newly available Steam portraits; beta.2 does not migrate or replace those images automatically.
+- For an uncached Steam game, the candidate tries Steam's local portrait for the exact app ID, then GetItems, then the existing header/appdetails fallbacks. Missing or invalid artwork falls through; it does not affect game identity, compatibility, or install target selection.
+- The appdetails fallback rejects artwork unless the response payload and image URL path both match the requested app ID. It may show no cover rather than risk showing another game's cover.

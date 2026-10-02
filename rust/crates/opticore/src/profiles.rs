@@ -1,5 +1,6 @@
 //! Local-only profile persistence. Never serialize this type for public reports.
 use crate::hardware::HardwareProfile;
+use crate::model::Game;
 use crate::report::UserTestResult;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -15,6 +16,44 @@ pub struct LocalProfiles {
     pub game_results: BTreeMap<String, UserTestResult>,
     #[serde(flatten)]
     pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+impl LocalProfiles {
+    /// The keys a game's path may have been recorded under, current spelling
+    /// first.
+    ///
+    /// The second is the key `GameKey::path_key` produced before it folded
+    /// separators and trailing separators ([`Game::legacy_path_norm`]). Reading
+    /// both keeps a GPU choice or a test result the user already saved working;
+    /// new entries are only ever written under the first.
+    fn recorded_keys(game: &Game) -> [String; 2] {
+        [game.key.path_norm.clone(), game.legacy_path_norm()]
+    }
+
+    /// The GPU the user picked for this game, if any.
+    pub fn gpu_for(&self, game: &Game) -> Option<&String> {
+        Self::recorded_keys(game)
+            .iter()
+            .find_map(|key| self.game_gpus.get(key))
+    }
+
+    /// Record an explicit choice, dropping any stale legacy spelling first.
+    pub fn set_gpu_for(&mut self, game: &Game, gpu_id: Option<String>) {
+        let [current, legacy] = Self::recorded_keys(game);
+        self.game_gpus.remove(&legacy);
+        if let Some(id) = gpu_id {
+            self.game_gpus.insert(current, id);
+        } else {
+            self.game_gpus.remove(&current);
+        }
+    }
+
+    /// The user's own test result for this game, if any.
+    pub fn result_for(&self, game: &Game) -> Option<&UserTestResult> {
+        Self::recorded_keys(game)
+            .iter()
+            .find_map(|key| self.game_results.get(key))
+    }
 }
 
 impl LocalProfiles {

@@ -32,7 +32,7 @@ All upscaling technology — FSR, XeSS, DLSS integration, frame generation, the 
 
 ## Getting started
 
-1. For a publicly released build, download `OptiScaler-GUI.exe` from the [latest release](https://github.com/King4s/OptiScaler-GUI/releases/latest). The local `2026.9.0 Standard` beta is not a public release.
+1. For a publicly released build, download `OptiScaler-GUI.exe` from the [latest release](https://github.com/King4s/OptiScaler-GUI/releases/latest). `2026.9.0-beta.2` is currently a local prerelease candidate, not a public release.
 2. Run it — no installation or extraction needed
 3. Scan for games (or browse to a game folder manually), select a game, click **Install**
 4. Launch the game and press **Insert** (**Alt+Insert** on non-US keyboard layouts) to configure upscaling in OptiScaler's overlay
@@ -45,11 +45,11 @@ The current release supports OptiScaler **v0.7.0 through v0.9.4** and always dow
 
 ## Project status
 
-The Rust `2026.9.0 Standard` work is offered first as **2026.9.0-beta.1**, a prerelease rather than a stable compatibility claim. Hardware inventory, deterministic advice, local install/runtime observations, an application log, an OptiScaler INI change preview and a limited JSON report preview/export are included. The INI preview is not a settings compatibility guarantee; DLL hints and log timestamps are evidence only, and a detected `Init done` line can be stale. The user reported Fatekeeper working on 2026-09-25, but exact versions, hardware, overlay behavior and uninstall were not recorded. This beta does not establish compatibility with all games.
+The Rust `2026.9.0-beta.1 Standard` prerelease is available for feedback. **2026.9.0-beta.2 is being assembled locally and has not been published.** Its candidate adds path-based scan deduplication with store identity retained during merging, separate title provenance, Steam local-cache and GetItems portrait fallbacks, and an appdetails artwork identity guard. Existing cached images remain preferred; this is not a cache migration. Hardware inventory, deterministic advice, local install/runtime observations, an application log, an OptiScaler INI change preview and a limited JSON report preview/export remain advisory. DLL hints and log timestamps are evidence only, and a detected `Init done` line can be stale. The user reported Fatekeeper working on 2026-09-25, but this run did not verify exact hardware, game/OptiScaler versions, overlay behavior, or real-game install/update/uninstall. Neither beta establishes compatibility with all games. See the [beta.2 candidate notes](docs/releases/2026.9.0-beta.2.md).
 
 | Track | Where | Status |
 |---|---|---|
-| Rust app (CalVer `2026.x`) | `rust/` | Stable users should stay on the latest stable release. The `2026.9.0-beta.1` prerelease is for feedback and has not been validated for general compatibility. |
+| Rust app (CalVer `2026.x`) | `rust/` | Stable users should stay on the latest stable release. `2026.9.0-beta.1` is a public prerelease; `2026.9.0-beta.2` is an unpublished candidate with passing local checks and package startup smoke. Neither has been validated for general compatibility. |
 | Python app (v0.x) | `src/` | ⚠️ **Legacy — phased out.** Final release is [v0.5.2](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.5.2); security/compatibility fixes only. Existing Python installs with old manifests are preserved, not automatically migrated or removed by this beta. |
 
 ## Running from source

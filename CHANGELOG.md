@@ -2,7 +2,15 @@
 
 ## [Unreleased]
 
-### 2026.9.0-beta.1 Standard - prerelease
+### 2026.9.0-beta.2 Standard - prerelease candidate (not published)
+
+- Scan results deduplicate by normalized install path, merging repeat hits without discarding a store identity. Two installs at different paths remain separate even when their titles match. The path key folds case, slash direction and a trailing separator; it does not lexically collapse `.` or `..` or resolve filesystem links. Existing per-game GPU settings can be read using the old path key as a fallback; settings are not rewritten.
+- Title provenance is recorded separately from discovery provenance, so a title supplied by store metadata can outrank a folder-derived title when hits for one install merge. Store IDs are read from metadata, not inferred from names, and do not establish OptiScaler compatibility or authorize installation.
+- Steam artwork now tries an exact-app-ID portrait from Steam's local library cache, then the Steam GetItems portrait, before the existing header and other fallbacks. Already cached images remain first; no cache migration or automatic landscape-to-portrait replacement is included.
+- The Steam appdetails fallback now accepts artwork only when the payload's `steam_appid` and the image URL path both name the requested app, even if the response object uses a different key. Unusable header images can fall through to the capsule image.
+- This candidate combines PRs #33, #34 and #35 with the appdetails guard. Combined local formatting, Clippy, workspace tests, release build and da/en/pl package startup smoke passed. Hands-on game testing remains pending; no public beta.2 release is claimed.
+
+## 2026.9.0-beta.1 Standard - prerelease
 
 - Added a shared safe resolver for scan, install, update, launch, observations, INI editing, and removal. Ambiguous executable layouts require an explicit game EXE selection; the preview shows the selected executable and target folder. Satisfactory has a documented exception: its FactoryGame Shipping EXE is under `FactoryGame/Binaries/Win64`, while the OptiScaler proxy target is `Engine/Binaries/Win64`.
 - Added v2 install manifests with per-file hashes, ownership checks, private original-file backups, rollback snapshots, and guarded update/uninstall. Legacy v1 and manifest-less installs do not authorize deletion; preserve files and handle migration cautiously.

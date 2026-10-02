@@ -396,18 +396,21 @@ pub(crate) fn largest_exe(game_path: &Path) -> Option<PathBuf> {
 /// with the native-tls feature — the provider must be selected explicitly or
 /// every https call panics at runtime.
 pub(crate) fn http_agent() -> ureq::Agent {
+    configured_agent(true)
+}
+
+fn artwork_agent() -> ureq::Agent {
+    configured_agent(false)
+}
+
+fn configured_agent(follow_redirects: bool) -> ureq::Agent {
     ureq::Agent::config_builder()
         .tls_config(
             ureq::tls::TlsConfig::builder()
                 .provider(ureq::tls::TlsProvider::NativeTls)
                 .build(),
         )
-        // No redirects. A redirect is the one way a file that was fetched for one artwork
-        // URL can belong to an app id other than the one in that URL, and nothing here can
-        // see where the request ended up, so a redirected asset is a miss instead of a
-        // cover. Measured on 2026-09-27: the live store API, the GetItems API and 84 real
-        // asset URLs all answer 200 directly, so this costs nothing today.
-        .max_redirects(0)
+        .max_redirects(if follow_redirects { 10 } else { 0 })
         .timeout_global(Some(DOWNLOAD_TIMEOUT))
         .build()
         .into()
@@ -849,7 +852,7 @@ fn is_uri_character(byte: u8) -> bool {
 }
 
 fn http_get(url: &str) -> Option<Vec<u8>> {
-    let mut resp = http_agent().get(url).call().ok()?;
+    let mut resp = artwork_agent().get(url).call().ok()?;
     if resp.status() != 200 {
         return None;
     }
@@ -865,6 +868,8 @@ fn http_get(url: &str) -> Option<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+    use std::net::TcpListener;
 
     #[test]
     fn cached_path_prefers_appid_stem() {
@@ -884,12 +889,41 @@ mod tests {
 
     #[test]
     fn the_artwork_downloader_follows_no_redirects() {
-        // A redirect is invisible to every caller here: whatever the response holds would be
-        // cached under the app id of the URL that was checked, not the app id it came from.
-        // The rule therefore lives in the agent's configuration rather than in a check on a
-        // response that cannot see where it came from — with no redirects followed, a 3xx is
-        // returned as-is and `http_get` accepts only 200.
-        assert_eq!(http_agent().config().max_redirects(), 0);
+        // A redirected asset may belong to a different app id, so artwork treats it as a miss.
+        assert_eq!(artwork_agent().config().max_redirects(), 0);
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/artwork", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0; 1024];
+            assert!(stream.read(&mut request).unwrap() > 0);
+            stream
+                .write_all(b"HTTP/1.1 302 Found\r\nLocation: /other\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                .unwrap();
+        });
+        assert!(http_get(&url).is_none());
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn release_fetch_follows_redirect() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/release", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            for response in [
+                "HTTP/1.1 302 Found\r\nLocation: /final\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 21\r\nConnection: close\r\n\r\n{\"tag_name\":\"v-test\"}",
+            ] {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = [0; 1024];
+                assert!(stream.read(&mut request).unwrap() > 0);
+                stream.write_all(response.as_bytes()).unwrap();
+            }
+        });
+
+        let release = crate::install::github::fetch_release_from(&url).unwrap();
+        assert_eq!(release.tag_name.as_deref(), Some("v-test"));
+        server.join().unwrap();
     }
 
     #[test]
