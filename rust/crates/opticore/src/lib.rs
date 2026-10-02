@@ -5,6 +5,7 @@ pub mod advice;
 pub mod appids;
 pub mod archive;
 pub mod config;
+pub mod cover_art;
 pub mod hardware;
 pub mod i18n;
 pub mod images;
@@ -20,6 +21,7 @@ pub mod report;
 pub mod resolver;
 pub mod scan;
 pub mod selfupdate;
+pub mod steam_art;
 
 /// App version (CalVer), single source of truth for the workspace.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

@@ -1,8 +1,29 @@
 # Changelog
 
-## [Unreleased]
+## 2026.9.0 Standard
 
-### 2026.9.0-beta.1 Standard - prerelease
+Broader game discovery and per-install artwork controls. See [release notes](docs/releases/2026.9.0.md), [verification evidence](docs/releases/2026.9.0-verification.md) and [GitHub Releases](https://github.com/King4s/OptiScaler-GUI/releases) for availability.
+
+- Adds local Amazon Games SQLite, Ubisoft registry, EA registry plus installerdata XML, and Battle.net product database discovery. Store metadata is best effort; incomplete records and unsupported layouts can be missed.
+- Adds persisted custom library roots with enable/disable, remove and rescan controls and bounded traversal.
+- Fits card artwork without changing its aspect ratio. The new `cover_art` layer uses per-install hashes, preserves legacy cache files and allows identified Steam portraits to supersede cached landscape art.
+- Adds cover source display, local image override, reset and refresh. Refresh preserves explicitly selected artwork and retains the last good image when replacement fails.
+- Adds optional SteamGridDB lookup by explicit Steam app ID or title, with explicit consent and a session-only user API key. Users choose the matching game and image; automatic refresh never calls the provider. Automatic SteamSpy title-to-app-ID matching is removed from the artwork path.
+- Retains path-based deduplication, separate title provenance, exact-ID Steam local/GetItems artwork and the appdetails identity guard; deduplication also handles Windows verbatim-path spelling.
+- Preserves installer target, ownership, rollback and legacy-file safety. No installer behavior changes or new mods are part of this scope; no foreign implementation code is copied or vendored.
+- Fatekeeper's working user report remains valid. Fresh-version gameplay, manual visual inspection and authenticated SteamGridDB testing are not claimed.
+
+## Historical unpublished candidate
+
+### 2026.9.0-beta.2 Standard - superseded candidate scope
+
+- Scan results deduplicate by normalized install path, merging repeat hits without discarding a store identity. Two installs at different paths remain separate even when their titles match. The path key folds case, slash direction and a trailing separator; it does not lexically collapse `.` or `..` or resolve filesystem links. Existing per-game GPU settings can be read using the old path key as a fallback; settings are not rewritten.
+- Title provenance is recorded separately from discovery provenance, so a title supplied by store metadata can outrank a folder-derived title when hits for one install merge. Store IDs are read from metadata, not inferred from names, and do not establish OptiScaler compatibility or authorize installation.
+- Steam artwork now tries an exact-app-ID portrait from Steam's local library cache, then the Steam GetItems portrait, before the existing header and other fallbacks. Already cached images remain first; no cache migration or automatic landscape-to-portrait replacement is included.
+- The Steam appdetails fallback now accepts artwork only when the payload's `steam_appid` and the image URL path both name the requested app, even if the response object uses a different key. Unusable header images can fall through to the capsule image.
+- This candidate combines PRs #33, #34 and #35 with the appdetails guard. The historical beta.2 audit records combined local formatting, Clippy, workspace tests, release build and da/en/pl package startup smoke for that earlier tree only. It does not verify the expanded 2026.9.0 candidate; no public beta.2 release is claimed.
+
+## 2026.9.0-beta.1 Standard - prerelease
 
 - Added a shared safe resolver for scan, install, update, launch, observations, INI editing, and removal. Ambiguous executable layouts require an explicit game EXE selection; the preview shows the selected executable and target folder. Satisfactory has a documented exception: its FactoryGame Shipping EXE is under `FactoryGame/Binaries/Win64`, while the OptiScaler proxy target is `Engine/Binaries/Win64`.
 - Added v2 install manifests with per-file hashes, ownership checks, private original-file backups, rollback snapshots, and guarded update/uninstall. Legacy v1 and manifest-less installs do not authorize deletion; preserve files and handle migration cautiously.

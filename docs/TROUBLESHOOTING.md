@@ -1,6 +1,6 @@
 # Troubleshooting
 
-This guide describes the current Rust beta behavior. `2026.9.0 Standard` is local beta progress, not a public release. Neither a detected install nor a log message guarantees that a particular game, GPU, driver, or configuration works.
+This guide describes the Rust `2026.9.0` discovery/artwork features. See the [verification record](releases/2026.9.0-verification.md) for test evidence and limits. Neither a detected install nor a log message guarantees that a particular game, GPU, driver, or configuration works.
 
 ## Overlay does not open
 
@@ -33,4 +33,29 @@ This guide describes the current Rust beta behavior. `2026.9.0 Standard` is loca
 
 ## Report a reproducible problem
 
-Use the game's **Compatibility report** section to select your test result, preview the complete JSON and choose **Save report**. The report includes limited hardware, store/build and OptiScaler version fields, plus separate installed, loaded-log and user-test status. It omits paths, filesystem-derived game names and raw logs; unknown values remain unknown. Review the preview before sharing because a custom GPU name might still contain personal text. Include reproduction steps separately. Attach logs or the selected EXE/target only after checking them for private information. Compatibility is not established for all games. Fatekeeper was reported working by the user on 2026-09-25, but its exact test setup and overlay/uninstall results were not recorded.
+Use the game's **Compatibility report** section to select your test result, preview the complete JSON and choose **Save report**. The report includes limited hardware, store/build and OptiScaler version fields, plus separate installed, loaded-log and user-test status. It omits paths, filesystem-derived game names and raw logs; unknown values remain unknown. Review the preview before sharing because a custom GPU name might still contain personal text. Include reproduction steps separately. Attach logs or the selected EXE/target only after checking them for private information. Compatibility is not established for all games. Fatekeeper was reported working by the user on 2026-09-25. That remains valid feedback; no fresh-candidate manual test is claimed, and the absence of that retest does not establish a failure.
+
+## A game is missing from the library
+
+- Rescan after launcher installation or metadata changes. Discovery depends on local installed-game records and existing directories; it cannot guarantee every game will appear.
+- Amazon uses its local installed-game SQLite database; Ubisoft uses launcher install registry keys; EA uses registry product IDs and installerdata XML in known or registry-linked locations; Battle.net uses Agent `product.db`. Incomplete, stale or inaccessible metadata can be skipped with warnings. See [store format limits](store-formats.md).
+- Add a specific local game-library folder, enable it and rescan. Removing a configured root only removes that scan setting; it does not delete games. A game may still appear through another enabled source.
+- Custom scanning is bounded. Drive, profile and system roots, network roots and link/reparse-point traversal are rejected. Choose a narrower real folder when a scan reaches its work limit.
+- Manual game selection remains available. A discovered store ID or folder does not bypass the normal executable and install-target review.
+
+## Artwork is missing, wrong or remains landscape
+
+- Cards preserve image aspect ratio and fit the whole cover. Empty space around a landscape image in a portrait area is expected.
+- The new cache separates installs by platform, observed store identity and normalized path. Existing legacy files remain readable and untouched, but old title-only art can still show an ambiguous match.
+- An identified Steam game can upgrade legacy landscape artwork using local or hosted portraits. Missing, invalid or wrong-ID images fall through to other sources, cached art or icons. Artwork does not affect game identity, compatibility or install targets.
+- Use the artwork controls to choose a local image, inspect its source, reset the current selection or refresh automatic sources. Refresh preserves a selected local or SteamGridDB image; reset the selection first if you want automatic artwork again. Reset does not delete the original image.
+- A saved miss avoids retrying downloads on every render. Refresh explicitly retries automatic sources when connectivity or metadata changes and preserves the last good artwork if replacement fails.
+- Clear cache only clears recognized automatic cache entries. Legacy files and entries with selected-art history are preserved; do not delete the entire image-cache folder to force a portrait upgrade.
+
+## SteamGridDB artwork
+
+- Give explicit consent and enter your own API key for the session, then search. Choose the correct game from the results and then the image; no first result is selected automatically.
+- Lookup sends an explicit Steam app ID when available, or the game title for search, to SteamGridDB. The key is held in memory for API requests, not saved as a setting or sent with image downloads.
+- Automatic cover fetching and refresh never invoke SteamGridDB. Automatic store/Steam artwork downloads can still occur; choosing not to use SteamGridDB does not disable those sources.
+- If the service is unavailable, the key is rejected or no suitable match appears, keep the existing art or choose a local image. Automatic SteamSpy title matching is not used.
+- See [cover artwork details](cover-art.md). Authenticated SteamGridDB testing was not performed because no API key was available; startup smoke does not establish manual visual or gameplay verification.

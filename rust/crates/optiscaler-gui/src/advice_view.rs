@@ -73,12 +73,7 @@ impl AdviceState {
             } else {
                 "advice.log_unknown"
             }));
-            let test_result = hardware
-                .local
-                .game_results
-                .get(key)
-                .copied()
-                .unwrap_or_default();
+            let test_result = hardware.local.result_for(game).copied().unwrap_or_default();
             let test_key = match test_result {
                 UserTestResult::NotRun => "report.result_not_run",
                 UserTestResult::Passed => "report.result_passed",
@@ -107,7 +102,7 @@ impl AdviceState {
             ));
             ui.small(tr.tr("advice.evidence"));
             ui.label(observation.dll_hints.join(", "));
-            let gpu = hardware.local.game_gpus.get(key).and_then(|id| {
+            let gpu = hardware.local.gpu_for(game).and_then(|id| {
                 hardware
                     .local
                     .hardware
@@ -149,12 +144,7 @@ impl AdviceState {
                 if hardware.local.hardware.is_none() {
                     ui.label(tr.tr("report.no_hardware"));
                 }
-                let mut result = hardware
-                    .local
-                    .game_results
-                    .get(key)
-                    .copied()
-                    .unwrap_or_default();
+                let mut result = hardware.local.result_for(game).copied().unwrap_or_default();
                 let previous = result;
                 egui::ComboBox::from_id_salt(("report_result", key))
                     .selected_text(tr.tr(match result {
@@ -194,8 +184,7 @@ impl AdviceState {
                 let profile = hardware.local.hardware.as_ref().unwrap_or(&empty);
                 let gpu = hardware
                     .local
-                    .game_gpus
-                    .get(key)
+                    .gpu_for(game)
                     .and_then(|id| profile.gpus.iter().find(|gpu| &gpu.id == id));
                 let report = report::build_report(profile, gpu, observation, result);
                 let Ok(mut preview) = report::preview_json(&report) else {

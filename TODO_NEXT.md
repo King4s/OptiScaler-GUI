@@ -1,33 +1,24 @@
-# OptiScaler-GUI Rust beta: completed and remaining
+# 2026.9.0: final review, remote CI and publication
 
-Status snapshot for `2026.9.0-beta.1 Standard`. This prerelease is not a stable-release checklist approval; implementation progress is not equivalent to validated behavior.
+The full original discovery/artwork implementation is complete: four new local store adapters, configurable scan roots, aspect-preserving cards, per-install cover caching with legacy preservation and portrait upgrades, local override/reset/refresh, and optional SteamGridDB with consent, session-only key and explicit game/image selection. SteamGridDB lookup sends an explicit Steam app ID or title; automatic SteamSpy matching is removed.
 
-## Implemented in the current tree
+Stable 2026.9.0 publication is explicitly authorized after green checks. Publication remains pending until the GitHub release exists.
 
-- [x] Shared target resolver is used across install, update, launch, and observations. Ambiguous candidates stop for explicit selection; selected executable and target directory are shown before install.
-- [x] Satisfactory exception keeps the actual `FactoryGame-*-Win64-Shipping.exe` under `FactoryGame/Binaries/Win64` distinct from the proxy target under `Engine/Binaries/Win64`, even if the installation root is renamed.
-- [x] Manifest v2 records owned-file hashes and original backups. Mutations use guarded paths and rollback snapshots, refuse changed/missing owned binaries and new foreign collisions on update, recheck immediately before each write, and do not write through hard-link destinations. Conflicting files are preserved during rollback; edited INI files are preserved.
-- [x] Legacy v1 and manifest-less installs do not grant deletion ownership; automatic destructive migration is intentionally withheld.
-- [x] Hardware facts, deterministic source-backed advice, local observations, application/crash logs, overlay guidance, and INI change preview exist.
-- [x] Observation wording/data treats DLL presence as hints and log `Init done` as limited evidence, not runtime proof.
-- [x] A typed report builder and non-overwriting JSON writer pass synthetic privacy tests. The GUI shows the full report before the user chooses to save it; test results stay local per game.
-- [x] Local release-binary startup smoke from an isolated test directory remained alive after eight seconds, wrote its startup log and produced no crash log. This does not test gameplay or the overlay.
-- [x] Windows Rust CI is configured to run locked tests, Clippy, formatting, release build and a fresh startup smoke. A remote CI run is still pending.
-- [x] The `2026.9.0-beta.1` release binary started from a clean local directory, logged its beta version and remained alive without a crash log.
-- [x] User reported Fatekeeper working on 2026-09-25. The exact GUI, OptiScaler and game versions, GPU, overlay result and uninstall result were not provided; this is user confirmation, not a documented compatibility matrix.
+## Release checklist
 
-## Still required
+- [x] Windows verbatim-path deduplication fix complete; targeted regressions passed.
+- [x] Last-good-art refresh fix complete; targeted regressions passed.
+- [x] Final Jev turn 4 formatting, Clippy and locked workspace tests PASS.
+- [x] Final EXE/7z and exact hashes recorded; integrity and eight-second da/en/pl startup PASS.
+- [x] Final [verification record](docs/releases/2026.9.0-verification.md) reconciled with build JSON.
+- [x] Independent final review approved; Jev stopped with `goal_met` after six executor turns.
+- [ ] Record green remote CI.
+- [ ] Publish under the existing authorization and record the GitHub release URL.
 
-- [ ] Run and record GitHub CI validation for the beta branch; local equivalent Rust checks passed.
-- [ ] Perform hands-on packaged-app install, update, rollback, uninstall and legacy-install safety checks on supported Windows systems; the startup smoke alone does not cover these flows.
-- [ ] Record a reproducible Fatekeeper test with exact hardware and versions, correct proxy placement, OptiScaler load, overlay behavior and safe uninstall.
-- [ ] Validate additional representative game layouts and capture explicit exceptions before making broader compatibility claims.
-- [ ] Review beta feedback and known limitations before deciding whether to prepare any public release.
+## Recorded evidence
 
-## Release guardrails
+Final tested source tree: `26d8042f463393ac845e1c0f0f11957de30319ae`. EXE: 8,933,888 bytes; 7z: 3,324,820 bytes. Subsequent reconciliation changes are documentation-only. GitHub-built binaries will have their own `SHA256SUMS`. Audit reported zero vulnerabilities with the existing unmaintained `ttf-parser` warning.
 
-- `2026.9.0-beta.1 Standard` is a prerelease for feedback, not a stable 2026.9.0 release or a general compatibility declaration.
-- Do not claim all games are compatible. A unique executable or a rule in the compatibility wiki does not establish a working runtime on a user's machine.
-- A saved target selection must remain inside the game root. For Satisfactory, verify the displayed EXE and Engine target against the installed game version and the current upstream compatibility guidance.
-- Never infer ownership from proxy/DLL presence. For v1 or absent manifests, preserve files and ask for a deliberate manual recovery path rather than deleting guessed files.
-- Treat log-based loaded evidence as potentially stale; the JSON report records only the limited status, never raw log content or filesystem-derived game names.
+Read-only discovery smoke found two Ubisoft games, zero Amazon/EA/Battle.net games and three warnings. Fixture coverage is not positive live evidence. Manual visual/gameplay and authenticated SteamGridDB testing were not performed; no API key was available. Fatekeeper's earlier working user report remains valid.
+
+The scope changes no installer behavior and adds no mods. Preserve reviewed targets, ownership/rollback, legacy/foreign files and the ban on foreign-code copying. Historical beta evidence remains separate and unchanged. See [plan](tasks/plan.md), [checklist](tasks/todo.md) and [release notes](docs/releases/2026.9.0.md).

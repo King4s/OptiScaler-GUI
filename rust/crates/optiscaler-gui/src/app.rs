@@ -97,22 +97,49 @@ impl App {
     fn drain_events(&mut self) {
         while let Ok(event) = self.ops.rx.try_recv() {
             match event {
-                TaskEvent::ScanFinished { mut games } => {
+                TaskEvent::ScanFinished {
+                    mut games,
+                    warnings,
+                } => {
                     games.sort_by(|a, b| a.key.name_lower.cmp(&b.key.name_lower));
                     self.state.games = games;
+                    self.state.scan_warnings = warnings;
                     self.state.scan_state = ScanState::Done;
                     self.ops.scan_finished();
                 }
                 TaskEvent::ImageReady {
                     path_norm,
                     image_path,
+                    generation,
                 } => {
+                    if !self.ops.image_is_current(&path_norm, generation) {
+                        continue;
+                    }
                     self.state
                         .art
                         .insert(path_norm, ArtState::Ready(image_path));
                 }
-                TaskEvent::ImageMissing { path_norm } => {
+                TaskEvent::ImageMissing {
+                    path_norm,
+                    generation,
+                } => {
+                    if !self.ops.image_is_current(&path_norm, generation) {
+                        continue;
+                    }
                     self.state.art.insert(path_norm, ArtState::Missing);
+                }
+                TaskEvent::ArtworkCacheCleared { error } => {
+                    self.ops.cache_clear_finished();
+                    if let Some(error) = error {
+                        self.state.push_log(error);
+                    } else {
+                        let keys: Vec<_> = self.state.art.keys().cloned().collect();
+                        for key in keys {
+                            self.ops.reset_image(&key);
+                            self.state.invalidate_artwork(&key, None);
+                        }
+                        self.state.push_log("Automatic artwork cache cleared; selected covers and downloads preserved".into());
+                    }
                 }
                 TaskEvent::AppListReady => {
                     // Retry artwork that had no appid before the catalogue loaded
@@ -324,17 +351,15 @@ impl eframe::App for App {
         self.drain_events();
         self.maybe_auto_update_optiscaler(ctx);
 
-        // First-frame startup: catalogue load + initial scan
+        // Only exact store identity is used for automatic artwork, never title matching.
         if !self.started {
             self.started = true;
-            self.ops.spawn_catalogue_load(ctx);
             if self.state.config.check_updates {
                 self.ops.spawn_release_check(ctx);
                 self.ops.spawn_gui_update_check(ctx);
             }
             self.state.scan_state = ScanState::Running;
-            self.ops
-                .spawn_scan(ctx, self.state.config.excluded_drive_letters());
+            self.ops.spawn_scan(ctx, self.state.config.scan_config());
         }
 
         // Repaint pacing for the animated background: ~30 fps while effects
@@ -352,9 +377,17 @@ impl eframe::App for App {
         match self.state.screen {
             Screen::Games => screens::games_grid::show(ctx, &mut self.state, &mut self.ops),
             Screen::IniEditor => screens::ini_editor::show(ctx, &mut self.state, &mut self.ops),
-            Screen::Settings => screens::show_settings(ctx, &mut self.state),
+            Screen::Settings => screens::show_settings(ctx, &mut self.state, &mut self.ops),
             Screen::Log => screens::show_log(ctx, &mut self.state),
             Screen::About => screens::show_about(ctx, &mut self.state),
+        }
+        if let Some((key, path)) =
+            self.state
+                .cover_ui
+                .show(ctx, &self.state.i18n, self.ops.images.clone())
+        {
+            self.state.invalidate_artwork(&key, path);
+            self.ops.reset_image(&key);
         }
     }
 }

@@ -2,13 +2,12 @@
 //! Workers request a repaint after each send so events render immediately.
 
 use eframe::egui;
-use opticore::appids::AppIdResolver;
-use opticore::images::{ArtRequest, ImageCache};
+use opticore::cover_art::CoverCache;
 use opticore::install::{self, InstallOptions, InstallStage, Installer};
-use opticore::model::{Game, Platform};
+use opticore::model::Game;
 use opticore::progress::TaskEvent;
 use opticore::scan::{scan_all, ScanConfig};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Arc;
@@ -16,10 +15,11 @@ use std::sync::Arc;
 pub struct Ops {
     pub tx: Sender<TaskEvent>,
     pub rx: Receiver<TaskEvent>,
-    pub resolver: Arc<AppIdResolver>,
-    pub images: Arc<ImageCache>,
+    pub images: Arc<CoverCache>,
     inflight_images: HashSet<String>,
+    image_generations: HashMap<String, u64>,
     scan_running: bool,
+    cache_clear_running: bool,
 }
 
 /// Portable layout root: the exe's directory (cwd fallback in dev). The
@@ -42,25 +42,12 @@ impl Ops {
         Self {
             tx,
             rx,
-            resolver: Arc::new(AppIdResolver::new(&dir)),
-            images: Arc::new(ImageCache::new(&dir)),
+            images: Arc::new(CoverCache::new(&dir)),
             inflight_images: HashSet::new(),
+            image_generations: HashMap::new(),
             scan_running: false,
+            cache_clear_running: false,
         }
-    }
-
-    /// Load the SteamSpy catalogue in the background (skipped if cache fresh).
-    pub fn spawn_catalogue_load(&self, ctx: &egui::Context) {
-        let tx = self.tx.clone();
-        let ctx = ctx.clone();
-        let resolver = self.resolver.clone();
-        std::thread::spawn(move || {
-            if resolver.load_steamspy_catalogue() {
-                let _ = tx.send(TaskEvent::Log("SteamSpy catalogue loaded".into()));
-            }
-            let _ = tx.send(TaskEvent::AppListReady);
-            ctx.request_repaint();
-        });
     }
 
     pub fn scan_running(&self) -> bool {
@@ -71,7 +58,7 @@ impl Ops {
         self.scan_running = false;
     }
 
-    pub fn spawn_scan(&mut self, ctx: &egui::Context, excluded_drives: Vec<char>) {
+    pub fn spawn_scan(&mut self, ctx: &egui::Context, config: ScanConfig) {
         if self.scan_running {
             return;
         }
@@ -80,7 +67,10 @@ impl Ops {
         let ctx = ctx.clone();
         std::thread::spawn(move || {
             let t0 = std::time::Instant::now();
-            let result = scan_all(&ScanConfig { excluded_drives });
+            let result = scan_all(&config);
+            for warning in &result.warnings {
+                let _ = tx.send(TaskEvent::Log(warning.clone()));
+            }
             let _ = tx.send(TaskEvent::Log(format!(
                 "Scan finished: {} games in {:.2}s",
                 result.games.len(),
@@ -88,6 +78,7 @@ impl Ops {
             )));
             let _ = tx.send(TaskEvent::ScanFinished {
                 games: result.games,
+                warnings: result.warnings,
             });
             ctx.request_repaint();
         });
@@ -99,32 +90,22 @@ impl Ops {
         if !self.inflight_images.insert(key.clone()) {
             return;
         }
+        let generation = *self.image_generations.entry(key.clone()).or_default();
         let tx = self.tx.clone();
         let ctx = ctx.clone();
-        let resolver = self.resolver.clone();
         let images = self.images.clone();
-        let name = game.name.clone();
-        let appid = game.steam_appid;
-        let art_url = game.art_url.clone();
-        let platform_is_gog = game.platform == Platform::Gog;
-        let game_path = game.path.clone();
+        let game = game.clone();
         std::thread::spawn(move || {
-            let appid = appid
-                .or_else(|| resolver.lookup(&name))
-                .or_else(|| resolver.lookup_online(&name));
-            let request = ArtRequest {
-                name,
-                appid,
-                art_url,
-                platform_is_gog,
-                game_path: Some(game_path),
-            };
-            let event = match images.fetch(&request) {
+            let event = match images.fetch(&game) {
                 Some(path) => TaskEvent::ImageReady {
                     path_norm: key,
                     image_path: path,
+                    generation,
                 },
-                None => TaskEvent::ImageMissing { path_norm: key },
+                None => TaskEvent::ImageMissing {
+                    path_norm: key,
+                    generation,
+                },
             };
             let _ = tx.send(event);
             ctx.request_repaint();
@@ -134,6 +115,34 @@ impl Ops {
     /// Allow re-requesting images (after AppListReady retry-reset).
     pub fn clear_inflight(&mut self) {
         self.inflight_images.clear();
+    }
+
+    pub fn reset_image(&mut self, key: &str) {
+        self.inflight_images.remove(key);
+        *self.image_generations.entry(key.to_string()).or_default() += 1;
+    }
+
+    pub fn clear_artwork_cache(&mut self, ctx: &egui::Context) {
+        if self.cache_clear_running {
+            return;
+        }
+        self.cache_clear_running = true;
+        let images = self.images.clone();
+        let tx = self.tx.clone();
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let error = images.clear_automatic_cache().err();
+            let _ = tx.send(TaskEvent::ArtworkCacheCleared { error });
+            ctx.request_repaint();
+        });
+    }
+
+    pub fn cache_clear_finished(&mut self) {
+        self.cache_clear_running = false;
+    }
+
+    pub fn image_is_current(&self, key: &str, generation: u64) -> bool {
+        self.image_generations.get(key).copied().unwrap_or_default() == generation
     }
 
     fn downloads_dir(&self) -> PathBuf {
@@ -383,5 +392,30 @@ impl Ops {
             });
             ctx.request_repaint();
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn explicit_cover_change_rejects_an_older_automatic_result() {
+        let (tx, rx) = channel();
+        let mut ops = Ops {
+            tx,
+            rx,
+            images: Arc::new(CoverCache::new(std::path::Path::new("unused-test-cache"))),
+            inflight_images: HashSet::from(["game".to_string()]),
+            image_generations: HashMap::new(),
+            scan_running: false,
+            cache_clear_running: false,
+        };
+        assert!(ops.image_is_current("game", 0));
+        ops.reset_image("game");
+        assert!(!ops.image_is_current("game", 0));
+        assert!(ops.image_is_current("game", 1));
+        assert!(!ops.inflight_images.contains("game"));
+        assert!(ops.image_is_current("other", 0));
     }
 }

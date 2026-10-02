@@ -41,6 +41,10 @@ const PLATFORM_FILTERS: &[(Option<Platform>, &str)] = &[
     (Some(Platform::Steam), "Steam"),
     (Some(Platform::Epic), "Epic"),
     (Some(Platform::Gog), "GOG"),
+    (Some(Platform::Amazon), "Amazon"),
+    (Some(Platform::Ubisoft), "Ubisoft"),
+    (Some(Platform::Ea), "EA"),
+    (Some(Platform::BattleNet), "Battle.net"),
     (Some(Platform::Xbox), "Xbox"),
     (Some(Platform::Heroic), "Heroic"),
     (Some(Platform::Manual), "Manual"),
@@ -82,6 +86,16 @@ pub fn show(ctx: &egui::Context, state: &mut AppState, ops: &mut Ops) {
                 ));
         }
         toolbar(ui, ctx, state, ops);
+        if !state.scan_warnings.is_empty() {
+            ui.collapsing(
+                RichText::new(state.i18n.tr("library.scan_warnings")).color(pal.badge_warn),
+                |ui| {
+                    for warning in &state.scan_warnings {
+                        ui.label(warning);
+                    }
+                },
+            );
+        }
         ui.add_space(4.0);
 
         match state.scan_state {
@@ -158,7 +172,7 @@ fn toolbar(ui: &mut egui::Ui, ctx: &egui::Context, state: &mut AppState, ops: &m
             .clicked()
         {
             state.scan_state = ScanState::Running;
-            ops.spawn_scan(ctx, state.config.excluded_drive_letters());
+            ops.spawn_scan(ctx, state.config.scan_config());
         }
 
         if ui
@@ -397,7 +411,7 @@ fn empty_state(
                 .clicked()
         {
             state.scan_state = ScanState::Running;
-            ops.spawn_scan(ctx, state.config.excluded_drive_letters());
+            ops.spawn_scan(ctx, state.config.scan_config());
         }
     });
 }
@@ -558,6 +572,46 @@ fn card(
     ui.add_space(GRID_GAP - ui.spacing().item_spacing.x);
 }
 
+fn contained_art_rect(area: egui::Rect, source: Vec2) -> Option<egui::Rect> {
+    let available = area.size();
+    if !area.is_finite()
+        || !source.is_finite()
+        || available.x <= 0.0
+        || available.y <= 0.0
+        || source.x <= 0.0
+        || source.y <= 0.0
+    {
+        return None;
+    }
+    let scale = (available.x / source.x).min(available.y / source.y);
+    let size = source * scale;
+    if !size.is_finite() || size.x <= 0.0 || size.y <= 0.0 {
+        return None;
+    }
+    Some(egui::Rect::from_center_size(area.center(), size))
+}
+
+fn paint_contained_image(
+    painter: &egui::Painter,
+    texture_id: egui::TextureId,
+    area: egui::Rect,
+    source: Vec2,
+    background: Color32,
+) {
+    if !area.is_finite() || area.width() <= 0.0 || area.height() <= 0.0 {
+        return;
+    }
+    painter.rect_filled(area, CornerRadius::same(6), background);
+    if let Some(image_rect) = contained_art_rect(area, source) {
+        painter.image(
+            texture_id,
+            image_rect,
+            egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
+            Color32::WHITE,
+        );
+    }
+}
+
 /// Draw a game's artwork into `art_rect` (requesting a fetch when unknown).
 fn paint_art(
     ui: &egui::Ui,
@@ -571,11 +625,12 @@ fn paint_art(
     match state.art_state(&game.key.path_norm) {
         ArtState::Ready(image_path) => {
             if let Some(texture) = state.texture_for(ctx, &image_path) {
-                ui.painter().image(
+                paint_contained_image(
+                    ui.painter(),
                     texture.id(),
                     art_rect,
-                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                    Color32::WHITE,
+                    texture.size_vec2(),
+                    pal.bg,
                 );
             }
         }
@@ -845,6 +900,10 @@ fn detail_panel(
     }
 
     ui.add_space(8.0);
+    if ui.button(state.i18n.tr("library.cover_controls")).clicked() {
+        state.cover_ui.open_for(game);
+    }
+    ui.add_space(8.0);
     egui::Grid::new("detail_grid")
         .num_columns(2)
         .show(ui, |ui| {
@@ -859,6 +918,20 @@ fn detail_panel(
                 ui.label(appid.to_string());
                 ui.end_row();
             }
+            if let Some(identity) = &game.store_identity {
+                ui.label(RichText::new("Store ID").color(pal.text_dim));
+                ui.label(&identity.store_id);
+                ui.end_row();
+            }
+            ui.label(RichText::new("Discovery source").color(pal.text_dim));
+            ui.label(match game.discovery_source {
+                opticore::model::DiscoverySource::StoreManifest => "Store manifest",
+                opticore::model::DiscoverySource::LauncherLibrary => "Launcher library",
+                opticore::model::DiscoverySource::Registry => "Registry",
+                opticore::model::DiscoverySource::FolderScan => "Folder scan",
+                opticore::model::DiscoverySource::UserSelected => "User-selected folder",
+            });
+            ui.end_row();
             ui.label(RichText::new("OptiScaler").color(pal.text_dim));
             ui.label(if game.optiscaler_installed {
                 "Installed"
@@ -880,9 +953,7 @@ fn detail_panel(
     play_section(ui, state, game, pal);
     ui.separator();
 
-    state
-        .hardware
-        .game_selector(ui, &game.key.path_norm, &state.i18n);
+    state.hardware.game_selector(ui, game, &state.i18n);
     state
         .advice
         .show(ui, game, &mut state.hardware, &state.i18n);
@@ -1170,4 +1241,119 @@ fn confirm_install(
         .show()
         == rfd::MessageDialogResult::Yes;
     confirmed.then_some(target)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rect(w: f32, h: f32) -> egui::Rect {
+        egui::Rect::from_min_size(egui::pos2(10.0, 20.0), Vec2::new(w, h))
+    }
+
+    fn assert_contained(area: egui::Rect, source: Vec2, expected: Vec2) {
+        let result = contained_art_rect(area, source).expect("valid dimensions");
+        assert!((result.width() - expected.x).abs() < 0.001);
+        assert!((result.height() - expected.y).abs() < 0.001);
+        assert!((result.center() - area.center()).length() < 0.001);
+        assert!(area.contains(result.min) && area.contains(result.max));
+    }
+
+    #[test]
+    fn artwork_contain_geometry() {
+        assert_contained(
+            rect(200.0, 100.0),
+            Vec2::new(400.0, 100.0),
+            Vec2::new(200.0, 50.0),
+        );
+        assert_contained(
+            rect(200.0, 100.0),
+            Vec2::new(100.0, 400.0),
+            Vec2::new(25.0, 100.0),
+        );
+        assert_contained(
+            rect(200.0, 100.0),
+            Vec2::new(100.0, 100.0),
+            Vec2::new(100.0, 100.0),
+        );
+        assert_contained(
+            rect(200.0, 100.0),
+            Vec2::new(1000.0, 100.0),
+            Vec2::new(200.0, 20.0),
+        );
+        for size in [
+            Vec2::ZERO,
+            Vec2::new(-1.0, 10.0),
+            Vec2::new(f32::NAN, 10.0),
+            Vec2::new(f32::INFINITY, 10.0),
+        ] {
+            assert!(contained_art_rect(rect(200.0, 100.0), size).is_none());
+        }
+        assert!(contained_art_rect(rect(0.0, 100.0), Vec2::splat(10.0)).is_none());
+        assert!(contained_art_rect(rect(f32::INFINITY, 100.0), Vec2::splat(10.0)).is_none());
+    }
+
+    #[test]
+    fn artwork_paint_emits_aspect_preserving_image_mesh() {
+        let ctx = egui::Context::default();
+        let area = rect(200.0, 100.0);
+        let input = egui::RawInput {
+            screen_rect: Some(rect(400.0, 300.0)),
+            ..Default::default()
+        };
+        let output = ctx.run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                paint_contained_image(
+                    ui.painter(),
+                    egui::TextureId::User(42),
+                    area,
+                    Vec2::new(100.0, 200.0),
+                    Color32::BLACK,
+                );
+            });
+        });
+        let image = output
+            .shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Mesh(mesh) if mesh.texture_id == egui::TextureId::User(42) => {
+                    Some(mesh)
+                }
+                _ => None,
+            })
+            .expect("image mesh");
+        let min = image
+            .vertices
+            .iter()
+            .map(|v| v.pos)
+            .fold(egui::pos2(f32::INFINITY, f32::INFINITY), |a, b| {
+                egui::pos2(a.x.min(b.x), a.y.min(b.y))
+            });
+        let max = image
+            .vertices
+            .iter()
+            .map(|v| v.pos)
+            .fold(egui::pos2(f32::NEG_INFINITY, f32::NEG_INFINITY), |a, b| {
+                egui::pos2(a.x.max(b.x), a.y.max(b.y))
+            });
+        let painted = egui::Rect::from_min_max(min, max);
+        assert!((painted.width() / painted.height() - 0.5).abs() < 0.001);
+        assert!((painted.center() - area.center()).length() < 0.001);
+        let uv_min = image
+            .vertices
+            .iter()
+            .map(|v| v.uv)
+            .fold(egui::pos2(f32::INFINITY, f32::INFINITY), |a, b| {
+                egui::pos2(a.x.min(b.x), a.y.min(b.y))
+            });
+        let uv_max = image
+            .vertices
+            .iter()
+            .map(|v| v.uv)
+            .fold(egui::pos2(f32::NEG_INFINITY, f32::NEG_INFINITY), |a, b| {
+                egui::pos2(a.x.max(b.x), a.y.max(b.y))
+            });
+        assert_eq!(uv_min, egui::Pos2::ZERO);
+        assert_eq!(uv_max, egui::pos2(1.0, 1.0));
+    }
 }

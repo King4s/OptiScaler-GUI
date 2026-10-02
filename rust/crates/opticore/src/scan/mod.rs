@@ -3,6 +3,7 @@
 //! `GameScanner.scan_games` flow (post-v0.5.2 semantics: each Steam library
 //! scanned once, one folder walk per game, no image fetching here).
 
+pub mod custom;
 pub mod discovery;
 pub mod epic;
 pub mod folder_facts;
@@ -10,23 +11,26 @@ pub mod gog;
 pub mod heroic;
 pub mod names;
 pub mod steam;
+pub mod stores;
 pub mod xbox;
 
-use crate::model::{Game, GameKey, Platform};
+use crate::model::{DiscoverySource, Game, GameKey, Platform, StoreIdentity, TitleSource};
 use discovery::{LibraryRoot, RootKind};
 use serde_json::Value;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Default, Clone)]
 pub struct ScanConfig {
     /// Uppercase drive letters to skip during discovery (no colon).
     pub excluded_drives: Vec<char>,
+    pub custom_roots: Vec<custom::ScanRoot>,
 }
 
 #[derive(Debug, Default)]
 pub struct ScanResult {
     pub games: Vec<Game>,
+    pub warnings: Vec<String>,
 }
 
 /// Community-verified game list bundled from the Python app's data file
@@ -67,6 +71,38 @@ impl VerifiedList {
     }
 }
 
+/// What one scanner call observed about an entry. Callers state the evidence
+/// explicitly, so `build_game` never has to infer identity or title quality.
+#[derive(Debug, Clone)]
+struct Provenance {
+    source: DiscoverySource,
+    title_source: TitleSource,
+    identity: Option<StoreIdentity>,
+}
+
+/// What a metadata-aware child scan found for one folder.
+///
+/// `title_source` is kept apart from `source` because they answer different
+/// questions: `source` says how the entry was discovered, `title_source` says
+/// whether the title really came from store metadata or was only prettified from
+/// the folder name. A GOG folder can be discovered through its store file while
+/// the file carries no title at all, and then the two answers differ.
+#[derive(Debug, Clone)]
+pub struct Described {
+    pub name: String,
+    pub title_source: TitleSource,
+    pub source: DiscoverySource,
+    pub store_id: Option<String>,
+}
+
+/// A folder's own name, used only where no store metadata exists for it.
+fn folder_stem(folder: &Path) -> String {
+    folder
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default()
+}
+
 /// Build a Game from a validated game folder + its facts.
 fn build_game(
     name: String,
@@ -74,18 +110,22 @@ fn build_game(
     path: &Path,
     platform: Platform,
     facts: &folder_facts::FolderFacts,
+    provenance: Provenance,
     verified: &VerifiedList,
 ) -> Game {
     let engine = folder_facts::detect_engine(path, facts);
     Game {
         key: GameKey {
             name_lower: name.to_lowercase(),
-            path_norm: path.to_string_lossy().to_lowercase(),
+            path_norm: GameKey::path_key(path),
         },
         name,
         path: path.to_path_buf(),
         platform,
         steam_appid: appid,
+        store_identity: provenance.identity,
+        discovery_source: provenance.source,
+        title_source: provenance.title_source,
         engine,
         engine_supported: folder_facts::is_engine_supported(engine),
         anti_cheat: folder_facts::detect_anti_cheat(facts),
@@ -118,7 +158,7 @@ fn scan_steam_library(
     if !common.is_dir() {
         return;
     }
-    let key = common.to_string_lossy().to_lowercase();
+    let key = GameKey::path_key(&common);
     if !scanned_roots.insert(key) {
         return;
     }
@@ -141,30 +181,49 @@ fn scan_steam_library(
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
-        let (name, appid) = match manifest_map.get(&folder_name.to_lowercase()) {
-            Some(m) => (m.name.clone(), m.appid),
-            None => (folder_name, None),
-        };
+        let (name, appid, source, title_source) =
+            match manifest_map.get(&folder_name.to_lowercase()) {
+                Some(m) => (
+                    m.name.clone(),
+                    m.appid,
+                    DiscoverySource::StoreManifest,
+                    TitleSource::Store,
+                ),
+                None => (
+                    folder_name,
+                    None,
+                    DiscoverySource::FolderScan,
+                    TitleSource::Folder,
+                ),
+            };
         games.push(build_game(
             name,
             appid,
             &folder,
             Platform::Steam,
             &facts,
+            Provenance {
+                source,
+                title_source,
+                identity: appid.map(StoreIdentity::steam),
+            },
             verified,
         ));
     }
 }
 
 /// Scan a root whose child folders are individual games (Epic/GOG style).
+/// `describe` yields the entry's title, where that title came from, how the
+/// entry was identified and the store identifier its metadata carried (if
+/// any) — never an invented one.
 fn scan_children<F>(
     root: &Path,
     platform: Platform,
     verified: &VerifiedList,
     games: &mut Vec<Game>,
-    name_for: F,
+    describe: F,
 ) where
-    F: Fn(&Path) -> String,
+    F: Fn(&Path) -> Described,
 {
     let Ok(entries) = std::fs::read_dir(root) else {
         return;
@@ -180,8 +239,22 @@ fn scan_children<F>(
         if !folder_facts::is_game_folder(&folder, &facts) {
             continue;
         }
-        let name = name_for(&folder);
-        games.push(build_game(name, None, &folder, platform, &facts, verified));
+        let described = describe(&folder);
+        games.push(build_game(
+            described.name,
+            None,
+            &folder,
+            platform,
+            &facts,
+            Provenance {
+                source: described.source,
+                title_source: described.title_source,
+                identity: described
+                    .store_id
+                    .map(|id| StoreIdentity::new(platform, id)),
+            },
+            verified,
+        ));
     }
 }
 
@@ -237,17 +310,33 @@ fn scan_xbox_root(root: &Path, verified: &VerifiedList, games: &mut Vec<Game>) {
             &folder,
             Platform::Xbox,
             &facts,
+            Provenance {
+                source: DiscoverySource::LauncherLibrary,
+                title_source: TitleSource::Folder,
+                identity: None,
+            },
             verified,
         ));
     }
+}
+
+/// The identity a launcher-discovered entry carries.
+///
+/// The store that published the id wins over the launcher that read the file,
+/// so a GOG title found through Heroic is `(Gog, <id>)`, never `(Heroic, <id>)`.
+pub fn heroic_identity(entry: &heroic::HeroicEntry) -> Option<StoreIdentity> {
+    let id = entry.store_id.as_ref()?;
+    Some(StoreIdentity::new(entry.store.platform(), id.clone()))
 }
 
 fn scan_heroic(verified: &VerifiedList, games: &mut Vec<Game>) {
     let mut seen_paths = HashSet::new();
     for root in heroic::config_roots() {
         for entry in heroic::installed_entries(&root) {
+            // Read the identity before the fields below are moved out of the entry.
+            let identity = heroic_identity(&entry);
             let install_path = entry.install_path;
-            let norm = install_path.to_string_lossy().to_lowercase();
+            let norm = GameKey::path_key(&install_path);
             if seen_paths.contains(&norm) || !install_path.is_dir() {
                 continue;
             }
@@ -258,6 +347,11 @@ fn scan_heroic(verified: &VerifiedList, games: &mut Vec<Game>) {
                 continue;
             }
             seen_paths.insert(norm);
+            let title_source = if entry.title.is_some() {
+                TitleSource::Launcher
+            } else {
+                TitleSource::Folder
+            };
             let name = entry.title.unwrap_or_else(|| {
                 install_path
                     .file_name()
@@ -270,6 +364,11 @@ fn scan_heroic(verified: &VerifiedList, games: &mut Vec<Game>) {
                 &install_path,
                 Platform::Heroic,
                 &facts,
+                Provenance {
+                    source: DiscoverySource::LauncherLibrary,
+                    title_source,
+                    identity,
+                },
                 verified,
             );
             game.art_url = entry.art_url;
@@ -278,32 +377,63 @@ fn scan_heroic(verified: &VerifiedList, games: &mut Vec<Game>) {
     }
 }
 
-/// Epic/GOG name resolution used by both known roots and discovered roots.
-fn epic_name(folder: &Path) -> String {
-    epic::read_game_name(folder).unwrap_or_else(|| {
-        let raw = folder
-            .file_name()
-            .map(|n| n.to_string_lossy().replace(['_', '-'], " "))
-            .unwrap_or_default();
-        names::title_case(&names::split_camel_case(&raw))
-    })
+/// Epic metadata resolution used by both known roots and discovered roots. An
+/// entry whose folder has no `.mancfg` is a folder scan with a folder title and
+/// no identity.
+pub fn epic_describe(folder: &Path) -> Described {
+    match epic::read_metadata(folder) {
+        Some(meta) => Described {
+            name: meta.title,
+            title_source: TitleSource::Store,
+            source: DiscoverySource::StoreManifest,
+            store_id: meta.app_name,
+        },
+        None => Described {
+            name: names::title_case(&names::split_camel_case(
+                &folder_stem(folder).replace(['_', '-'], " "),
+            )),
+            title_source: TitleSource::Folder,
+            source: DiscoverySource::FolderScan,
+            store_id: None,
+        },
+    }
 }
 
-fn gog_name(folder: &Path) -> String {
-    gog::read_game_title(folder).unwrap_or_else(|| {
-        names::folder_name_to_title(
-            &folder
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_default(),
-        )
-    })
+/// GOG metadata resolution.
+///
+/// The id and the title come from the same file but not necessarily together: a
+/// folder can hold a valid `goggame-<id>.info` whose `gameTitle` is missing. The
+/// entry is then still discovered through the store file, so `source` stays
+/// `StoreManifest`, but the title is only prettified from the folder name and
+/// `title_source` has to say `Folder`. Reporting that title as store-supplied let
+/// a folder name outrank a launcher's real title for the same install.
+pub fn gog_describe(folder: &Path) -> Described {
+    let store_id = gog::read_game_id(folder);
+    let title = gog::read_game_title(folder);
+    let title_source = if title.is_some() {
+        TitleSource::Store
+    } else {
+        TitleSource::Folder
+    };
+    let source = if store_id.is_some() || title.is_some() {
+        DiscoverySource::StoreManifest
+    } else {
+        DiscoverySource::FolderScan
+    };
+    let name = title.unwrap_or_else(|| names::folder_name_to_title(&folder_stem(folder)));
+    Described {
+        name,
+        title_source,
+        source,
+        store_id,
+    }
 }
 
 /// Full scan across all platforms. Port of `GameScanner.scan_games`.
 pub fn scan_all(config: &ScanConfig) -> ScanResult {
     let verified = VerifiedList::load();
     let mut games: Vec<Game> = Vec::new();
+    let mut warnings = Vec::new();
     let mut scanned_steam_roots: HashSet<String> = HashSet::new();
 
     // Steam: install roots + libraryfolders.vdf libraries, each scanned once
@@ -318,10 +448,10 @@ pub fn scan_all(config: &ScanConfig) -> ScanResult {
 
     // Epic / GOG / Xbox known roots
     for root in epic::default_roots() {
-        scan_children(&root, Platform::Epic, &verified, &mut games, epic_name);
+        scan_children(&root, Platform::Epic, &verified, &mut games, epic_describe);
     }
     for root in gog::default_roots() {
-        scan_children(&root, Platform::Gog, &verified, &mut games, gog_name);
+        scan_children(&root, Platform::Gog, &verified, &mut games, gog_describe);
     }
     for root in xbox::default_roots() {
         scan_xbox_root(&root, &verified, &mut games);
@@ -329,6 +459,52 @@ pub fn scan_all(config: &ScanConfig) -> ScanResult {
 
     // Heroic store files
     scan_heroic(&verified, &mut games);
+
+    let stores = stores::scan_installed();
+    warnings.extend(stores.warnings);
+    for entry in stores.entries {
+        let Some(facts) = folder_facts::collect(&entry.path) else {
+            warnings.push(format!(
+                "{}: could not read {}",
+                entry.platform.label(),
+                entry.path.display()
+            ));
+            continue;
+        };
+        let mut game = build_game(
+            entry.name,
+            None,
+            &entry.path,
+            entry.platform,
+            &facts,
+            Provenance {
+                source: entry.source,
+                title_source: entry.title_source,
+                identity: Some(StoreIdentity::new(entry.platform, entry.store_id)),
+            },
+            &verified,
+        );
+        game.art_url = entry.art_url;
+        games.push(game);
+    }
+
+    let custom = custom::scan_roots(&config.custom_roots);
+    warnings.extend(custom.warnings);
+    for entry in custom.entries {
+        games.push(build_game(
+            entry.name,
+            None,
+            &entry.path,
+            Platform::Manual,
+            &entry.facts,
+            Provenance {
+                source: DiscoverySource::UserSelected,
+                title_source: TitleSource::Folder,
+                identity: None,
+            },
+            &verified,
+        ));
+    }
 
     // Drive discovery for library roots outside the defaults
     for LibraryRoot { kind, path } in discovery::discover_roots(&config.excluded_drives) {
@@ -338,33 +514,90 @@ pub fn scan_all(config: &ScanConfig) -> ScanResult {
                 scan_steam_library(&path, &mut scanned_steam_roots, &verified, &mut games);
             }
             RootKind::Epic => {
-                scan_children(&path, Platform::Epic, &verified, &mut games, epic_name)
+                scan_children(&path, Platform::Epic, &verified, &mut games, epic_describe)
             }
-            RootKind::Gog => scan_children(&path, Platform::Gog, &verified, &mut games, gog_name),
+            RootKind::Gog => {
+                scan_children(&path, Platform::Gog, &verified, &mut games, gog_describe)
+            }
             RootKind::Xbox => scan_xbox_root(&path, &verified, &mut games),
         }
     }
 
-    // Launcher/redistributable filter, then dedup (same keys as Python)
+    // Launcher/redistributable filter, then the path-aware dedup pass: one
+    // entry per normalized install path, so two installs of one title both
+    // survive while every repeated hit for one install is merged. No entry is
+    // dropped on the strength of its title or its identity - those decide which
+    // facts the merged entry reports.
     games.retain(|g| !names::is_launcher_entry(&g.name));
-    let mut unique: Vec<Game> = Vec::with_capacity(games.len());
-    let mut seen_path_keys: HashSet<(String, String)> = HashSet::new();
-    let mut seen_name_platform: HashSet<(String, Platform)> = HashSet::new();
-    for game in games {
-        let path_key = (game.key.name_lower.clone(), game.key.path_norm.clone());
-        if seen_path_keys.contains(&path_key) {
-            continue;
-        }
-        let plat_key = (game.key.name_lower.clone(), game.platform);
-        if seen_name_platform.contains(&plat_key) {
-            continue;
-        }
-        seen_path_keys.insert(path_key);
-        seen_name_platform.insert(plat_key);
-        unique.push(game);
-    }
 
-    ScanResult { games: unique }
+    ScanResult {
+        games: dedup_games(games),
+        warnings,
+    }
+}
+
+/// How far a title can be trusted, highest first.
+///
+/// Read from `TitleSource`, never from `DiscoverySource`: a GOG folder can be
+/// discovered through its store file while that file carries no `gameTitle`, and
+/// the discovery source cannot tell those two cases apart.
+fn title_quality(source: TitleSource) -> u8 {
+    match source {
+        TitleSource::Store => 2,
+        TitleSource::Launcher => 1,
+        TitleSource::Folder => 0,
+    }
+}
+
+/// Copy the facts `source` has and `target` lacks. Nothing is ever overwritten,
+/// so merging two hits for one install can only add information.
+fn fill_gaps(target: &mut Game, source: Game) {
+    if target.store_identity.is_none() {
+        target.store_identity = source.store_identity;
+    }
+    if target.art_url.is_none() {
+        target.art_url = source.art_url;
+    }
+    if target.steam_appid.is_none() {
+        target.steam_appid = source.steam_appid;
+    }
+}
+
+/// Collapse the repeated hits one install can produce during a scan.
+///
+/// One entry survives per normalized install path: two installs of one title —
+/// different paths, or the same title reached through different stores — both
+/// stay, while every repeated hit for ONE install is folded into that entry.
+/// Identity is provenance, not a key: a Heroic copy that also sits under a
+/// store's own root is ONE install, and keying on identity would show it twice.
+///
+/// Folding is a merge, never a replacement. The hit with the better title keeps
+/// that title, and with it its platform, discovery source and title source,
+/// because those say where the title came from; the hit it displaced contributes the store identity,
+/// artwork and Steam appid that the winner lacks. So an Epic manifest's real
+/// `DisplayName` survives a launcher hit that only had a folder name for the
+/// same install, and the launcher's id survives next to it.
+pub fn dedup_games(games: Vec<Game>) -> Vec<Game> {
+    let mut unique: Vec<Game> = Vec::with_capacity(games.len());
+    let mut index_of: HashMap<String, usize> = HashMap::new();
+    for game in games {
+        match index_of.get(&game.key.path_norm).copied() {
+            Some(at)
+                if title_quality(game.title_source) > title_quality(unique[at].title_source) =>
+            {
+                // The incoming hit has the better title, so it becomes the entry
+                // and the occupant it displaces only fills the gaps it left.
+                let displaced = std::mem::replace(&mut unique[at], game);
+                fill_gaps(&mut unique[at], displaced);
+            }
+            Some(at) => fill_gaps(&mut unique[at], game),
+            None => {
+                index_of.insert(game.key.path_norm.clone(), unique.len());
+                unique.push(game);
+            }
+        }
+    }
+    unique
 }
 
 /// Scan a single, explicitly chosen folder (the "manual path" flow).
@@ -386,6 +619,11 @@ pub fn scan_manual_folder(folder: &Path) -> Option<Game> {
         folder,
         Platform::Manual,
         &facts,
+        Provenance {
+            source: DiscoverySource::UserSelected,
+            title_source: TitleSource::Folder,
+            identity: None,
+        },
         &verified,
     ))
 }

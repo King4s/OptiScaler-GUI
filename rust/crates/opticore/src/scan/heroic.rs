@@ -6,10 +6,39 @@
 //! - Amazon: nile_config/nile/installed.json + library.json
 //! - Sideload: sideload_apps/library.json
 
+use crate::model::Platform;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+/// The store a Heroic entry actually belongs to.
+///
+/// Heroic is the launcher that found the game, and `Game::platform` stays
+/// `Platform::Heroic` with discovery source `LauncherLibrary`. The store owns
+/// the id, and that is what a later cover or metadata lookup has to know: `42`
+/// is a GOG product id in one file and an Amazon product id in another, so
+/// collapsing both to Heroic would let two stores collide on one id.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeroicStore {
+    Epic,
+    Gog,
+    Amazon,
+    Sideload,
+}
+
+impl HeroicStore {
+    /// The platform whose catalogue this entry's id belongs to. A sideloaded
+    /// app has no store id at all, so its launcher is the only honest answer.
+    pub fn platform(self) -> Platform {
+        match self {
+            HeroicStore::Epic => Platform::Epic,
+            HeroicStore::Gog => Platform::Gog,
+            HeroicStore::Amazon => Platform::Amazon,
+            HeroicStore::Sideload => Platform::Heroic,
+        }
+    }
+}
 
 /// One installed game from a Heroic store file.
 pub struct HeroicEntry {
@@ -18,6 +47,11 @@ pub struct HeroicEntry {
     pub install_path: PathBuf,
     /// Store-supplied artwork URL when the library metadata has one.
     pub art_url: Option<String>,
+    /// The launcher's own stable id for this game (legendary app name, GOG app
+    /// name, Amazon product id) when its store file carried one.
+    pub store_id: Option<String>,
+    /// Which store that id belongs to - never the launcher that read the file.
+    pub store: HeroicStore,
 }
 
 fn read_json(path: &Path) -> Option<Value> {
@@ -59,6 +93,8 @@ pub fn installed_entries(root: &Path) -> Vec<HeroicEntry> {
                     title,
                     install_path: PathBuf::from(install_path),
                     art_url: legendary_art(root, app_name),
+                    store_id: Some(app_name.clone()),
+                    store: HeroicStore::Epic,
                 });
             }
         }
@@ -114,6 +150,8 @@ pub fn installed_entries(root: &Path) -> Vec<HeroicEntry> {
                     title,
                     install_path: PathBuf::from(install_path),
                     art_url,
+                    store_id: (!app.is_empty()).then(|| app.to_string()),
+                    store: HeroicStore::Gog,
                 });
             }
         }
@@ -141,14 +179,14 @@ pub fn installed_entries(root: &Path) -> Vec<HeroicEntry> {
     if let Some(Value::Array(installed)) = read_json(&nile_dir.join("installed.json")) {
         for meta in &installed {
             if let Some(path) = meta.get("path").and_then(Value::as_str) {
-                let title = meta
-                    .get("id")
-                    .and_then(Value::as_str)
-                    .and_then(|id| nile_titles.get(id).cloned());
+                let id = meta.get("id").and_then(Value::as_str);
+                let title = id.and_then(|id| nile_titles.get(id).cloned());
                 entries.push(HeroicEntry {
                     title,
                     install_path: PathBuf::from(path),
                     art_url: None,
+                    store_id: id.map(str::to_string),
+                    store: HeroicStore::Amazon,
                 });
             }
         }
@@ -185,6 +223,8 @@ pub fn installed_entries(root: &Path) -> Vec<HeroicEntry> {
                     title,
                     install_path: folder,
                     art_url,
+                    store_id: None,
+                    store: HeroicStore::Sideload,
                 });
             }
         }

@@ -1,6 +1,7 @@
 use eframe::egui;
 use opticore::{
-    hardware::HardwareProfile, i18n::Translator, profiles::LocalProfiles, report::UserTestResult,
+    hardware::HardwareProfile, i18n::Translator, model::Game, profiles::LocalProfiles,
+    report::UserTestResult,
 };
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
@@ -160,7 +161,7 @@ impl HardwareState {
         });
     }
 
-    pub fn game_selector(&mut self, ui: &mut egui::Ui, game_key: &str, tr: &Translator) {
+    pub fn game_selector(&mut self, ui: &mut egui::Ui, game: &Game, tr: &Translator) {
         ui.label(tr.tr("hardware.game_gpu"));
         let gpus = self
             .local
@@ -168,7 +169,7 @@ impl HardwareState {
             .as_ref()
             .map(|p| p.gpus.as_slice())
             .unwrap_or(&[]);
-        let mut choice = self.local.game_gpus.get(game_key).cloned();
+        let mut choice = self.local.gpu_for(game).cloned();
         // Never infer that the GUI adapter, first adapter, or a stale selection is the game GPU.
         if choice
             .as_ref()
@@ -182,7 +183,7 @@ impl HardwareState {
             .and_then(|id| gpus.iter().find(|g| &g.id == id))
             .and_then(|g| g.name.clone())
             .unwrap_or_else(|| tr.tr("hardware.choose_gpu"));
-        egui::ComboBox::from_id_salt(("game_gpu", game_key))
+        egui::ComboBox::from_id_salt(("game_gpu", game.key.path_norm.as_str()))
             .selected_text(label)
             .show_ui(ui, |ui| {
                 ui.selectable_value(&mut choice, None, tr.tr("hardware.choose_gpu"));
@@ -195,14 +196,7 @@ impl HardwareState {
                 }
             });
         if choice != before {
-            match choice {
-                Some(id) => {
-                    self.local.game_gpus.insert(game_key.to_string(), id);
-                }
-                None => {
-                    self.local.game_gpus.remove(game_key);
-                }
-            }
+            self.local.set_gpu_for(game, choice);
             self.save();
         }
         ui.small(tr.tr("hardware.selection_hint"));
