@@ -1,23 +1,19 @@
-# Beta.2 candidate handoff: game discovery and artwork
+# 2026.9.0 release handoff
 
-Use branch `codex/2026-9-beta2` for this release candidate. It combines PR #33 identity changes with the appdetails-art guard, including PRs #34 and #35. The original three PRs were independently green but are not merged into main. `2026.9.0-beta.1` is a public prerelease; `2026.9.0-beta.2` is not published. Preserve unrelated worktrees and user changes.
+The full original discovery/artwork implementation is complete in the shared release worktree. The user explicitly authorized stable 2026.9.0 publication after green checks; no new publication approval is needed. Record publication only after the GitHub release exists.
 
-## What the candidate does
+## Remaining work
 
-- `scan::dedup_games` keys on normalized install path. Hits for one install merge; same-title installs at different paths remain separate. A better title wins, while missing store identity, artwork and Steam app ID are filled from the other hit. Store identity is provenance, not the dedup key, a compatibility claim or installation authority.
-- `TitleSource` ranks title evidence separately from `DiscoverySource`. Store metadata can supply a better title than a folder name even when both hits describe one install.
-- `GameKey::path_key` folds case, slash direction and trailing separators. It does not lexically collapse `.` or `..` or resolve links. Persisted GPU selections try the new key then the prior spelling; there is no settings rewrite. The fallback is exact, so a store changing its own path spelling between versions can still orphan a setting.
-- Image lookup first returns an existing cached image, then tries the exact-app-ID Steam local portrait, Steam GetItems portrait, CDN header, appdetails, and existing non-Steam/icon fallbacks. A cached landscape image still wins. There is no cache migration, no new store scanners and no SteamGridDB integration.
-- The appdetails guard ignores response object keys but requires both `data.steam_appid` and the image URL's `apps/<appid>` path to match the requested app. It rejects malformed or mismatched URLs and can try a capsule when a header is unusable. This is in the local candidate, not an open follow-up.
+Both fixes and targeted regressions are complete. Final formatting, Clippy and locked workspace tests passed through Jev turn 6. Final EXE/7z verification is complete; exact JSON values are recorded. Independent follow-up returned `done=true` with no missing items; Jev stopped with `goal_met` after six executor turns. Only remote CI and publication remain.
 
-## Evidence and pending work
+The [checklist](todo.md) tracks the remaining gates. The [verification record](../docs/releases/2026.9.0-verification.md) contains the exact final build JSON values and coordinator-reported test evidence. [Public release notes](../docs/releases/2026.9.0.md) are the workflow's GitHub release body and use absolute `blob/v2026.9.0` documentation links.
 
-- Final combined formatting, Clippy and workspace tests passed through Jev MCP run `20261002-161555`, turn 1. The release build, 7z integrity/extraction, SHA256 comparison and eight-second startup in da/en/pl passed on 2026-10-02. See [verification](../docs/releases/2026.9.0-beta.2-verification.md). Independent review and remote candidate CI are tracked separately from these local results.
-- Fatekeeper was reported working by the user on 2026-09-25, but this run did not verify exact hardware, GUI/game/OptiScaler versions, overlay result or real-game install/update/uninstall. Packaged-app install/update/rollback/uninstall, legacy-install safety and representative game layouts also need hands-on validation before broader claims.
-- Preserve the existing safety model: explicit EXE choice when ambiguous, reviewed install target, v2 ownership and rollback, conservative handling of legacy/manifest-less installs, no inferred compatibility from images or DLL names, and no anti-cheat modification.
+## Evidence and limits
 
-## Follow-up boundaries
+Final source tree: `26d8042f463393ac845e1c0f0f11957de30319ae`. EXE: 8,933,888 bytes; 7z: 3,324,820 bytes. Archive integrity and eight-second da/en/pl startup passed. Subsequent reconciliation changes are documentation-only. GitHub-built binaries will have their own `SHA256SUMS`. Audit found zero vulnerabilities and the existing unmaintained `ttf-parser` warning.
 
-T5 onward in `tasks/todo.md` remains future work, not beta.2 functionality. Existing image cache precedence and per-name cache collisions are separate future work; do not imply source-specific cache keys or automatic deletion are present. A store path spelling change beyond the exact legacy-key fallback also remains open. Keep new tests and release evidence labeled by the tree and artifact actually checked.
+Read-only store smoke: Ubisoft two positive entries; Amazon, EA and Battle.net zero; three warnings total. Fixtures cover the zero-result adapters, without positive live evidence. No manual visual/gameplay or authenticated SteamGridDB test is claimed; no API key was available. Fatekeeper's working user report remains valid without a new game-specific publication gate.
 
-The user permits studying foreign reference repositories but forbids copying their source code, including line-by-line translations and pasted snippets. Record observed formats, public API contracts and expected behavior independently, then write original code. Do not vendor foreign files or infer a license exception from a permissive license.
+SteamGridDB sends an explicit Steam app ID or title after consent; the user chooses the game and image. Preserve session-only credentials and explicit selection. All four stores, custom roots and the full artwork controls/cache are implemented scope.
+
+No installer behavior changes, new mods or foreign-code copying. Preserve other agents' files, source-evidence documents and all historical beta documentation.

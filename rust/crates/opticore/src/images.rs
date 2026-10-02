@@ -287,8 +287,11 @@ fn gog_search_image(fetcher: &Fetcher, name: &str) -> Option<String> {
 /// MicrosoftGame.config points at Square480x480Logo/SplashScreen/StoreLogo
 /// assets. Search the config first (targeted — game content dirs are full of
 /// unrelated PNGs), preferring the larger art.
-fn xbox_local_logo(game_path: &Path) -> Option<PathBuf> {
+pub(crate) fn xbox_local_logo(game_path: &Path) -> Option<PathBuf> {
     let config_path = find_shallow(game_path, "MicrosoftGame.config", 2)?;
+    if std::fs::metadata(&config_path).ok()?.len() > 1024 * 1024 {
+        return None;
+    }
     let content = std::fs::read_to_string(&config_path).ok()?;
     let config_dir = config_path.parent()?;
     for attribute in [
@@ -347,8 +350,11 @@ fn find_shallow(root: &Path, file_name: &str, max_depth: usize) -> Option<PathBu
 
 /// Extract the largest icon from the game's main executable (PE resources).
 /// The universal fallback: every game has an exe, every exe has an icon.
-fn exe_icon_image(game_path: &Path) -> Option<image::DynamicImage> {
+pub(crate) fn exe_icon_image(game_path: &Path) -> Option<image::DynamicImage> {
     let exe = largest_exe(game_path)?;
+    if std::fs::metadata(&exe).ok()?.len() > 64 * 1024 * 1024 {
+        return None;
+    }
     let bytes = std::fs::read(&exe).ok()?;
     let file = pelite::PeFile::from_bytes(&bytes).ok()?;
     let resources = file.resources().ok()?;
@@ -356,7 +362,7 @@ fn exe_icon_image(game_path: &Path) -> Option<image::DynamicImage> {
     for (_, group) in resources.icons().flatten() {
         let mut ico = Vec::new();
         group.write(&mut ico).ok()?;
-        if let Ok(img) = image::load_from_memory_with_format(&ico, image::ImageFormat::Ico) {
+        if let Some(img) = crate::steam_art::decode_portrait_bytes(&ico) {
             return Some(img);
         }
     }
@@ -399,7 +405,7 @@ pub(crate) fn http_agent() -> ureq::Agent {
     configured_agent(true)
 }
 
-fn artwork_agent() -> ureq::Agent {
+pub(crate) fn artwork_agent() -> ureq::Agent {
     configured_agent(false)
 }
 
@@ -602,7 +608,7 @@ pub fn appdetails_image_url(body: &[u8], appid: u32) -> Option<String> {
 /// a space or a userinfo part in the authority are all refused rather than resolved.
 /// `…/apps/620/../80/header.jpg` is the reason: an HTTP client normalises it to app
 /// 80's artwork, which would be cached under this game's id.
-fn steam_app_path_names(url: &str, appid: u32) -> bool {
+pub(crate) fn steam_app_path_names(url: &str, appid: u32) -> bool {
     // The whole URI is read literally, query and fragment included, and every byte must be
     // one a URI may contain (RFC 3986's unreserved, reserved and percent characters). A
     // space, a `<`, a `>` or a control byte is not part of a URI, and the downloader's own
@@ -851,7 +857,7 @@ fn is_uri_character(byte: u8) -> bool {
         )
 }
 
-fn http_get(url: &str) -> Option<Vec<u8>> {
+pub(crate) fn http_get(url: &str) -> Option<Vec<u8>> {
     let mut resp = artwork_agent().get(url).call().ok()?;
     if resp.status() != 200 {
         return None;

@@ -54,7 +54,7 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          body_path: ${{ github.ref_name == 'v2026.9.0-beta.2' && 'docs/releases/2026.9.0-beta.2.md' || github.ref_name == 'v2026.9.0-beta.1' && 'docs/releases/2026.9.0-beta.1.md' || '' }}
+          body_path: ${{ github.ref_name == 'v2026.9.0' && 'docs/releases/2026.9.0.md' || github.ref_name == 'v2026.9.0-beta.2' && 'docs/releases/2026.9.0-beta.2.md' || github.ref_name == 'v2026.9.0-beta.1' && 'docs/releases/2026.9.0-beta.1.md' || '' }}
           files: |
             rust/out/OptiScaler-GUI.exe
             rust/out/OptiScaler-GUI.7z

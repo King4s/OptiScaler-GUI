@@ -2,6 +2,7 @@
 //! Python app uses. Unknown fields are preserved on save so the two apps can
 //! share the file without clobbering each other's settings.
 
+use crate::scan::custom::ScanRoot;
 use serde_json::{Map, Value};
 use std::path::{Path, PathBuf};
 
@@ -25,6 +26,8 @@ pub struct AppConfig {
     /// Games sort column: "name" (default), "platform", "engine", "optiscaler"
     pub sort_key: String,
     pub sort_ascending: bool,
+    /// Explicit local library roots; disabled roots remain in the saved list.
+    pub scan_roots: Vec<ScanRoot>,
     /// Fields we don't own (Python app settings) — preserved on save.
     passthrough: Map<String, Value>,
 }
@@ -42,6 +45,7 @@ impl Default for AppConfig {
             view_mode: "cards_large".to_string(),
             sort_key: "name".to_string(),
             sort_ascending: true,
+            scan_roots: Vec::new(),
             passthrough: Map::new(),
         }
     }
@@ -119,6 +123,13 @@ impl AppConfig {
                         config.sort_ascending = b;
                     }
                 }
+                "scan_roots" => match serde_json::from_value::<Vec<ScanRoot>>(value.clone()) {
+                    Ok(roots) => config.scan_roots = roots,
+                    Err(_) => {
+                        // Keep malformed foreign data until the user replaces it.
+                        config.passthrough.insert(key, value);
+                    }
+                },
                 _ => {
                     config.passthrough.insert(key, value);
                 }
@@ -152,6 +163,9 @@ impl AppConfig {
         map.insert("view_mode".into(), Value::String(self.view_mode.clone()));
         map.insert("sort_key".into(), Value::String(self.sort_key.clone()));
         map.insert("sort_ascending".into(), Value::Bool(self.sort_ascending));
+        if !self.scan_roots.is_empty() || !map.contains_key("scan_roots") {
+            map.insert("scan_roots".into(), serde_json::to_value(&self.scan_roots)?);
+        }
         let json = serde_json::to_string_pretty(&Value::Object(map))?;
         std::fs::write(path, json)
     }
@@ -163,6 +177,13 @@ impl AppConfig {
             .filter_map(|part| part.trim().chars().next())
             .map(|c| c.to_ascii_uppercase())
             .collect()
+    }
+
+    pub fn scan_config(&self) -> crate::scan::ScanConfig {
+        crate::scan::ScanConfig {
+            excluded_drives: self.excluded_drive_letters(),
+            custom_roots: self.scan_roots.clone(),
+        }
     }
 }
 
@@ -203,5 +224,51 @@ mod tests {
         assert_eq!(config.theme, "dark");
         assert!(config.effects_enabled);
         assert!(config.excluded_drive_letters().is_empty());
+        assert!(config.scan_roots.is_empty());
+    }
+
+    #[test]
+    fn scan_roots_roundtrip_and_scan_config_preserve_python_fields() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("config.json");
+        std::fs::write(
+            &path,
+            r#"{"python_setting":{"keep":true},"excluded_drives":"D"}"#,
+        )
+        .unwrap();
+        let mut config = AppConfig::load(&path);
+        config.scan_roots = vec![
+            crate::scan::custom::ScanRoot {
+                path: tmp.path().join("enabled"),
+                enabled: true,
+            },
+            crate::scan::custom::ScanRoot {
+                path: tmp.path().join("disabled"),
+                enabled: false,
+            },
+        ];
+        config.save(&path).unwrap();
+        let loaded = AppConfig::load(&path);
+        assert_eq!(loaded.scan_roots.len(), 2);
+        assert!(loaded.scan_roots[0].enabled);
+        assert!(!loaded.scan_roots[1].enabled);
+        let scan = loaded.scan_config();
+        assert_eq!(scan.excluded_drives, vec!['D']);
+        assert_eq!(scan.custom_roots.len(), 2);
+        let raw: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        assert_eq!(raw["python_setting"]["keep"], true);
+    }
+
+    #[test]
+    fn malformed_scan_roots_do_not_remove_unrelated_settings() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("config.json");
+        std::fs::write(&path, r#"{"scan_roots":"bad","python_setting":42}"#).unwrap();
+        let config = AppConfig::load(&path);
+        assert!(config.scan_roots.is_empty());
+        config.save(&path).unwrap();
+        let raw: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        assert_eq!(raw["python_setting"], 42);
+        assert_eq!(raw["scan_roots"], "bad");
     }
 }

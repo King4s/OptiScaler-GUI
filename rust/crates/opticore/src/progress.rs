@@ -9,18 +9,31 @@ use std::path::PathBuf;
 pub enum TaskEvent {
     /// A full scan finished (the scan itself takes ~0.2s, so results arrive
     /// in one batch rather than streamed per platform).
-    ScanFinished { games: Vec<Game> },
+    ScanFinished {
+        games: Vec<Game>,
+        warnings: Vec<String>,
+    },
     /// Artwork for a game is ready on disk.
     ImageReady {
         path_norm: String,
         image_path: PathBuf,
+        generation: u64,
     },
     /// Artwork lookup gave up (no appid / download failed) — stop showing a spinner.
-    ImageMissing { path_norm: String },
+    ImageMissing {
+        path_norm: String,
+        generation: u64,
+    },
     /// The SteamSpy catalogue finished loading — retry missing artwork.
     AppListReady,
+    ArtworkCacheCleared {
+        error: Option<String>,
+    },
     /// Install/update/uninstall progress for one game.
-    OpProgress { path_norm: String, label: String },
+    OpProgress {
+        path_norm: String,
+        label: String,
+    },
     /// Install/update/uninstall finished for one game.
     OpFinished {
         path_norm: String,
@@ -28,9 +41,14 @@ pub enum TaskEvent {
         message: String,
     },
     /// Latest OptiScaler release tag (for update badges).
-    LatestRelease { version: String },
+    LatestRelease {
+        version: String,
+    },
     /// A newer GUI release exists (version, html url).
-    GuiUpdateAvailable { version: String, url: String },
+    GuiUpdateAvailable {
+        version: String,
+        url: String,
+    },
     /// GUI self-update download/verify progress.
     GuiUpdateStatus {
         phase: GuiUpdatePhase,

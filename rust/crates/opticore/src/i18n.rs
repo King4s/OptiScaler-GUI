@@ -142,6 +142,27 @@ mod tests {
     }
 
     #[test]
+    fn library_controls_have_all_three_translations() {
+        let t = Translator::new(Lang::En);
+        let keys: Vec<_> =
+            t.en.keys()
+                .filter(|key| key.starts_with("library."))
+                .collect();
+        assert!(keys.len() >= 20);
+        for lang in Lang::ALL {
+            for key in &keys {
+                assert!(
+                    t.map(lang)
+                        .get(*key)
+                        .is_some_and(|value| !value.trim().is_empty()),
+                    "{} missing {key}",
+                    lang.code()
+                );
+            }
+        }
+    }
+
+    #[test]
     fn coverage_report() {
         // Missing keys warn (printed) but don't fail — mirrors the Python
         // discipline where en is canonical and translations may lag.

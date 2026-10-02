@@ -14,6 +14,8 @@ serde_json = "1"
 ureq = { version = "3", default-features = false, features = ["native-tls", "gzip"] }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "ico", "bmp"] }
 pelite = "0.10"
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+quick-xml = "0.42.0"
 time = { version = "0.3", features = ["formatting", "local-offset", "macros"] }
 
 [target.'cfg(windows)'.dependencies]

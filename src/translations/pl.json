@@ -1,4 +1,28 @@
 {
+  "library": {
+    "roots": "Foldery bibliotek gier",
+    "roots_hint": "Wybierz foldery do skanowania. Usunięcie folderu z listy nie usuwa gier. Zmiany dotyczą następnego skanowania.",
+    "add_root": "Dodaj folder biblioteki",
+    "remove": "Usuń",
+    "rescan": "Skanuj ponownie",
+    "cover_controls": "Wybierz okładkę",
+    "cover_title": "Grafika gry",
+    "local_cover": "Wybierz lokalny obraz",
+    "reset_cover": "Usuń własną okładkę",
+    "refresh_cover": "Odśwież grafikę sklepu",
+    "cover_source": "Źródło obrazu",
+    "sgdb_consent": "Zezwól na wybrane wyszukiwania w SteamGridDB",
+    "sgdb_privacy": "Tylko wybrane wyszukiwania wysyłają nazwę/ID gry i klucz API do SteamGridDB. Obrazy są pobierane po wyborze. Klucz pozostaje w pamięci tej sesji; nic nie jest wysyłane automatycznie.",
+    "api_key": "Twój klucz API SteamGridDB",
+    "search": "Szukaj",
+    "select_game": "Potwierdź pasującą grę",
+    "select_image": "Użyj tej okładki",
+    "open_preview": "Otwórz podgląd obrazu",
+    "working": "Przetwarzanie...",
+    "no_results": "Brak wyników.",
+    "success": "Grafika została zaktualizowana.",
+    "scan_warnings": "Niektórych źródeł nie udało się przeskanować. Szczegóły w dzienniku."
+  },
   "ui": {
     "app_title": "OptiScaler GUI",
     "version": "Wersja",

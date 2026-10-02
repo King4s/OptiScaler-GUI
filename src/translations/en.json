@@ -1,4 +1,28 @@
 {
+  "library": {
+    "roots": "Game library folders",
+    "roots_hint": "Enable folders to scan. Removing a folder never deletes games. Changes take effect on rescan.",
+    "add_root": "Add library folder",
+    "remove": "Remove",
+    "rescan": "Rescan",
+    "cover_controls": "Choose cover",
+    "cover_title": "Game artwork",
+    "local_cover": "Choose local image",
+    "reset_cover": "Remove override",
+    "refresh_cover": "Refresh store artwork",
+    "cover_source": "Image source",
+    "sgdb_consent": "Allow explicit searches on SteamGridDB",
+    "sgdb_privacy": "Only your requested searches send the game name/ID and API key to SteamGridDB. Images are downloaded after selection. The key stays in memory for this session; nothing is uploaded automatically.",
+    "api_key": "Your SteamGridDB API key",
+    "search": "Search",
+    "select_game": "Confirm matching game",
+    "select_image": "Use this cover",
+    "open_preview": "Open image preview",
+    "working": "Working...",
+    "no_results": "No matching results.",
+    "success": "Artwork updated.",
+    "scan_warnings": "Some sources could not be scanned. See the log for details."
+  },
   "ui": {
     "app_title": "OptiScaler GUI",
     "version": "Version",

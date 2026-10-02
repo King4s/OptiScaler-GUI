@@ -16,23 +16,25 @@ All upscaling technology — FSR, XeSS, DLSS integration, frame generation, the 
 
 ## Features
 
+2026.9.0 brings broader game discovery, configurable library folders and per-install artwork controls.
+
 - **One-click install, update, and uninstall** of official OptiScaler releases
-- **Game auto-detection** for Steam, Epic Games, GOG Galaxy, Xbox Game Pass, and Heroic Launcher — plus manual folder selection for everything else
+- **Game discovery** for Steam, Epic Games, GOG Galaxy, Xbox Game Pass, Heroic Launcher, Amazon Games, Ubisoft Connect, EA app and Battle.net; configurable library folders can be enabled, removed and rescanned
 - **Launch games directly** — with or without the OptiScaler proxy (Steam games via the Steam client, Game Pass via the bundled launch helper)
 - **Reviewed install targets** — resolves the selected game executable to a target folder, shows both paths before install, and requires explicit selection when the layout is ambiguous; includes the documented Satisfactory target exception
 - **Settings editor** for `OptiScaler.ini` with per-key reset and change preview (runtime tuning is still done in OptiScaler's own Insert-key overlay)
 - **Transactional install management** — SHA256 verification, v2 ownership manifest, preservation of pre-existing files, and rollback/recovery snapshots
 - **Local guidance and report preview** — inspect detected GPU facts and source-linked advice, then review and explicitly save a limited JSON report with your test result
-- **Explorer-style library** — large/small cards, list and details views, full sorting and filtering, artwork for every store
+- **Explorer-style library** — large/small cards, list and details views, sorting and filtering, aspect-preserving covers, local artwork selection and optional SteamGridDB matching
 - **GPU-rendered UI** (egui/wgpu) with selectable animated backgrounds — and zero idle cost when disabled
-- **Portable** — one ~7.5 MB native exe, nothing to install, no runtime dependencies
+- **Portable** — a native executable with nothing to install
 - **Languages:** English, Danish, Polish
 
 ![Details view — sortable columns, filters, and animated background](docs/screenshots/library-details.png)
 
 ## Getting started
 
-1. For a publicly released build, download `OptiScaler-GUI.exe` from the [latest release](https://github.com/King4s/OptiScaler-GUI/releases/latest). `2026.9.0-beta.2` is currently a local prerelease candidate, not a public release.
+1. Download `OptiScaler-GUI.exe` from [GitHub Releases](https://github.com/King4s/OptiScaler-GUI/releases), the authority for available versions and downloads.
 2. Run it — no installation or extraction needed
 3. Scan for games (or browse to a game folder manually), select a game, click **Install**
 4. Launch the game and press **Insert** (**Alt+Insert** on non-US keyboard layouts) to configure upscaling in OptiScaler's overlay
@@ -45,12 +47,37 @@ The current release supports OptiScaler **v0.7.0 through v0.9.4** and always dow
 
 ## Project status
 
-The Rust `2026.9.0-beta.1 Standard` prerelease is available for feedback. **2026.9.0-beta.2 is being assembled locally and has not been published.** Its candidate adds path-based scan deduplication with store identity retained during merging, separate title provenance, Steam local-cache and GetItems portrait fallbacks, and an appdetails artwork identity guard. Existing cached images remain preferred; this is not a cache migration. Hardware inventory, deterministic advice, local install/runtime observations, an application log, an OptiScaler INI change preview and a limited JSON report preview/export remain advisory. DLL hints and log timestamps are evidence only, and a detected `Init done` line can be stale. The user reported Fatekeeper working on 2026-09-25, but this run did not verify exact hardware, game/OptiScaler versions, overlay behavior, or real-game install/update/uninstall. Neither beta establishes compatibility with all games. See the [beta.2 candidate notes](docs/releases/2026.9.0-beta.2.md).
+**2026.9.0 Standard** completes the discovery and artwork feature set, including four additional store adapters, custom scan roots and optional SteamGridDB matching. See the [release notes](docs/releases/2026.9.0.md), [verification record](docs/releases/2026.9.0-verification.md) and [GitHub Releases](https://github.com/King4s/OptiScaler-GUI/releases) for available builds.
+
+Fatekeeper has a working user report from 2026-09-25; fresh-version gameplay and manual visual testing are not claimed. Discovery, artwork, hardware advice and log observations do not establish compatibility with all games. A detected `Init done` line can be stale.
 
 | Track | Where | Status |
 |---|---|---|
-| Rust app (CalVer `2026.x`) | `rust/` | Stable users should stay on the latest stable release. `2026.9.0-beta.1` is a public prerelease; `2026.9.0-beta.2` is an unpublished candidate with passing local checks and package startup smoke. Neither has been validated for general compatibility. |
-| Python app (v0.x) | `src/` | ⚠️ **Legacy — phased out.** Final release is [v0.5.2](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.5.2); security/compatibility fixes only. Existing Python installs with old manifests are preserved, not automatically migrated or removed by this beta. |
+| Rust app (CalVer `2026.x`) | `rust/` | 2026.9.0 Standard feature set; consult [GitHub Releases](https://github.com/King4s/OptiScaler-GUI/releases) for availability. |
+| Python app (v0.x) | `src/` | Legacy; final release is [v0.5.2](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.5.2), with security/compatibility fixes only. Existing legacy manifests and files are preserved. |
+
+## Supported discovery sources
+
+2026.9.0 retains Steam, Epic Games, GOG Galaxy, Xbox Game Pass and Heroic discovery, and adds these local metadata adapters:
+
+| Store | Metadata used | Limits |
+|---|---|---|
+| Amazon Games | Local `GameInstallInfo.sqlite` installed-game records, opened read-only | Requires installed rows with a title, product ID and existing directory. |
+| Ubisoft Connect | Launcher install registry keys and `InstallDir` | Numeric store ID comes from the key; display titles can come from folder names. |
+| EA app / Origin | Game registry entries with `Product GUID`, plus `__Installer/installerdata.xml` content IDs | Known library roots and registry-linked paths are covered; arbitrary EA locations or incomplete metadata may be missed. |
+| Battle.net | Local Agent `product.db` product IDs and install paths | Launcher records and stale paths are excluded; display titles can come from folder names. |
+
+These are best-effort discovery sources, not a guarantee that every installed game will appear or support OptiScaler. Missing, malformed or inaccessible metadata can produce a warning or no result. Use a specific custom library folder or manual game selection when needed. Enable/disable or remove configured roots and rescan to apply changes; removing a root does not delete games. Custom scans are bounded and reject unsafe roots. See [store format evidence](docs/store-formats.md) and [troubleshooting](docs/TROUBLESHOOTING.md).
+
+## Cover artwork and privacy
+
+Cards fit images within their bounds while preserving aspect ratio. The new `cover_art` cache hashes platform, observed store identity and install path, so new artwork for separate installs does not share a title-only key. Legacy cache files remain readable and untouched; a cached landscape can be upgraded to an identified Steam portrait. Legacy title-only artwork can still be ambiguous.
+
+Use the artwork controls to choose a local image, reset a selection or refresh automatic artwork. Refresh preserves an explicitly selected local or SteamGridDB cover and retains the last good artwork if replacement fails. Automatic sources use local artwork and identified store/Steam sources, with cached or icon fallbacks; availability is not guaranteed. No automatic SteamSpy title matching is used to infer a Steam identity.
+
+SteamGridDB is optional. Explicit consent and your own session-only API key are required; you choose both the matching game and the image. Lookup sends an explicit Steam app ID when available, or the game title for search; subsequent requests retrieve choices and the selected cover. Automatic cover refresh does not call SteamGridDB. Existing identified store artwork may still use network downloads. See [cover artwork details](docs/cover-art.md).
+
+The discovery/artwork work adds no mods and changes no installer behavior. Reviewed targets, explicit EXE choice for ambiguous layouts, v2 ownership checks, rollback and preservation of legacy or foreign files remain in force. Reference repositories are format research only; their implementation code is not copied, vendored or added as a project dependency.
 
 ## Running from source
 

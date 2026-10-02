@@ -3,7 +3,7 @@ param(
     [Parameter(Mandatory)][string]$OutputDirectory,
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{40}$')][string]$SourceTree,
     [Parameter(Mandatory)][string]$SourceArchive,
-    [string]$Version = '2026.9.0-beta.2',
+    [string]$Version = '2026.9.0',
     [string]$SevenZip = (Join-Path $env:ProgramFiles '7-Zip/7z.exe')
 )
 

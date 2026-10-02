@@ -1,4 +1,28 @@
 {
+  "library": {
+    "roots": "Mapper med spilbiblioteker",
+    "roots_hint": "Vælg mapper til scanning. Fjernelse af en mappe sletter aldrig spil. Ændringer gælder ved næste scanning.",
+    "add_root": "Tilføj spilmappe",
+    "remove": "Fjern",
+    "rescan": "Scan igen",
+    "cover_controls": "Vælg cover",
+    "cover_title": "Spilbillede",
+    "local_cover": "Vælg lokalt billede",
+    "reset_cover": "Fjern eget cover",
+    "refresh_cover": "Hent butiksbillede igen",
+    "cover_source": "Billedkilde",
+    "sgdb_consent": "Tillad valgte søgninger på SteamGridDB",
+    "sgdb_privacy": "Kun dine valgte søgninger sender spilnavn/ID og API-nøgle til SteamGridDB. Billeder hentes efter valg. Nøglen gemmes kun i hukommelsen i denne session; intet uploades automatisk.",
+    "api_key": "Din SteamGridDB API-nøgle",
+    "search": "Søg",
+    "select_game": "Bekræft det rigtige spil",
+    "select_image": "Brug dette cover",
+    "open_preview": "Åbn billedvisning",
+    "working": "Arbejder...",
+    "no_results": "Ingen resultater.",
+    "success": "Spilbilledet er opdateret.",
+    "scan_warnings": "Nogle kilder kunne ikke scannes. Se detaljer i loggen."
+  },
   "ui": {
     "app_title": "OptiScaler GUI",
     "version": "Version",

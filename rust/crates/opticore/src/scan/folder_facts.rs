@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 pub const MAX_SCAN_DEPTH: usize = 3;
 pub const MAX_FILES_TO_CHECK: usize = 1000;
+const MAX_ENTRIES_TO_CHECK: usize = 4096;
 
 /// File suffixes that indicate significant game content.
 const GAME_CONTENT_SUFFIXES: &[&str] = &[".pak", ".uasset", ".dll", ".bin", ".unity3d"];
@@ -51,13 +52,25 @@ pub fn collect(root: &Path) -> Option<FolderFacts> {
         root: root.to_path_buf(),
         ..Default::default()
     };
-    if walk(root, 0, &mut facts).is_err() && facts.file_count == 0 && facts.top_dirs.is_empty() {
+    let mut budget = MAX_ENTRIES_TO_CHECK;
+    if walk(root, 0, &mut facts, &mut budget).is_err()
+        && facts.file_count == 0
+        && facts.top_dirs.is_empty()
+    {
         return None;
     }
     Some(facts)
 }
 
-fn walk(dir: &Path, depth: usize, facts: &mut FolderFacts) -> std::io::Result<()> {
+fn walk(
+    dir: &Path,
+    depth: usize,
+    facts: &mut FolderFacts,
+    budget: &mut usize,
+) -> std::io::Result<()> {
+    if *budget == 0 {
+        return Ok(());
+    }
     let entries = fs::read_dir(dir)?;
     let in_unreal_dir = dir
         .to_string_lossy()
@@ -65,7 +78,23 @@ fn walk(dir: &Path, depth: usize, facts: &mut FolderFacts) -> std::io::Result<()
         .contains("unrealengine");
     let mut subdirs: Vec<PathBuf> = Vec::new();
     for entry in entries.flatten() {
+        if *budget == 0 {
+            break;
+        }
+        *budget -= 1;
         let Ok(ft) = entry.file_type() else { continue };
+        if ft.is_symlink() {
+            continue;
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::MetadataExt;
+            if std::fs::symlink_metadata(entry.path())
+                .map_or(true, |metadata| metadata.file_attributes() & 0x400 != 0)
+            {
+                continue;
+            }
+        }
         let name_lower = entry.file_name().to_string_lossy().to_lowercase();
         if ft.is_dir() {
             if depth == 0 {
@@ -103,7 +132,7 @@ fn walk(dir: &Path, depth: usize, facts: &mut FolderFacts) -> std::io::Result<()
                 break;
             }
             // Ignore unreadable subdirectories, matching the Python walker
-            let _ = walk(&sub, depth + 1, facts);
+            let _ = walk(&sub, depth + 1, facts, budget);
         }
     }
     Ok(())
@@ -230,6 +259,20 @@ pub fn detect_optiscaler(root: &Path, _facts: &FolderFacts) -> bool {
 mod tests {
     use super::*;
     use std::fs::File;
+
+    #[test]
+    fn directory_entries_share_a_hard_work_budget() {
+        let tmp = tempfile::tempdir().unwrap();
+        for n in 0..8 {
+            fs::create_dir(tmp.path().join(format!("dir{n}"))).unwrap();
+        }
+        let mut facts = FolderFacts::default();
+        let mut budget = 3;
+        walk(tmp.path(), 0, &mut facts, &mut budget).unwrap();
+        assert_eq!(budget, 0);
+        assert_eq!(facts.top_dirs.len(), 3);
+        assert_eq!(facts.file_count, 0);
+    }
 
     fn make_unity_game(base: &Path, name: &str) -> PathBuf {
         let d = base.join(name);

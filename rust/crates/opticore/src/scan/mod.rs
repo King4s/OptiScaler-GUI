@@ -3,6 +3,7 @@
 //! `GameScanner.scan_games` flow (post-v0.5.2 semantics: each Steam library
 //! scanned once, one folder walk per game, no image fetching here).
 
+pub mod custom;
 pub mod discovery;
 pub mod epic;
 pub mod folder_facts;
@@ -10,6 +11,7 @@ pub mod gog;
 pub mod heroic;
 pub mod names;
 pub mod steam;
+pub mod stores;
 pub mod xbox;
 
 use crate::model::{DiscoverySource, Game, GameKey, Platform, StoreIdentity, TitleSource};
@@ -22,11 +24,13 @@ use std::path::{Path, PathBuf};
 pub struct ScanConfig {
     /// Uppercase drive letters to skip during discovery (no colon).
     pub excluded_drives: Vec<char>,
+    pub custom_roots: Vec<custom::ScanRoot>,
 }
 
 #[derive(Debug, Default)]
 pub struct ScanResult {
     pub games: Vec<Game>,
+    pub warnings: Vec<String>,
 }
 
 /// Community-verified game list bundled from the Python app's data file
@@ -429,6 +433,7 @@ pub fn gog_describe(folder: &Path) -> Described {
 pub fn scan_all(config: &ScanConfig) -> ScanResult {
     let verified = VerifiedList::load();
     let mut games: Vec<Game> = Vec::new();
+    let mut warnings = Vec::new();
     let mut scanned_steam_roots: HashSet<String> = HashSet::new();
 
     // Steam: install roots + libraryfolders.vdf libraries, each scanned once
@@ -454,6 +459,52 @@ pub fn scan_all(config: &ScanConfig) -> ScanResult {
 
     // Heroic store files
     scan_heroic(&verified, &mut games);
+
+    let stores = stores::scan_installed();
+    warnings.extend(stores.warnings);
+    for entry in stores.entries {
+        let Some(facts) = folder_facts::collect(&entry.path) else {
+            warnings.push(format!(
+                "{}: could not read {}",
+                entry.platform.label(),
+                entry.path.display()
+            ));
+            continue;
+        };
+        let mut game = build_game(
+            entry.name,
+            None,
+            &entry.path,
+            entry.platform,
+            &facts,
+            Provenance {
+                source: entry.source,
+                title_source: entry.title_source,
+                identity: Some(StoreIdentity::new(entry.platform, entry.store_id)),
+            },
+            &verified,
+        );
+        game.art_url = entry.art_url;
+        games.push(game);
+    }
+
+    let custom = custom::scan_roots(&config.custom_roots);
+    warnings.extend(custom.warnings);
+    for entry in custom.entries {
+        games.push(build_game(
+            entry.name,
+            None,
+            &entry.path,
+            Platform::Manual,
+            &entry.facts,
+            Provenance {
+                source: DiscoverySource::UserSelected,
+                title_source: TitleSource::Folder,
+                identity: None,
+            },
+            &verified,
+        ));
+    }
 
     // Drive discovery for library roots outside the defaults
     for LibraryRoot { kind, path } in discovery::discover_roots(&config.excluded_drives) {
@@ -481,6 +532,7 @@ pub fn scan_all(config: &ScanConfig) -> ScanResult {
 
     ScanResult {
         games: dedup_games(games),
+        warnings,
     }
 }
 

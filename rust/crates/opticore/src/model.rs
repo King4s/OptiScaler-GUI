@@ -9,6 +9,9 @@ pub enum Platform {
     Epic,
     Gog,
     Amazon,
+    Ubisoft,
+    Ea,
+    BattleNet,
     Xbox,
     Heroic,
     Registry,
@@ -23,6 +26,9 @@ impl Platform {
             Platform::Epic => "Epic",
             Platform::Gog => "GOG",
             Platform::Amazon => "Amazon",
+            Platform::Ubisoft => "Ubisoft",
+            Platform::Ea => "EA",
+            Platform::BattleNet => "Battle.net",
             Platform::Xbox => "Xbox",
             Platform::Heroic => "Heroic",
             Platform::Registry => "Installed",
@@ -97,11 +103,18 @@ impl GameKey {
     /// `game_gpus` and `game_results` maps. The result is a key, never a path:
     /// use `Game::path` for anything that touches the filesystem.
     pub fn path_key(path: &Path) -> String {
-        path.to_string_lossy()
-            .to_lowercase()
-            .replace('/', "\\")
-            .trim_end_matches('\\')
-            .to_string()
+        let mut normalized = path.to_string_lossy().to_lowercase().replace('/', "\\");
+        if normalized.starts_with(r"\\?\")
+            && normalized
+                .as_bytes()
+                .get(4)
+                .is_some_and(u8::is_ascii_alphabetic)
+            && normalized.as_bytes().get(5) == Some(&b':')
+            && normalized.as_bytes().get(6) == Some(&b'\\')
+        {
+            normalized.drain(..4);
+        }
+        normalized.trim_end_matches('\\').to_string()
     }
 }
 
@@ -144,6 +157,8 @@ pub enum DiscoverySource {
     /// A launcher's own installed-games database (Heroic store files, Xbox
     /// package folders).
     LauncherLibrary,
+    /// Installed-game registration written by a launcher in Windows registry.
+    Registry,
     /// Found by walking a library root with no store metadata for this entry,
     /// so only the folder name identifies it.
     #[default]
@@ -269,6 +284,23 @@ mod tests {
             GameKey::path_key(Path::new("c:\\games\\cyberpunk 2077\\")),
             native
         );
+    }
+
+    #[test]
+    fn path_key_folds_verbatim_windows_prefixes_without_resolving_segments() {
+        let plain = GameKey::path_key(Path::new(r"C:\Games\Cyberpunk 2077"));
+        assert_eq!(
+            GameKey::path_key(Path::new(r"\\?\C:\Games\Cyberpunk 2077")),
+            plain
+        );
+        assert_eq!(
+            GameKey::path_key(Path::new(r"\\?\C:/Games/Cyberpunk 2077/")),
+            plain
+        );
+
+        let with_parent = GameKey::path_key(Path::new(r"\\?\C:\Games\..\Other"));
+        assert_eq!(with_parent, r"c:\games\..\other");
+        assert_ne!(with_parent, GameKey::path_key(Path::new(r"C:\Other")));
     }
 
     #[test]

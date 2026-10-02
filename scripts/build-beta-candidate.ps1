@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory)][string]$OutputDirectory,
     [Parameter(Mandatory)][string]$TargetDirectory,
-    [string]$Version = '2026.9.0-beta.2'
+    [string]$Version = '2026.9.0'
 )
 
 $ErrorActionPreference = 'Stop'

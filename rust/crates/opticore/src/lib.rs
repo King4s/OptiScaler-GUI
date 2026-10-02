@@ -5,6 +5,7 @@ pub mod advice;
 pub mod appids;
 pub mod archive;
 pub mod config;
+pub mod cover_art;
 pub mod hardware;
 pub mod i18n;
 pub mod images;

@@ -151,11 +151,13 @@ fn load_default_ini() -> Option<IniDocument> {
 }
 
 pub struct AppState {
+    pub cover_ui: crate::cover_ui::CoverUi,
     pub advice: crate::advice_view::AdviceState,
     pub hardware: crate::hardware_view::HardwareState,
     pub screen: Screen,
     pub games: Vec<Game>,
     pub scan_state: ScanState,
+    pub scan_warnings: Vec<String>,
     pub search: String,
     pub platform_filter: Option<Platform>,
     /// None = all engines.
@@ -205,11 +207,13 @@ pub struct AppState {
 impl Default for AppState {
     fn default() -> Self {
         Self {
+            cover_ui: crate::cover_ui::CoverUi::default(),
             hardware: crate::hardware_view::HardwareState::default(),
             advice: crate::advice_view::AdviceState::default(),
             screen: Screen::Games,
             games: Vec::new(),
             scan_state: ScanState::NotStarted,
+            scan_warnings: Vec::new(),
             search: String::new(),
             platform_filter: None,
             engine_filter: None,
@@ -377,6 +381,16 @@ impl AppState {
             .get(path_norm)
             .cloned()
             .unwrap_or(ArtState::Unknown)
+    }
+
+    pub fn invalidate_artwork(&mut self, key: &str, path: Option<PathBuf>) {
+        self.textures.clear();
+        self.texture_lru.clear();
+        if let Some(path) = path {
+            self.art.insert(key.to_string(), ArtState::Ready(path));
+        } else {
+            self.art.remove(key);
+        }
     }
 
     /// Texture for an artwork file, loading + LRU-evicting as needed.

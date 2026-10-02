@@ -4,6 +4,7 @@
 mod advice_view;
 mod app;
 mod chrome;
+mod cover_ui;
 mod fx;
 mod hardware_view;
 mod ops;
