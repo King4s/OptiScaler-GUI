@@ -1,3 +1,5 @@
+> Historical 2026.9.0 release record, not current publication authorization. See handoff-hardware.md.
+
 # Plan: finish 2026.9.0 release verification
 
 Status: implementation, both fixes, targeted regressions, final Jev checks, package verification and independent review are complete. Only remote CI and publication remain. Stable publication is already authorized after green gates.

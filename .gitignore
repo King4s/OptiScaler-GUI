@@ -101,3 +101,6 @@ build.bat
 # Backup files
 *.bak
 *.backup
+
+# Isolated local Rust verification artifacts
+/target-private/

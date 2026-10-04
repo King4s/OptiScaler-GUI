@@ -354,6 +354,7 @@ impl eframe::App for App {
         // Only exact store identity is used for automatic artwork, never title matching.
         if !self.started {
             self.started = true;
+            self.state.hardware.refresh(ctx);
             if self.state.config.check_updates {
                 self.ops.spawn_release_check(ctx);
                 self.ops.spawn_gui_update_check(ctx);
@@ -373,6 +374,13 @@ impl eframe::App for App {
         crate::chrome::top_strip(ctx, theme::palette(self.state.dark()), "OPTISCALER GUI");
         crate::chrome::handle_resize(ctx);
 
+        egui::TopBottomPanel::bottom("hardware_recommendations").show(ctx, |ui| {
+            egui::ScrollArea::vertical()
+                .max_height(125.0)
+                .show(ui, |ui| {
+                    self.state.hardware.recommendations(ui, &self.state.i18n);
+                });
+        });
         self.sidebar(ctx);
         match self.state.screen {
             Screen::Games => screens::games_grid::show(ctx, &mut self.state, &mut self.ops),

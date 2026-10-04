@@ -1,3 +1,5 @@
+> Historical 2026.9.0 / rewrite record, not current feature or publication authorization. See tasks/handoff-hardware.md for current unreleased scope.
+
 # 2026.9.0: final review, remote CI and publication
 
 The full original discovery/artwork implementation is complete: four new local store adapters, configurable scan roots, aspect-preserving cards, per-install cover caching with legacy preservation and portrait upgrades, local override/reset/refresh, and optional SteamGridDB with consent, session-only key and explicit game/image selection. SteamGridDB lookup sends an explicit Steam app ID or title; automatic SteamSpy matching is removed.

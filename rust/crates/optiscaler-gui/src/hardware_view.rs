@@ -10,6 +10,8 @@ pub struct HardwareState {
     pub local: LocalProfiles,
     path: PathBuf,
     pending: Option<Receiver<HardwareProfile>>,
+    // Cached facts are display-only until this session receives a fresh collection.
+    current_session_valid: bool,
     error: Option<String>,
     writable: bool,
 }
@@ -25,6 +27,7 @@ impl Default for HardwareState {
             local,
             path,
             pending: None,
+            current_session_valid: false,
             error,
             writable,
         }
@@ -32,6 +35,91 @@ impl Default for HardwareState {
 }
 
 impl HardwareState {
+    pub fn current_gpu(&self, id: &str) -> Option<&opticore::hardware::GpuProfile> {
+        if !self.current_session_valid || self.pending.is_some() {
+            return None;
+        }
+        self.local
+            .hardware
+            .as_ref()?
+            .gpus
+            .iter()
+            .find(|gpu| gpu.id == id)
+    }
+
+    fn delete_hardware(&mut self) {
+        // Dropping the receiver prevents a pending refresh from restoring deleted data.
+        self.pending = None;
+        self.current_session_valid = false;
+        self.local.hardware = None;
+        self.local.game_gpus.clear();
+        if self.writable {
+            self.save();
+        } else {
+            // Only explicit deletion may discard an unreadable profile file.
+            match std::fs::remove_file(&self.path) {
+                Ok(()) => {
+                    self.writable = true;
+                    self.error = None;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    self.writable = true;
+                    self.error = None;
+                }
+                Err(e) => {
+                    self.error = Some(e.to_string());
+                }
+            }
+        }
+    }
+
+    pub fn refresh(&mut self, ctx: &egui::Context) {
+        self.current_session_valid = false;
+        if self.pending.is_some() {
+            return;
+        }
+        let (tx, rx) = mpsc::channel();
+        self.pending = Some(rx);
+        // A previously saved enumeration must not authorize a new runtime choice.
+        self.local.game_gpus.clear();
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(opticore::hardware::collect());
+            ctx.request_repaint();
+        });
+    }
+
+    pub fn recommendations(&mut self, ui: &mut egui::Ui, tr: &Translator) {
+        ui.strong(tr.tr("hardware.recommendations"));
+        ui.small(tr.tr("hardware.selection_hint"));
+        if ui
+            .add_enabled(
+                self.pending.is_none(),
+                egui::Button::new(tr.tr("hardware.refresh")),
+            )
+            .clicked()
+        {
+            self.refresh(ui.ctx());
+        }
+        if self.pending.is_some() {
+            ui.label(tr.tr("hardware.collecting"));
+        }
+        if let Some(profile) = &self.local.hardware {
+            for gpu in &profile.gpus {
+                ui.label(format!(
+                    "{}: {}",
+                    gpu.name.as_deref().unwrap_or("?"),
+                    tr.tr(gpu.recommendation_key())
+                ));
+            }
+            if profile.gpus.is_empty() {
+                ui.label(tr.tr("hardware.conservative"));
+            }
+        } else {
+            ui.label(tr.tr("hardware.conservative"));
+        }
+    }
+
     pub fn set_game_result(&mut self, game_key: &str, result: UserTestResult) {
         if result == UserTestResult::NotRun {
             self.local.game_results.remove(game_key);
@@ -53,12 +141,14 @@ impl HardwareState {
             Ok(profile) => {
                 self.pending = None;
                 self.local.hardware = Some(profile);
+                self.current_session_valid = true;
                 // DXGI enumeration order can change after driver/device changes.
                 self.local.game_gpus.clear();
                 self.save();
             }
             Err(TryRecvError::Disconnected) => {
                 self.pending = None;
+                self.current_session_valid = false;
                 self.error = Some("Hardware collection did not complete".into());
             }
             Err(TryRecvError::Empty) => {}
@@ -76,37 +166,10 @@ impl HardwareState {
                     )
                     .clicked()
                 {
-                    let (tx, rx) = mpsc::channel();
-                    self.pending = Some(rx);
-                    let ctx = ui.ctx().clone();
-                    std::thread::spawn(move || {
-                        let _ = tx.send(opticore::hardware::collect());
-                        ctx.request_repaint();
-                    });
+                    self.refresh(ui.ctx());
                 }
                 if ui.button(tr.tr("hardware.delete")).clicked() {
-                    // Dropping the receiver prevents a pending refresh from restoring deleted data.
-                    self.pending = None;
-                    self.local.hardware = None;
-                    self.local.game_gpus.clear();
-                    if self.writable {
-                        self.save();
-                    } else {
-                        // Only explicit deletion may discard an unreadable profile file.
-                        match std::fs::remove_file(&self.path) {
-                            Ok(()) => {
-                                self.writable = true;
-                                self.error = None;
-                            }
-                            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                                self.writable = true;
-                                self.error = None;
-                            }
-                            Err(e) => {
-                                self.error = Some(e.to_string());
-                            }
-                        }
-                    }
+                    self.delete_hardware();
                 }
             });
             if self.pending.is_some() {
@@ -163,12 +226,15 @@ impl HardwareState {
 
     pub fn game_selector(&mut self, ui: &mut egui::Ui, game: &Game, tr: &Translator) {
         ui.label(tr.tr("hardware.game_gpu"));
-        let gpus = self
-            .local
-            .hardware
-            .as_ref()
-            .map(|p| p.gpus.as_slice())
-            .unwrap_or(&[]);
+        let gpus = if !self.current_session_valid || self.pending.is_some() {
+            &[][..]
+        } else {
+            self.local
+                .hardware
+                .as_ref()
+                .map(|p| p.gpus.as_slice())
+                .unwrap_or(&[])
+        };
         let mut choice = self.local.gpu_for(game).cloned();
         // Never infer that the GUI adapter, first adapter, or a stale selection is the game GPU.
         if choice
@@ -207,4 +273,158 @@ fn memory(bytes: Option<u64>, unknown: &str) -> String {
     bytes
         .map(|v| format!("{:.1} GiB", v as f64 / 1_073_741_824.0))
         .unwrap_or_else(|| unknown.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cached_rx6000_with_failed_refresh() -> HardwareState {
+        let (tx, rx) = mpsc::channel();
+        drop(tx);
+        let mut state = HardwareState {
+            local: LocalProfiles {
+                hardware: Some(HardwareProfile {
+                    gpus: vec![opticore::hardware::GpuProfile {
+                        id: "gpu-0".into(),
+                        name: Some("AMD Radeon RX 6700 XT".into()),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            path: PathBuf::new(),
+            pending: Some(rx),
+            current_session_valid: false,
+            error: None,
+            writable: false,
+        };
+        state.poll();
+        assert!(state.pending.is_none());
+        assert!(state.error.is_some());
+        assert!(
+            state.local.hardware.is_some(),
+            "cached facts remain displayable"
+        );
+        state
+    }
+
+    fn selector_text(state: &mut HardwareState, game: &Game) -> String {
+        fn text(shape: &egui::Shape) -> String {
+            match shape {
+                egui::Shape::Text(shape) => shape.galley.job.text.clone(),
+                egui::Shape::Vec(shapes) => shapes.iter().map(text).collect::<Vec<_>>().join("\n"),
+                _ => String::new(),
+            }
+        }
+        let ctx = egui::Context::default();
+        let tr = Translator::default();
+        let mut output = egui::FullOutput::default();
+        for _ in 0..2 {
+            output = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    state.game_selector(ui, game, &tr);
+                });
+            });
+        }
+        output
+            .shapes
+            .iter()
+            .map(|shape| text(&shape.shape))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn disconnected_refresh_cannot_authorize_cached_rx6000() {
+        let state = cached_rx6000_with_failed_refresh();
+        assert!(state.current_gpu("gpu-0").is_none());
+    }
+
+    #[test]
+    fn disconnected_refresh_selector_rejects_cached_rx6000_choice() {
+        let mut state = cached_rx6000_with_failed_refresh();
+        let game = Game::new(
+            "Test",
+            PathBuf::from("test-game"),
+            opticore::model::Platform::Steam,
+        );
+        state.local.set_gpu_for(&game, Some("gpu-0".into()));
+        let text = selector_text(&mut state, &game);
+        assert!(
+            !text.contains("AMD Radeon RX 6700 XT"),
+            "stale GPU shown as selected: {text}"
+        );
+        assert!(text.contains(&Translator::default().tr("hardware.choose_gpu")));
+    }
+
+    #[test]
+    fn fresh_result_authorizes_until_refresh_or_delete() {
+        let mut state = cached_rx6000_with_failed_refresh();
+        let profile = state.local.hardware.clone().unwrap();
+        let game = Game::new(
+            "Test",
+            PathBuf::from("test-game"),
+            opticore::model::Platform::Steam,
+        );
+        let (tx, rx) = mpsc::channel();
+        state.pending = Some(rx);
+        tx.send(profile.clone()).unwrap();
+        state.poll();
+        assert!(state.current_gpu("gpu-0").is_some());
+        assert!(state.local.game_gpus.is_empty());
+        state.local.set_gpu_for(&game, Some("gpu-0".into()));
+        assert!(selector_text(&mut state, &game).contains("AMD Radeon RX 6700 XT"));
+
+        state.refresh(&egui::Context::default());
+        assert!(state.current_gpu("gpu-0").is_none());
+        assert!(state.local.game_gpus.is_empty());
+        assert!(!selector_text(&mut state, &game).contains("AMD Radeon RX 6700 XT"));
+        // Replace the worker's receiver deterministically with a failed refresh.
+        let (tx, rx) = mpsc::channel();
+        drop(tx);
+        state.pending = Some(rx);
+        state.poll();
+        assert!(state.current_gpu("gpu-0").is_none());
+
+        let (tx, rx) = mpsc::channel();
+        state.pending = Some(rx);
+        tx.send(profile).unwrap();
+        state.poll();
+        assert!(state.current_gpu("gpu-0").is_some());
+        state.delete_hardware();
+        assert!(state.current_gpu("gpu-0").is_none());
+        assert!(state.local.hardware.is_none());
+    }
+
+    #[test]
+    fn pending_snapshot_cannot_authorize_runtime_and_delete_cancels_late_result() {
+        let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .join(format!("hardware-test-{}", std::process::id()));
+        let (tx, rx) = mpsc::channel();
+        let mut state = HardwareState {
+            local: LocalProfiles::default(),
+            path: dir.join("profiles.json"),
+            pending: Some(rx),
+            current_session_valid: true,
+            error: None,
+            writable: true,
+        };
+        state.local.hardware = Some(HardwareProfile {
+            gpus: vec![opticore::hardware::GpuProfile {
+                id: "gpu-0".into(),
+                name: Some("AMD Radeon RX 6700 XT".into()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        });
+        assert!(state.current_gpu("gpu-0").is_none());
+        state.delete_hardware();
+        assert!(tx.send(HardwareProfile::default()).is_err());
+        state.poll();
+        assert!(state.local.hardware.is_none());
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }

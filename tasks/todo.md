@@ -1,3 +1,5 @@
+> Historical 2026.9.0 / rewrite record, not current feature or publication authorization. See handoff-hardware.md for current unreleased scope.
+
 # 2026.9.0 completion checklist
 
 The full discovery/artwork implementation is complete. Stable publication is explicitly authorized after green final checks. Publication remains pending until the GitHub release exists.

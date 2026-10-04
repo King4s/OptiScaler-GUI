@@ -86,9 +86,9 @@ impl Translator {
     pub fn new(lang: Lang) -> Self {
         Self {
             lang,
-            en: load(include_str!("../../../../src/translations/en.json")),
-            da: load(include_str!("../../../../src/translations/da.json")),
-            pl: load(include_str!("../../../../src/translations/pl.json")),
+            en: load(include_str!("../data/translations/en.json")),
+            da: load(include_str!("../data/translations/da.json")),
+            pl: load(include_str!("../data/translations/pl.json")),
         }
     }
 
@@ -123,6 +123,31 @@ impl Translator {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hardware_recommendations_are_translated() {
+        let t = Translator::new(Lang::En);
+        for lang in Lang::ALL {
+            for key in [
+                "hardware.recommendations",
+                "hardware.rdna2",
+                "hardware.rdna34",
+                "hardware.rtx",
+                "hardware.arc",
+                "hardware.older",
+                "hardware.conservative",
+                "hardware.community_title",
+                "hardware.community_warning",
+                "hardware.restore_official",
+            ] {
+                assert!(
+                    t.map(lang).get(key).is_some_and(|s| !s.is_empty()),
+                    "{} missing {key}",
+                    lang.code()
+                );
+            }
+        }
+    }
 
     #[test]
     fn lookup_with_fallback_and_marker() {

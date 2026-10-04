@@ -1,3 +1,5 @@
+> Historical 2026.9.0 / rewrite record, not current feature or publication authorization. See ../tasks/handoff-hardware.md for current unreleased scope.
+
 # Parity checklist — Rust rewrite vs Python v0.5.2
 
 Status per functional area, with the evidence behind each claim.

@@ -138,18 +138,20 @@ fn digest(path: &Path) -> Result<String, InstallError> {
 
 // Never open an existing destination for writing: it may be a hard link to a
 // file outside the game tree, even when the pathname itself is in the tree.
-fn replace_file(src: &Path, dst: &Path) -> io::Result<()> {
-    if dst.exists() {
-        fs::remove_file(dst)?;
-    }
+pub(crate) fn atomic_replace(src: &Path, dst: &Path) -> io::Result<()> {
+    let parent = dst
+        .parent()
+        .ok_or_else(|| io::Error::other("missing parent"))?;
+    let mut staged = tempfile::NamedTempFile::new_in(parent)?;
     let mut input = File::open(src)?;
-    let mut output = OpenOptions::new().write(true).create_new(true).open(dst)?;
-    if let Err(error) = io::copy(&mut input, &mut output) {
-        drop(output);
-        let _ = fs::remove_file(dst);
-        return Err(error);
-    }
+    io::copy(&mut input, staged.as_file_mut())?;
+    staged.as_file().sync_all()?;
+    staged.persist(dst).map_err(|e| e.error)?;
     Ok(())
+}
+
+fn replace_file(src: &Path, dst: &Path) -> io::Result<()> {
+    atomic_replace(src, dst)
 }
 
 fn existing_manifest(root: &Path) -> Result<Option<InstallManifest>, InstallError> {
@@ -282,11 +284,63 @@ pub fn install(
     version: &str,
     release_url: Option<String>,
     installed_at: String,
+    progress: impl FnMut(InstallStage),
+) -> Result<InstallManifest, InstallError> {
+    install_with_runtime(
+        root,
+        extracted,
+        options,
+        version,
+        release_url,
+        installed_at,
+        None,
+        progress,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn install_with_runtime(
+    root: &Path,
+    extracted: &Path,
+    options: &InstallOptions,
+    version: &str,
+    release_url: Option<String>,
+    installed_at: String,
+    runtime: Option<&Path>,
     mut progress: impl FnMut(InstallStage),
 ) -> Result<InstallManifest, InstallError> {
+    if options.community_rdna2 {
+        if !super::rdna2::eligible(options.rendering_gpu.as_ref(), true) {
+            return Err(err(
+                "Community runtime requires explicit RX 6000 rendering GPU and consent",
+            ));
+        }
+        super::rdna2::validate(runtime.ok_or_else(|| err("Verified community runtime missing"))?)?;
+    } else if runtime.is_some() {
+        return Err(err("Community runtime without consent"));
+    }
+    let runtime_staging = if let Some(runtime) = runtime {
+        let staged = tempfile::NamedTempFile::new().map_err(|e| err(e.to_string()))?;
+        fs::copy(runtime, staged.path()).map_err(|e| err(e.to_string()))?;
+        super::rdna2::validate(staged.path())?;
+        Some(staged)
+    } else {
+        None
+    };
+    let runtime = runtime_staging.as_ref().map(|file| file.path());
     let root = root.canonicalize().map_err(|e| err(e.to_string()))?;
     let _lock = Lock::acquire(&root)?;
     let previous = existing_manifest(&root)?;
+    if !options.community_rdna2
+        && previous
+            .as_ref()
+            .is_some_and(|m| m.extra.contains_key("fsr_runtime"))
+        && !extracted.join(super::rdna2::DLL_NAME).is_file()
+    {
+        return Err(err(
+            "Official payload has no replacement FSR runtime; existing community install preserved",
+        ));
+    }
     if previous.is_some() && !options.overwrite {
         return Err(InstallError::TargetExists(options.target_filename.clone()));
     }
@@ -300,6 +354,11 @@ pub fn install(
     let mut sources = BTreeMap::new();
     collect(extracted, extracted, &mut sources)?;
     sources.insert(options.target_filename.clone(), dll);
+    if let Some(runtime) = runtime {
+        // Only the exact root runtime is substituted; other official files stay unchanged.
+        sources.remove(super::rdna2::DLL_NAME);
+        sources.insert(super::rdna2::DLL_NAME.into(), runtime.to_path_buf());
+    }
     let mut unique = BTreeSet::new();
     for rel in sources.keys() {
         if !unique.insert(rel.to_ascii_lowercase()) {
@@ -363,134 +422,147 @@ pub fn install(
     let mut originals = Vec::new();
     let mut written = BTreeSet::new();
     let mut written_hashes = BTreeMap::new();
-    let operation = (|| {
-        let mut owned = previous
-            .as_ref()
-            .map_or_else(BTreeMap::new, |m| m.owned_files.clone());
-        owned.retain(|rel, _| !released_config.contains(rel));
-        for (index, (rel, src)) in sources.iter().enumerate() {
-            let dst = checked(&root, rel)?;
-            let current = if dst.is_file() {
-                Some(digest(&dst)?)
-            } else if dst.exists() {
-                return Err(err(format!("destination changed after preflight: {rel}")));
-            } else {
-                None
-            };
-            if current != expected_destinations[rel] {
-                return Err(err(format!("destination changed after preflight: {rel}")));
-            }
-            let original = if dst.exists() {
-                let snapshot = staging.join("rollback").join(rel);
-                mkdir_parents(&root, &snapshot, &mut created_dirs)?;
-                fs::copy(&dst, &snapshot).map_err(|e| err(e.to_string()))?;
-                if Some(digest(&snapshot)?) != expected_destinations[rel] {
-                    return Err(err(format!("snapshot differs from preflight: {rel}")));
+    let operation =
+        (|| {
+            let mut owned = previous
+                .as_ref()
+                .map_or_else(BTreeMap::new, |m| m.owned_files.clone());
+            owned.retain(|rel, _| !released_config.contains(rel));
+            for (index, (rel, src)) in sources.iter().enumerate() {
+                let dst = checked(&root, rel)?;
+                let current = if dst.is_file() {
+                    Some(digest(&dst)?)
+                } else if dst.exists() {
+                    return Err(err(format!("destination changed after preflight: {rel}")));
+                } else {
+                    None
+                };
+                if current != expected_destinations[rel] {
+                    return Err(err(format!("destination changed after preflight: {rel}")));
                 }
-                Some(snapshot)
-            } else {
-                None
-            };
-            let current = if dst.is_file() {
-                Some(digest(&dst)?)
-            } else if dst.exists() {
-                return Err(err(format!("destination changed after snapshot: {rel}")));
-            } else {
-                None
-            };
-            if current != expected_destinations[rel] {
-                return Err(err(format!("destination changed after snapshot: {rel}")));
+                let original = if dst.exists() {
+                    let snapshot = staging.join("rollback").join(rel);
+                    mkdir_parents(&root, &snapshot, &mut created_dirs)?;
+                    fs::copy(&dst, &snapshot).map_err(|e| err(e.to_string()))?;
+                    if Some(digest(&snapshot)?) != expected_destinations[rel] {
+                        return Err(err(format!("snapshot differs from preflight: {rel}")));
+                    }
+                    Some(snapshot)
+                } else {
+                    None
+                };
+                let current = if dst.is_file() {
+                    Some(digest(&dst)?)
+                } else if dst.exists() {
+                    return Err(err(format!("destination changed after snapshot: {rel}")));
+                } else {
+                    None
+                };
+                if current != expected_destinations[rel] {
+                    return Err(err(format!("destination changed after snapshot: {rel}")));
+                }
+                snapshots.insert(rel.clone(), original.clone());
+                let backup = if let Some(old) = owned.get(rel) {
+                    old.original_backup.clone()
+                } else if let Some(snapshot) = &original {
+                    let backup_rel = format!("{staging_rel}/original/{rel}");
+                    let backup_dst = checked(&root, &backup_rel)?;
+                    mkdir_parents(&root, &backup_dst, &mut created_dirs)?;
+                    fs::copy(snapshot, &backup_dst).map_err(|e| err(e.to_string()))?;
+                    originals.push(backup_dst);
+                    Some(backup_rel)
+                } else {
+                    None
+                };
+                mkdir_parents(&root, &dst, &mut created_dirs)?;
+                let current = if dst.is_file() {
+                    Some(digest(&dst)?)
+                } else if dst.exists() {
+                    return Err(err(format!("destination changed before copy: {rel}")));
+                } else {
+                    None
+                };
+                if current != expected_destinations[rel] {
+                    return Err(err(format!("destination changed before copy: {rel}")));
+                }
+                written.insert(rel.clone());
+                replace_file(src, &dst).map_err(|e| err(e.to_string()))?;
+                if rel == "OptiScaler.ini" && !options.dlss_inputs {
+                    super::set_ini_value(&dst, "Spoofing", "Dxgi", "false")
+                        .map_err(|e| err(e.to_string()))?;
+                }
+                let original_sha256 = if let Some(old) = owned.get(rel) {
+                    old.original_sha256.clone()
+                } else if let Some(snapshot) = &original {
+                    Some(digest(snapshot)?)
+                } else {
+                    None
+                };
+                let extra = owned
+                    .get(rel)
+                    .map_or_else(BTreeMap::new, |old| old.extra.clone());
+                let installed_hash = digest(&dst)?;
+                written_hashes.insert(rel.clone(), installed_hash.clone());
+                owned.insert(
+                    rel.clone(),
+                    OwnedFile {
+                        sha256: installed_hash,
+                        original_backup: backup,
+                        original_sha256,
+                        extra,
+                    },
+                );
+                progress(InstallStage::CopyingPayload {
+                    done: index + 1,
+                    total: sources.len(),
+                });
             }
-            snapshots.insert(rel.clone(), original.clone());
-            let backup = if let Some(old) = owned.get(rel) {
-                old.original_backup.clone()
-            } else if let Some(snapshot) = &original {
-                let backup_rel = format!("{staging_rel}/original/{rel}");
-                let backup_dst = checked(&root, &backup_rel)?;
-                mkdir_parents(&root, &backup_dst, &mut created_dirs)?;
-                fs::copy(snapshot, &backup_dst).map_err(|e| err(e.to_string()))?;
-                originals.push(backup_dst);
-                Some(backup_rel)
-            } else {
-                None
-            };
-            mkdir_parents(&root, &dst, &mut created_dirs)?;
-            let current = if dst.is_file() {
-                Some(digest(&dst)?)
-            } else if dst.exists() {
-                return Err(err(format!("destination changed before copy: {rel}")));
-            } else {
-                None
-            };
-            if current != expected_destinations[rel] {
-                return Err(err(format!("destination changed before copy: {rel}")));
-            }
-            written.insert(rel.clone());
-            replace_file(src, &dst).map_err(|e| err(e.to_string()))?;
-            if rel == "OptiScaler.ini" && !options.dlss_inputs {
-                super::set_ini_value(&dst, "Spoofing", "Dxgi", "false")
-                    .map_err(|e| err(e.to_string()))?;
-            }
-            let original_sha256 = if let Some(old) = owned.get(rel) {
-                old.original_sha256.clone()
-            } else if let Some(snapshot) = &original {
-                Some(digest(snapshot)?)
-            } else {
-                None
-            };
-            let extra = owned
-                .get(rel)
-                .map_or_else(BTreeMap::new, |old| old.extra.clone());
-            let installed_hash = digest(&dst)?;
-            written_hashes.insert(rel.clone(), installed_hash.clone());
-            owned.insert(
-                rel.clone(),
-                OwnedFile {
-                    sha256: installed_hash,
-                    original_backup: backup,
-                    original_sha256,
-                    extra,
-                },
+            // Existing configs are left unchanged. No synthetic fallback INI is generated.
+            progress(InstallStage::Finalizing);
+            let mut manifest = InstallManifest::new(
+                &options.target_filename,
+                &[],
+                &[],
+                version,
+                release_url,
+                installed_at,
             );
-            progress(InstallStage::CopyingPayload {
-                done: index + 1,
-                total: sources.len(),
-            });
-        }
-        // Existing configs are left unchanged. No synthetic fallback INI is generated.
-        progress(InstallStage::Finalizing);
-        let mut manifest = InstallManifest::new(
-            &options.target_filename,
-            &[],
-            &[],
-            version,
-            release_url,
-            installed_at,
-        );
-        manifest.schema_version = 2;
-        manifest.owned_files = owned;
-        manifest.files = manifest.owned_files.keys().cloned().collect();
-        manifest.directories = manifest
-            .files
-            .iter()
-            .filter_map(|f| Path::new(f).parent())
-            .map(|p| p.to_string_lossy().replace('\\', "/"))
-            .filter(|p| !p.is_empty())
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect();
-        if let Some(old) = previous {
-            manifest.extra = old.extra;
-        }
-        let tmp = staging.join("manifest.json");
-        fs::write(
-            &tmp,
-            serde_json::to_vec_pretty(&manifest).map_err(|e| err(e.to_string()))?,
-        )
-        .map_err(|e| err(e.to_string()))?;
-        fs::rename(&tmp, root.join(manifest::MANIFEST_FILENAME)).map_err(|e| err(e.to_string()))?;
-        Ok(manifest)
-    })();
+            manifest.schema_version = 2;
+            manifest.owned_files = owned;
+            manifest.files = manifest.owned_files.keys().cloned().collect();
+            manifest.directories = manifest
+                .files
+                .iter()
+                .filter_map(|f| Path::new(f).parent())
+                .map(|p| p.to_string_lossy().replace('\\', "/"))
+                .filter(|p| !p.is_empty())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect();
+            if let Some(old) = previous {
+                manifest.extra = old.extra;
+            }
+            if options.community_rdna2 {
+                manifest.extra.insert("fsr_runtime".into(), serde_json::json!({
+                "source": super::rdna2::RELEASE_URL, "asset": super::rdna2::ASSET,
+                "archive_sha256": super::rdna2::ARCHIVE_SHA256,
+                "dll_sha256": super::rdna2::DLL_SHA256, "dll_size": super::rdna2::DLL_SIZE,
+                "community_opt_in": true,
+                "rendering_gpu": options.rendering_gpu.as_ref().and_then(|g| g.name.as_deref())
+            }));
+            } else {
+                manifest.extra.remove("fsr_runtime");
+            }
+            let tmp = staging.join("manifest.json");
+            fs::write(
+                &tmp,
+                serde_json::to_vec_pretty(&manifest).map_err(|e| err(e.to_string()))?,
+            )
+            .map_err(|e| err(e.to_string()))?;
+            fs::rename(&tmp, root.join(manifest::MANIFEST_FILENAME))
+                .map_err(|e| err(e.to_string()))?;
+            Ok(manifest)
+        })();
     let mut rollback_errors = Vec::new();
     if operation.is_err() {
         for rel in written.iter().rev() {
