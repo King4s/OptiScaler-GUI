@@ -4,6 +4,14 @@ Branch: `hermes/hardware-recommendations-rdna2`.
 Checkout: `C:/Users/marci/AppData/Local/hermes/cache/scratch/optiscaler-github-hardware`.
 Parent publication is on branch `hermes/hardware-recommendations-rdna2`; GitHub PR status is recorded below after remote verification. No version bump, tags or new binary release is included. Original dirty checkout was not modified.
 
+## GitHub publication
+
+- PR: https://github.com/King4s/OptiScaler-GUI/pull/37, targeting `main`.
+- Feature commit: `99f35ae76fddd868ed3c424c727a70fa4f7d548a`.
+- GitHub CI run `37165895417`: lint, Windows tests and release build **passed**; optional extraction canary **skipped**. Actual RDNA2 canaries were executed locally by the parent, not by that remote job.
+- Repository description updated and read back: “Unofficial Rust Windows GUI for OptiScaler: game discovery, upscaler installation, local hardware profiles and game settings.”
+- No new tag or GitHub release/binary publication. Merge state must be checked on the PR; this record does not claim a merge before it happens.
+
 ## Parent verification and review
 
 - Parent independently reran locked workspace tests, all-target strict Clippy and formatting successfully before the review fix, plus both real-artifact canaries (**2 passed**, actual official/community DLLs).
