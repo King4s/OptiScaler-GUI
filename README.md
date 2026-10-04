@@ -32,7 +32,7 @@ All upscaling technology — FSR, XeSS, DLSS integration, frame generation, the 
 
 ![Details view — sortable columns, filters, and animated background](docs/screenshots/library-details.png)
 
-## Unreleased Rust source additions
+## 2026.10.0 hardware and runtime additions
 
 - Worker-thread hardware collection on every startup, independent of update checks; always-visible family recommendations and manual refresh in English, Danish and Polish. Facts stay local and hardware deletion remains available.
 - RX 6000 / RDNA2 can explicitly opt into the separately pinned community FSR 4.1.1b INT8 fix. Choose the game's actual rendering GPU first and accept a community/anti-cheat warning for each operation. No automatic GPU choice, patch or tuning changes.
@@ -49,7 +49,7 @@ See the [hardware/runtime feature guide](docs/hardware-runtime.md). These change
 3. Scan for games (or browse to a game folder manually), select a game, click **Install**
 4. Launch the game and press **Insert** (**Alt+Insert** on non-US keyboard layouts) to configure upscaling in OptiScaler's overlay
 
-Requires Windows 10/11. OptiScaler is downloaded from official GitHub releases. Unreleased Rust source also offers a separately pinned, explicitly opt-in community RDNA2 FSR runtime; official OptiScaler extraction is never modified. Local hardware and install observations are used for on-device guidance. Reports are previewed in the game panel and saved only after you choose a file; review the JSON before sharing it yourself.
+Requires Windows 10/11. OptiScaler is downloaded from official GitHub releases. 2026.10.0 also offers a separately pinned, explicitly opt-in community RDNA2 FSR runtime; official OptiScaler extraction is never modified. Local hardware and install observations are used for on-device guidance. Reports are previewed in the game panel and saved only after you choose a file; review the JSON before sharing it yourself.
 
 ## OptiScaler compatibility
 

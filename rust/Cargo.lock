@@ -1852,7 +1852,7 @@ dependencies = [
 
 [[package]]
 name = "opticore"
-version = "2026.9.0"
+version = "2026.10.0"
 dependencies = [
  "hex",
  "image",
@@ -1872,7 +1872,7 @@ dependencies = [
 
 [[package]]
 name = "optiscaler-gui"
-version = "2026.9.0"
+version = "2026.10.0"
 dependencies = [
  "eframe",
  "image",

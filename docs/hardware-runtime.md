@@ -1,6 +1,6 @@
 # Hardware recommendations and community RDNA2 runtime
 
-**Implemented in current Rust source, unreleased.** No new published binary or gameplay guarantee is claimed.
+**Included in 2026.10.0.** Download availability is recorded on [GitHub Releases](https://github.com/King4s/OptiScaler-GUI/releases/tag/v2026.10.0). No gameplay guarantee is claimed.
 
 ## Startup, refresh and privacy
 

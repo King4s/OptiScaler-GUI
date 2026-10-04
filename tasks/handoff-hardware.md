@@ -1,4 +1,6 @@
-# Hardware/RDNA2 and Rust-only handoff — unreleased source
+# Hardware/RDNA2 and Rust-only feature handoff
+
+Release follow-up: 2026.10.0 was authorized after this feature handoff. See docs/releases/2026.10.0-verification.md and GitHub Releases for release evidence; the no-release statements below describe the original feature phase.
 
 Branch: `hermes/hardware-recommendations-rdna2`.
 Checkout: `C:/Users/marci/AppData/Local/hermes/cache/scratch/optiscaler-github-hardware`.

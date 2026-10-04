@@ -19,7 +19,7 @@ The v2 manifest records installed hashes and original backups. Rollback restores
 concurrent changes are preserved with an explicit recovery error. Only owned v2 files authorize update/removal.
 Legacy/missing/incomplete/foreign manifests cannot authorize guessed cleanup.
 
-## Hardware and optional community runtime (unreleased)
+## Hardware and optional community runtime (2026.10.0)
 
 See [hardware/runtime guide](hardware-runtime.md) for startup collection, explicit rendering GPU selection,
 consent, pinned hashes, provenance, update and uninstall behavior. Official extraction is never patched in place.

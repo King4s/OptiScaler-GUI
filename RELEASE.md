@@ -13,4 +13,4 @@ startup/file-operation tests and actual gameplay. Verify da/en/pl startup and pa
 After explicit maintainer approval, create/push the intended CalVer tag (`v20*`).
 `.github/workflows/release-rust.yml` tests, builds and publishes EXE/7z/checksums.
 `scripts/build-beta-candidate.ps1` and `scripts/verify-beta-package.ps1` support reviewed candidate packaging.
-Do not publish/tag as part of ordinary feature implementation. Unreleased hardware/RDNA2 work has no new release claim.
+Do not publish/tag as part of ordinary feature implementation. Hardware/RDNA2 features are included in the authorized 2026.10.0 release; release availability is recorded on GitHub.
