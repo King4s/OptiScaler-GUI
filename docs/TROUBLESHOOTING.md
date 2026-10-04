@@ -1,6 +1,6 @@
 # Troubleshooting
 
-## Unreleased hardware/runtime source changes
+## 2026.10.0 hardware/runtime changes
 
 Hardware collection runs on a worker at every startup. Use the always-visible Refresh button if facts change;
 then choose the rendering GPU for each game again. Unknown facts and recommendations are not compatibility proof.

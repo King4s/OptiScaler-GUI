@@ -1,13 +1,13 @@
 # Changelog
 
-## Unreleased — Rust hardware recommendations and optional RDNA2 runtime
+## 2026.10.0 — Rust hardware recommendations and optional RDNA2 runtime
 
 - Collect fresh local DXGI facts on a startup worker regardless of update checks; show family recommendations and manual refresh on every screen in da/en/pl.
 - Preserve explicit per-game rendering-GPU policy, deletion/privacy and read-only recommendations; refresh invalidates snapshot-local choices.
 - Add opt-in pinned community FSR 4.1.1b INT8 RDNA2 fix for explicitly selected RX 6000, separate archive/DLL verification/cache/staging and manifest provenance. Official payload cache stays unchanged; atomic replacements preserve owned-file backup/update/uninstall behavior.
 - Community installs require manual updates with renewed choice/consent; no silent automatic runtime swap or anti-cheat bypass.
 - Remove legacy Python app/tests/requirements/PyInstaller scripts and Python CI. Move embedded shared translations/game data to opticore/data and replace active build/run guidance with Rust instructions. Historical release evidence remains historical.
-- Source-only changes: no version bump or new published binary. See [feature guide](docs/hardware-runtime.md) and [handoff](tasks/handoff-hardware.md).
+- Included in the authorized 2026.10.0 release. See [feature guide](docs/hardware-runtime.md) and [handoff](tasks/handoff-hardware.md).
 
 
 ## 2026.9.0 Standard
