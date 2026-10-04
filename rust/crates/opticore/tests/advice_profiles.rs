@@ -10,9 +10,9 @@ use std::fs;
 use std::path::PathBuf;
 
 const RULES: &str = include_str!("../data/advice-rules.json");
-const EN: &str = include_str!("../../../../src/translations/en.json");
-const DA: &str = include_str!("../../../../src/translations/da.json");
-const PL: &str = include_str!("../../../../src/translations/pl.json");
+const EN: &str = include_str!("../data/translations/en.json");
+const DA: &str = include_str!("../data/translations/da.json");
+const PL: &str = include_str!("../data/translations/pl.json");
 
 fn game(name: &str, steam_id: Option<&str>) -> GameObservation {
     GameObservation {

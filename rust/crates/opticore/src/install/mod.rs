@@ -1,10 +1,11 @@
-//! Install / update / uninstall orchestration. Port of the Python
-//! `OptiScalerManager` flow: download → verify → extract → payload copy →
-//! uninstaller + config + manifest, with rollback on failure.
+//! Install / update / uninstall orchestration: official download and extraction,
+//! optional pinned community runtime, then checked transactional ownership.
+//! Legacy manifests remain readable but cannot authorize destructive mutations.
 
 pub mod github;
 pub mod manifest;
 pub mod payload;
+pub mod rdna2;
 pub mod transaction;
 
 use crate::archive;
@@ -23,6 +24,10 @@ pub struct InstallOptions {
     /// v0.7.9+ DLSS-inputs semantics: when the user answers "No" on an
     /// AMD/Intel setup, only Dxgi=false is written to the config.
     pub dlss_inputs: bool,
+    /// Explicit community consent; never set by a recommendation.
+    pub community_rdna2: bool,
+    /// Explicit per-game rendering adapter from the current hardware snapshot.
+    pub rendering_gpu: Option<crate::hardware::GpuProfile>,
 }
 
 impl Default for InstallOptions {
@@ -33,6 +38,8 @@ impl Default for InstallOptions {
             confirmed_target: None,
             gpu_type: "auto".to_string(),
             dlss_inputs: true,
+            community_rdna2: false,
+            rendering_gpu: None,
         }
     }
 }
@@ -150,22 +157,33 @@ impl Installer {
         options: &InstallOptions,
         mut progress: impl FnMut(InstallStage),
     ) -> Result<InstallManifest, InstallError> {
+        if options.community_rdna2 && !rdna2::eligible(options.rendering_gpu.as_ref(), true) {
+            return Err(InstallError::Io(
+                "Choose the RX 6000 rendering GPU explicitly before opting in".into(),
+            ));
+        }
+        let runtime = if options.community_rdna2 {
+            Some(rdna2::prepare(&self.download_dir)?)
+        } else {
+            None
+        };
         let (extracted, release) = self.prepare_payload(&mut progress)?;
         let dest_dir = confirmed_directory(game_path, options)?;
-        transaction::install(
+        transaction::install_with_runtime(
             &dest_dir,
             &extracted,
             options,
             &release.version_label(),
             release.html_url.clone(),
             iso_now(),
+            runtime.as_deref(),
             progress,
         )
     }
 }
 
-/// Uninstall using the manifest when present, else the legacy known-file list.
-/// Port of `uninstall_optiscaler`. Returns the removed files/dirs.
+/// Uninstall only with a complete owned v2 manifest; preserve legacy/foreign files.
+/// Returns the removed files/dirs.
 pub fn uninstall(game_path: &Path) -> Result<(Vec<String>, Vec<String>), InstallError> {
     let install_dir = crate::resolver::resolve(game_path)
         .map_err(InstallError::Io)?
@@ -213,7 +231,15 @@ impl Installer {
             confirmed_target: None,
             gpu_type: gpu_type.to_string(),
             dlss_inputs: true,
+            community_rdna2: false,
+            rendering_gpu: None,
         };
+        let directory = crate::resolver::resolve(game_path)
+            .map_err(InstallError::Io)?
+            .directory;
+        if manifest::read(&directory).is_some_and(|m| m.extra.contains_key("fsr_runtime")) {
+            return Err(InstallError::Io("Community runtime requires a new explicit GPU choice and consent; use manual update".into()));
+        }
         self.install(game_path, &options, progress)
     }
 }

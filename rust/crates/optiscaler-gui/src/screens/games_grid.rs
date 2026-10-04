@@ -1112,6 +1112,56 @@ fn install_section(
     ui.label(&target.reason);
 
     if game.optiscaler_installed {
+        if opticore::install::manifest::read(&target.directory)
+            .is_some_and(|m| m.extra.contains_key("fsr_runtime"))
+            && ui
+                .add_enabled(
+                    allowed,
+                    egui::Button::new(state.i18n.tr("hardware.restore_official")),
+                )
+                .clicked()
+        {
+            let proxy = opticore::install::update_target_filename(&game.path);
+            if let Some(confirmed_target) = confirm_install(&game.path, &proxy, &state.i18n) {
+                let options = opticore::install::InstallOptions {
+                    target_filename: proxy,
+                    overwrite: true,
+                    confirmed_target: Some(confirmed_target),
+                    ..Default::default()
+                };
+                state
+                    .busy_ops
+                    .insert(game.key.path_norm.clone(), "Starting install…".into());
+                ops.spawn_install(ctx, game, options);
+            }
+        }
+        // Also allow opting in on an already current official installation.
+        if opticore::install::rdna2::eligible(selected_gpu(state, game).as_ref(), true)
+            && ui
+                .add_enabled(
+                    allowed,
+                    egui::Button::new(state.i18n.tr("hardware.community_title")),
+                )
+                .clicked()
+        {
+            let target = opticore::install::update_target_filename(&game.path);
+            if community_consent(state, game) {
+                if let Some(confirmed_target) = confirm_install(&game.path, &target, &state.i18n) {
+                    let options = opticore::install::InstallOptions {
+                        target_filename: target,
+                        overwrite: true,
+                        confirmed_target: Some(confirmed_target),
+                        community_rdna2: true,
+                        rendering_gpu: selected_gpu(state, game),
+                        ..Default::default()
+                    };
+                    state
+                        .busy_ops
+                        .insert(game.key.path_norm.clone(), "Starting install…".into());
+                    ops.spawn_install(ctx, game, options);
+                }
+            }
+        }
         // Update path: compare installed manifest version vs latest release
         let installed = opticore::install::installed_version(&game.path);
         if let (Some(installed), Some(latest)) =
@@ -1142,6 +1192,8 @@ fn install_section(
                         target_filename: target,
                         overwrite: true,
                         confirmed_target: Some(confirmed_target),
+                        community_rdna2: community_consent(state, game),
+                        rendering_gpu: selected_gpu(state, game),
                         ..Default::default()
                     };
                     state
@@ -1209,6 +1261,8 @@ fn install_section(
                 target_filename: state.proxy_choice.clone(),
                 overwrite: false,
                 confirmed_target: Some(confirmed_target),
+                community_rdna2: community_consent(state, game),
+                rendering_gpu: selected_gpu(state, game),
                 ..Default::default()
             };
             state
@@ -1217,6 +1271,24 @@ fn install_section(
             ops.spawn_install(ctx, game, options);
         }
     }
+}
+
+fn selected_gpu(state: &AppState, game: &Game) -> Option<opticore::hardware::GpuProfile> {
+    let id = state.hardware.local.gpu_for(game)?;
+    state.hardware.current_gpu(id).cloned()
+}
+
+fn community_consent(state: &AppState, game: &Game) -> bool {
+    if !opticore::install::rdna2::eligible(selected_gpu(state, game).as_ref(), true) {
+        return false;
+    }
+    rfd::MessageDialog::new()
+        .set_title(state.i18n.tr("hardware.community_title"))
+        .set_description(state.i18n.tr("hardware.community_warning"))
+        .set_buttons(rfd::MessageButtons::YesNo)
+        .set_level(rfd::MessageLevel::Warning)
+        .show()
+        == rfd::MessageDialogResult::Yes
 }
 
 fn confirm_install(

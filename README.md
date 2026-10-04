@@ -1,7 +1,7 @@
 # OptiScaler GUI
 
 [![Release](https://img.shields.io/github/v/release/King4s/OptiScaler-GUI)](https://github.com/King4s/OptiScaler-GUI/releases/latest)
-[![CI](https://github.com/King4s/OptiScaler-GUI/actions/workflows/ci.yml/badge.svg)](https://github.com/King4s/OptiScaler-GUI/actions/workflows/ci.yml)
+[![CI](https://github.com/King4s/OptiScaler-GUI/actions/workflows/ci-rust.yml/badge.svg)](https://github.com/King4s/OptiScaler-GUI/actions/workflows/ci-rust.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-blue)](#)
 
@@ -32,6 +32,16 @@ All upscaling technology — FSR, XeSS, DLSS integration, frame generation, the 
 
 ![Details view — sortable columns, filters, and animated background](docs/screenshots/library-details.png)
 
+## Unreleased Rust source additions
+
+- Worker-thread hardware collection on every startup, independent of update checks; always-visible family recommendations and manual refresh in English, Danish and Polish. Facts stay local and hardware deletion remains available.
+- RX 6000 / RDNA2 can explicitly opt into the separately pinned community FSR 4.1.1b INT8 fix. Choose the game's actual rendering GPU first and accept a community/anti-cheat warning for each operation. No automatic GPU choice, patch or tuning changes.
+- Separate verified cache and staged DLL validation before game mutations; atomic file replacement and manifest provenance preserve update/uninstall ownership and original-file recovery. Automatic updates refuse community installs instead of silently swapping runtimes.
+- RDNA3/4 keep official FSR 4; RTX native DLSS, Arc XeSS, and older GPUs XeSS/FSR 3.1 are suggestions only where supported. Unknown/APU/mixed hardware stays conservative until explicit per-game choice.
+- Legacy Python implementation, tests, requirements, PyInstaller tooling and Python CI removed; shared data/translations moved under `rust/crates/opticore/data/`. Historical release records remain history.
+
+See the [hardware/runtime feature guide](docs/hardware-runtime.md). These changes are implemented in source, **not a new released binary**, and do not prove gameplay compatibility.
+
 ## Getting started
 
 1. Download `OptiScaler-GUI.exe` from [GitHub Releases](https://github.com/King4s/OptiScaler-GUI/releases), the authority for available versions and downloads.
@@ -39,7 +49,7 @@ All upscaling technology — FSR, XeSS, DLSS integration, frame generation, the 
 3. Scan for games (or browse to a game folder manually), select a game, click **Install**
 4. Launch the game and press **Insert** (**Alt+Insert** on non-US keyboard layouts) to configure upscaling in OptiScaler's overlay
 
-Requires Windows 10/11. The GUI downloads OptiScaler exclusively from the official GitHub releases. Local hardware and install observations are used for on-device guidance. Reports are previewed in the game panel and saved only after you choose a file; review the JSON before sharing it yourself.
+Requires Windows 10/11. OptiScaler is downloaded from official GitHub releases. Unreleased Rust source also offers a separately pinned, explicitly opt-in community RDNA2 FSR runtime; official OptiScaler extraction is never modified. Local hardware and install observations are used for on-device guidance. Reports are previewed in the game panel and saved only after you choose a file; review the JSON before sharing it yourself.
 
 ## OptiScaler compatibility
 
@@ -54,7 +64,7 @@ Fatekeeper has a working user report from 2026-09-25; fresh-version gameplay and
 | Track | Where | Status |
 |---|---|---|
 | Rust app (CalVer `2026.x`) | `rust/` | 2026.9.0 Standard feature set; consult [GitHub Releases](https://github.com/King4s/OptiScaler-GUI/releases) for availability. |
-| Python app (v0.x) | `src/` | Legacy; final release is [v0.5.2](https://github.com/King4s/OptiScaler-GUI/releases/tag/v0.5.2), with security/compatibility fixes only. Existing legacy manifests and files are preserved. |
+| Historical Python app (v0.x) | Git history / old releases only | Implementation and Python tooling removed from current source. Legacy game files/manifests remain preserved. |
 
 ## Supported discovery sources
 
@@ -84,10 +94,10 @@ The discovery/artwork work adds no mods and changes no installer behavior. Revie
 ```bash
 git clone https://github.com/King4s/OptiScaler-GUI.git
 cd OptiScaler-GUI/rust
-cargo run --release
+cargo run --release --locked
 ```
 
-Run the tests with `cargo test --workspace`. The legacy Python app still runs from `src/` (`pip install -r requirements.txt && python src/main.py`); its implementation details are covered in the [technical overview](docs/TECHNICAL_OVERVIEW.md).
+Run `cargo test --workspace --locked`, `cargo fmt --all --check` and `cargo clippy --workspace --all-targets --locked -- -D warnings` from `rust/`. Current source is Rust-only; no Python runtime, requirements or PyInstaller build remains. See [technical overview](docs/TECHNICAL_OVERVIEW.md) and [contributor guidance](CLAUDE.md).
 
 ## Reporting issues
 

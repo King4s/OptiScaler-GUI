@@ -20,6 +20,54 @@ pub struct GpuProfile {
     pub driver: Option<String>,
 }
 
+impl GpuProfile {
+    /// Advisory only: never identifies which adapter renders a particular game.
+    pub fn recommendation_key(&self) -> &'static str {
+        let name = self
+            .name
+            .as_deref()
+            .unwrap_or_default()
+            .to_ascii_uppercase();
+        if name.contains("RADEON RX ") {
+            let model = name
+                .split("RADEON RX ")
+                .nth(1)
+                .unwrap_or_default()
+                .split_whitespace()
+                .next()
+                .unwrap_or_default();
+            let number = model
+                .trim_end_matches(|c: char| !c.is_ascii_digit())
+                .parse::<u32>()
+                .unwrap_or(0);
+            if [
+                6300, 6400, 6500, 6600, 6650, 6700, 6750, 6800, 6850, 6900, 6950,
+            ]
+            .contains(&number)
+            {
+                return "hardware.rdna2";
+            }
+            if (7000..8000).contains(&number) || (9000..10000).contains(&number) {
+                return "hardware.rdna34";
+            }
+            if (400..600).contains(&number) || (5000..6000).contains(&number) || model == "VEGA" {
+                return "hardware.older";
+            }
+            return "hardware.conservative";
+        }
+        if name.contains("RTX ") {
+            return "hardware.rtx";
+        }
+        if name.contains("GTX ") {
+            return "hardware.older";
+        }
+        if name.contains("ARC ") {
+            return "hardware.arc";
+        }
+        "hardware.conservative"
+    }
+}
+
 /// Collects local hardware facts. This is blocking; callers should run it off the UI thread.
 pub fn collect() -> HardwareProfile {
     let mut profile = HardwareProfile {
@@ -149,5 +197,54 @@ fn collect_windows(profile: &mut HardwareProfile) {
             shared_bytes: Some(desc.SharedSystemMemory as u64),
             driver,
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn recommendations_keep_unknown_and_apus_conservative() {
+        for (name, key) in [
+            ("AMD Radeon RX 8800", "hardware.conservative"),
+            ("AMD Radeon RX 5700 XT", "hardware.older"),
+            ("AMD Radeon RX Vega 56", "hardware.older"),
+            ("NVIDIA RTX 4070", "hardware.rtx"),
+            ("Intel Arc A770", "hardware.arc"),
+            ("AMD Radeon RX 9070 XT", "hardware.rdna34"),
+            ("AMD Radeon 780M", "hardware.conservative"),
+        ] {
+            assert_eq!(
+                GpuProfile {
+                    name: Some(name.into()),
+                    ..Default::default()
+                }
+                .recommendation_key(),
+                key
+            );
+        }
+    }
+
+    #[test]
+    fn rx6000_recommendation_is_specific_and_conservative() {
+        let gpu = GpuProfile {
+            name: Some("AMD Radeon RX 6700 XT".into()),
+            ..Default::default()
+        };
+        assert_eq!(gpu.recommendation_key(), "hardware.rdna2");
+        for name in [
+            "AMD Radeon Graphics",
+            "AMD Radeon RX 5700 XT",
+            "Unknown",
+            "Radeon 680M",
+            "AMD Radeon RX 6999",
+            "AMD Radeon RX 8800",
+        ] {
+            let gpu = GpuProfile {
+                name: Some(name.into()),
+                ..Default::default()
+            };
+            assert_ne!(gpu.recommendation_key(), "hardware.rdna2");
+        }
     }
 }

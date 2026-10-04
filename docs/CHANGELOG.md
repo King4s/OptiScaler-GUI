@@ -1,4 +1,8 @@
-<!-- Moved from root CHANGELOG.md -->
+# Historical Python changelog snapshot
+
+Not current build or feature guidance. See [current changelog](../CHANGELOG.md).
+
+<!-- Historical snapshot preserved -->
 ```markdown
 # Changelog
 

@@ -1,5 +1,15 @@
 # Troubleshooting
 
+## Unreleased hardware/runtime source changes
+
+Hardware collection runs on a worker at every startup. Use the always-visible Refresh button if facts change;
+then choose the rendering GPU for each game again. Unknown facts and recommendations are not compatibility proof.
+Delete hardware in Settings to cancel a pending collection and clear its local profile; next startup collects again.
+Community RDNA2 installs require fresh explicit RX 6000 choice and consent for manual updates. Automatic updates
+refuse them to prevent an unapproved runtime swap. Verification failures leave game files unchanged.
+See the [feature guide](hardware-runtime.md) for pins, privacy and warnings.
+
+
 This guide describes the Rust `2026.9.0` discovery/artwork features. See the [verification record](releases/2026.9.0-verification.md) for test evidence and limits. Neither a detected install nor a log message guarantees that a particular game, GPU, driver, or configuration works.
 
 ## Overlay does not open

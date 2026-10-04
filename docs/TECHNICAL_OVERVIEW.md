@@ -1,27 +1,39 @@
-# Technical Overview
+# Technical overview — current Rust application
 
-## Installation Flow
+The Cargo workspace has a GUI crate (egui/wgpu) and `opticore` for testable core logic.
+All blocking startup hardware collection, scanning, artwork and installation run on workers.
+Resources are embedded from opticore/data (en/da/pl and community game data); no legacy Python source is required.
+Archive decoding uses sevenz-rust2, including real BCJ2 payloads; no runtime 7z.exe is needed.
+Asset selection currently accepts .7z/.zip names but decoding is 7z, not general ZIP support.
 
-1. Fetch the latest release metadata from `optiscaler/OptiScaler`.
-2. Select the first `.7z` or `.zip` release asset.
-3. Download the asset into `cache/optiscaler_downloads`.
-4. Extract `.7z` with bundled/system `7z.exe`; extract `.zip` with Python `zipfile`.
-5. Copy `OptiScaler.dll` to the selected proxy filename, for example `dxgi.dll`.
-6. Copy the remaining release payload dynamically, preserving relative paths.
-7. Write `.optiscaler-gui-install.json` with installed files, directories, selected proxy filename, and OptiScaler release version.
+## Installation and ownership
 
-## Why 7z.exe Is Required
+Installer fetches the latest official optiscaler/OptiScaler release and verifies its asset digest when provided.
+Resolver confirms executable/target folder, including ambiguous layouts and the Satisfactory exception;
+Installer rechecks the confirmed target after downloads. Payload paths are validated, scripts/setup markers excluded.
+Existing INI files are preserved. Recommendations do not set tuning values.
 
-Current OptiScaler releases can use 7z compression filters such as BCJ2 that `py7zr` cannot extract reliably. The portable release therefore bundles `7z.exe`, and release CI verifies that the ZIP contains it.
+Mutations use a per-game lock, ownership preflight and snapshots. File replacements are staged beside the
+file and atomically persisted, rather than truncating existing files or writing through hard links.
+The v2 manifest records installed hashes and original backups. Rollback restores safe snapshots;
+concurrent changes are preserved with an explicit recovery error. Only owned v2 files authorize update/removal.
+Legacy/missing/incomplete/foreign manifests cannot authorize guessed cleanup.
 
-## Uninstall And Update Safety
+## Hardware and optional community runtime (unreleased)
 
-New installs write an install manifest. Uninstall first uses that manifest to remove only files the GUI installed. Legacy installs without a manifest still use the older broad OptiScaler-file detection path for compatibility.
+See [hardware/runtime guide](hardware-runtime.md) for startup collection, explicit rendering GPU selection,
+consent, pinned hashes, provenance, update and uninstall behavior. Official extraction is never patched in place.
+Community DLLs use the same transactional ownership rules. Automatic updates refuse a community install
+instead of silently replacing the selected runtime; use a manual update with a fresh choice.
 
-## Game Discovery
+## Discovery, artwork and privacy
 
-The scanner supports Steam, Epic Games, GOG, Xbox Game Pass, Heroic metadata, and manual paths. Library roots are cached to avoid repeated expensive scans. Steam image lookup uses local manifests first and then background SteamSpy data.
+See [store formats](store-formats.md), [cover art](cover-art.md) and [troubleshooting](TROUBLESHOOTING.md).
+Discovery is best effort and does not establish compatibility. Hardware stays local; reports require preview
+and explicit file save. No new telemetry/upload is added. The historical Python manifest fixture is retained
+only to test safe preservation of old installations.
 
-## Release Process
+## Development and release
 
-Create releases by pushing an annotated `v*` tag. The GitHub release workflow runs tests, builds the portable package on Windows, verifies `7z.exe` is included, and uploads the ZIP to the GitHub release.
+See [development guidance](../CLAUDE.md) and [release procedure](../RELEASE.md).
+Current CI is ci-rust.yml; release-rust.yml builds authorized CalVer tags. Historical release records remain historical.

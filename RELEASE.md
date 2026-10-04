@@ -1,37 +1,16 @@
-# Release Procedure
+# Rust release procedure
 
-Follow these steps to create a new release for OptiScaler-GUI.
+From `rust/`, run `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`,
+`cargo test --workspace --locked` and `cargo build --release --workspace --locked` on Windows.
+The native executable is `target/release/OptiScaler-GUI.exe` (or under CARGO_TARGET_DIR).
+There is no Python runtime, PyInstaller build or bundled extractor; runtime 7z decoding is pure Rust.
+7-Zip is used only when packaging a release `.7z`.
 
-1) Bump version in `src/__version__.py`.
-2) Update `CHANGELOG.md` with a new entry for the version and date.
-3) Ensure all tests pass:
+Version is declared in `rust/Cargo.toml`. Change it only for an authorized release, update CHANGELOG.md,
+and write release notes and a verification record under `docs/releases/`. Distinguish source implementation,
+startup/file-operation tests and actual gameplay. Verify da/en/pl startup and packaged artifact hashes.
 
-```pwsh
-py -3 -m pytest -q
-```
-
-4) Build the portable executable (Windows):
-
-```pwsh
-py -3 build.py
-# or use start_gui and test: start_gui.bat
-```
-
-5) Tag & push the release (example using git):
-
-```pwsh
-git add -A
-git commit -m "chore(release): v0.3.6"
-git tag -a v0.3.6 -m "Release v0.3.6"
-git push origin HEAD --tags
-```
-
-6) Create a GitHub release via the web UI or CLI, attaching the built portable/exe artifacts. Use the `CHANGELOG.md` entry as the release notes.
-
-7) Update the `README.md` and an `assets/` banner if necessary.
-8) Announce the release and update the release badge / description as needed.
-
-Notes:
-- Releases should include compiled artifacts for Windows (e.g., `OptiScaler-GUI.exe`) built via `build.py`/PyInstaller.
-- Always run a full test suite before tagging and building artifacts.
-- If distributing via portable ZIP, verify the built artifact size and that `tools` folder contains `7z.exe` if needed.
+After explicit maintainer approval, create/push the intended CalVer tag (`v20*`).
+`.github/workflows/release-rust.yml` tests, builds and publishes EXE/7z/checksums.
+`scripts/build-beta-candidate.ps1` and `scripts/verify-beta-package.ps1` support reviewed candidate packaging.
+Do not publish/tag as part of ordinary feature implementation. Unreleased hardware/RDNA2 work has no new release claim.

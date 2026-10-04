@@ -1,5 +1,4 @@
-<!-- Moved from root DEMO_GUIDE.md -->
-```markdown
-## Demo Guide (moved)
-This file has been moved to `docs/DEMO_GUIDE.md`. Please consult the `docs` folder for the demonstration and guide material.
-```
+# Demo guide
+
+Use the [README](../README.md), [hardware/runtime guide](hardware-runtime.md) and [troubleshooting](TROUBLESHOOTING.md).
+Test mods only in disposable/offline environments. Source and startup verification do not establish gameplay compatibility.

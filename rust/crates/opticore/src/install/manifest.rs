@@ -1,6 +1,6 @@
-//! Install manifest — schema v1, byte-compatible with the Python app's
-//! `.optiscaler-gui-install.json` so either app can update/uninstall
-//! installations made by the other. THE cross-version contract.
+//! Install manifest: schema v2 owns files by checksum and original backup.
+//! Legacy v1 fields/unknown metadata remain readable for compatibility, but
+//! only complete owned v2 manifests may authorize update or uninstall.
 
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};

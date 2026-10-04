@@ -34,14 +34,14 @@ pub struct ScanResult {
 }
 
 /// Community-verified game list bundled from the Python app's data file
-/// (kept as the single source of truth at src/data/).
+/// (embedded from opticore/data/).
 struct VerifiedList {
     entries: Vec<(String, String)>, // (name_lower, appid)
 }
 
 impl VerifiedList {
     fn load() -> Self {
-        let raw = include_str!("../../../../../src/data/community_verified_games.json");
+        let raw = include_str!("../../data/community_verified_games.json");
         let mut entries = Vec::new();
         if let Ok(data) = serde_json::from_str::<Value>(raw) {
             for g in data
