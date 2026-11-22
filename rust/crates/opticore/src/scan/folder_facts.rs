@@ -7,6 +7,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 pub const MAX_SCAN_DEPTH: usize = 3;
+
+pub(crate) fn is_upscaler_dll(name: &str) -> bool {
+    matches!(
+        name,
+        "nvngx_dlss.dll" | "libxess.dll" | "ffx_fsr2_api_x64.dll"
+    )
+}
 pub const MAX_FILES_TO_CHECK: usize = 1000;
 const MAX_ENTRIES_TO_CHECK: usize = 4096;
 
@@ -43,6 +50,7 @@ pub struct FolderFacts {
     pub file_count: usize,
     pub found_exe: bool,
     pub found_game_content: bool,
+    pub has_upscaler_hint: bool,
 }
 
 /// Walk `root` up to MAX_SCAN_DEPTH / MAX_FILES_TO_CHECK, collecting facts.
@@ -113,6 +121,9 @@ fn walk(
             }
             if name_lower.ends_with(".exe") {
                 facts.found_exe = true;
+            }
+            if is_upscaler_dll(&name_lower) {
+                facts.has_upscaler_hint = true;
             }
             if GAME_CONTENT_SUFFIXES
                 .iter()

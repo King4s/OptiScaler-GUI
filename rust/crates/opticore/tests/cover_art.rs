@@ -22,6 +22,108 @@ fn png(width: u32, height: u32) -> Vec<u8> {
 }
 
 #[test]
+fn steam_local_wide_precedes_online_and_portrait_sources() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("appid_620.jpg"), png(80, 60)).unwrap();
+    let library = dir.path().join("library");
+    std::fs::create_dir_all(library.join("620")).unwrap();
+    std::fs::write(library.join("620/header.jpg"), png(120, 60)).unwrap();
+    std::fs::write(library.join("620/library_600x900.jpg"), png(60, 90)).unwrap();
+    let cache = CoverCache::with_sources(
+        dir.path(),
+        vec![library],
+        Arc::new(|_| panic!("local wide cover must avoid network")),
+    );
+    let mut game = game("Cover", "C:/cover", Platform::Steam, "620");
+    game.steam_appid = Some(620);
+    let path = cache.fetch(&game).unwrap();
+    assert_eq!(cache.source(&game).as_deref(), Some("steam local"));
+    let (width, height) = image::image_dimensions(path).unwrap();
+    assert_eq!(width, 2 * height);
+}
+
+#[test]
+#[ignore = "requires OPTISCALER_STEAM_ART_APPID with a locally cached Steam header"]
+fn real_steam_header_keeps_its_shape_without_network() {
+    let id: u32 = std::env::var("OPTISCALER_STEAM_ART_APPID")
+        .unwrap()
+        .parse()
+        .unwrap();
+    let roots = opticore::steam_art::library_caches();
+    let input = opticore::steam_art::landscape_in(&roots, id).unwrap();
+    let expected = image::image_dimensions(input).unwrap();
+    let cache_dir = tempfile::tempdir().unwrap();
+    let cache = CoverCache::with_sources(
+        cache_dir.path(),
+        roots,
+        Arc::new(|_| panic!("unexpected network access")),
+    );
+    let mut g = game(
+        "Local header check",
+        "fixture",
+        Platform::Steam,
+        &id.to_string(),
+    );
+    g.steam_appid = Some(id);
+    let output = image::image_dimensions(cache.fetch(&g).unwrap()).unwrap();
+    assert_eq!(cache.source(&g).as_deref(), Some("steam local"));
+    assert!(output.0 > output.1);
+    // Proportional downscaling must round one dimension to a whole pixel.
+    let ideal_height = f64::from(output.0) * f64::from(expected.1) / f64::from(expected.0);
+    assert!(
+        (f64::from(output.1) - ideal_height).abs() <= 1.0,
+        "{expected:?} -> {output:?}"
+    );
+    println!("app {id}: source {expected:?}, cover {output:?}");
+}
+
+#[test]
+fn old_automatic_portrait_gets_one_wide_attempt_without_losing_offline_cover() {
+    for online in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let mut game = game("Cover", "C:/cover", Platform::Steam, "620");
+        game.steam_appid = Some(620);
+        let library = dir.path().join("library");
+        std::fs::create_dir_all(library.join("620")).unwrap();
+        std::fs::write(library.join("620/library_600x900.jpg"), png(60, 90)).unwrap();
+        let initial = CoverCache::with_sources(dir.path(), vec![library], Arc::new(|_| None));
+        let original = initial.fetch(&game).unwrap();
+        // Simulate 2026.9.0 metadata, which predates the wide-first policy.
+        for entry in std::fs::read_dir(original.parent().unwrap())
+            .unwrap()
+            .flatten()
+        {
+            if entry.file_name().to_string_lossy().starts_with("state-") {
+                let mut state: serde_json::Value =
+                    serde_json::from_slice(&std::fs::read(entry.path()).unwrap()).unwrap();
+                state.as_object_mut().unwrap().remove("wide_checked");
+                std::fs::write(entry.path(), serde_json::to_vec(&state).unwrap()).unwrap();
+            }
+        }
+        let calls = Arc::new(Mutex::new(0));
+        let count = calls.clone();
+        let updated = CoverCache::with_sources(
+            dir.path(),
+            vec![],
+            Arc::new(move |url| {
+                *count.lock().unwrap() += 1;
+                (online && url.ends_with("header.jpg")).then(|| png(120, 60))
+            }),
+        );
+        let selected = updated.fetch(&game).unwrap();
+        assert_eq!(selected == original, !online);
+        assert!(original.exists());
+        assert!(*calls.lock().unwrap() > 0);
+        let restarted = CoverCache::with_sources(
+            dir.path(),
+            vec![],
+            Arc::new(|_| panic!("upgrade must not repeat")),
+        );
+        assert_eq!(restarted.fetch(&game), Some(selected));
+    }
+}
+
+#[test]
 fn keys_isolate_store_identity_and_install_path() {
     let dir = tempfile::tempdir().unwrap();
     let cache = CoverCache::with_sources(dir.path(), vec![], Arc::new(|_| None));
@@ -52,7 +154,7 @@ fn override_survives_refresh_and_clear_does_not_delete_file() {
 }
 
 #[test]
-fn legacy_landscape_is_upgraded_once_to_store_portrait() {
+fn legacy_landscape_is_preserved_without_network() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("appid_620.jpg"), png(120, 60)).unwrap();
     let calls = Arc::new(Mutex::new(Vec::new()));
@@ -71,8 +173,9 @@ fn legacy_landscape_is_upgraded_once_to_store_portrait() {
     let mut game = game("Same", "C:/one", Platform::Steam, "620");
     game.steam_appid = Some(620);
     let upgraded = cache.fetch(&game).unwrap();
-    assert_ne!(upgraded, dir.path().join("appid_620.jpg"));
-    assert_eq!(cache.source(&game).as_deref(), Some("steam store"));
+    assert_eq!(upgraded, dir.path().join("appid_620.jpg"));
+    assert_eq!(cache.source(&game).as_deref(), Some("legacy cache"));
+    assert!(calls.lock().unwrap().is_empty());
     let count = calls.lock().unwrap().len();
     assert_eq!(cache.fetch(&game), Some(upgraded));
     assert_eq!(calls.lock().unwrap().len(), count);
@@ -80,9 +183,8 @@ fn legacy_landscape_is_upgraded_once_to_store_portrait() {
 }
 
 #[test]
-fn supplied_steam_header_does_not_outrank_portrait() {
+fn supplied_steam_header_outranks_portrait() {
     let dir = tempfile::tempdir().unwrap();
-    std::fs::write(dir.path().join("appid_620.jpg"), png(120, 60)).unwrap();
     let fetcher: Fetcher = Arc::new(move |url| {
         if url.contains("GetItems") {
             Some(br#"{"response":{"store_items":[{"appid":620,"success":1,"assets":{"asset_url_format":"steam/apps/620/${FILENAME}","library_capsule":"library_600x900.jpg"}}]}}"#.to_vec())
@@ -99,7 +201,7 @@ fn supplied_steam_header_does_not_outrank_portrait() {
     game.steam_appid = Some(620);
     game.art_url = Some("https://cdn.akamai.steamstatic.com/steam/apps/620/header.jpg".into());
     assert!(cache.fetch(&game).is_some());
-    assert_eq!(cache.source(&game).as_deref(), Some("steam store"));
+    assert_eq!(cache.source(&game).as_deref(), Some("store supplied"));
 }
 
 #[test]
@@ -209,7 +311,7 @@ fn refresh_offline_preserves_last_good_cover_across_restart() {
 }
 
 #[test]
-fn refresh_rejects_inferior_header_and_preserves_portrait_state() {
+fn cached_steam_portrait_is_replaced_by_wide_header_on_refresh() {
     let dir = tempfile::tempdir().unwrap();
     let mut game = game("Cover", "C:/cover", Platform::Steam, "620");
     game.steam_appid = Some(620);
@@ -232,14 +334,16 @@ fn refresh_rejects_inferior_header_and_preserves_portrait_state() {
         vec![],
         Arc::new(|url| url.ends_with("header.jpg").then(|| png(120, 60))),
     );
-    assert_eq!(fallback.refresh(&game), Some(original.clone()));
+    let wide = fallback.refresh(&game).unwrap();
+    assert_ne!(wide, original);
+    assert!(original.exists());
     let restarted = CoverCache::with_sources(dir.path(), vec![], Arc::new(|_| None));
-    assert_eq!(restarted.fetch(&game), Some(original));
-    assert_eq!(restarted.source(&game).as_deref(), Some("steam store"));
+    assert_eq!(restarted.fetch(&game), Some(wide));
+    assert_eq!(restarted.source(&game).as_deref(), Some("steam header"));
 }
 
 #[test]
-fn refresh_can_improve_a_cached_landscape() {
+fn refresh_preserves_wide_cover_over_portrait() {
     let dir = tempfile::tempdir().unwrap();
     let mut game = game("Cover", "C:/cover", Platform::Epic, "cover");
     game.art_url = Some("https://cdn1.epicgames.com/cover.jpg".into());
@@ -247,7 +351,7 @@ fn refresh_can_improve_a_cached_landscape() {
     let original = landscape.fetch(&game).unwrap();
     let portrait = CoverCache::with_sources(dir.path(), vec![], Arc::new(|_| Some(png(60, 90))));
     let improved = portrait.refresh(&game).unwrap();
-    assert_ne!(improved, original);
+    assert_eq!(improved, original);
     assert!(original.exists());
     let restarted = CoverCache::with_sources(dir.path(), vec![], Arc::new(|_| None));
     assert_eq!(restarted.fetch(&game), Some(improved));

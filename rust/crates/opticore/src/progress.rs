@@ -54,11 +54,11 @@ pub enum TaskEvent {
         phase: GuiUpdatePhase,
         label: String,
     },
-    /// The release payload was fetched so the INI editor's "Restore defaults"
-    /// has a pristine OptiScaler.ini to compare against (None = fetch failed).
+    /// Only the requesting game and installed tag may consume these defaults.
     DefaultsFetched {
-        ini_path: Option<PathBuf>,
-        message: String,
+        game_ini: PathBuf,
+        tag: String,
+        result: Result<crate::ini::IniDocument, String>,
     },
     /// A log line for the log screen.
     Log(String),

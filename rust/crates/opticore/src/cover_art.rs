@@ -22,6 +22,8 @@ static NEXT_FILE: AtomicU64 = AtomicU64::new(0);
 struct State {
     source: String,
     file: Option<String>,
+    #[serde(default)]
+    wide_checked: bool,
 }
 
 /// An append-only per-install cache. Old Python cache entries remain readable.
@@ -61,6 +63,12 @@ impl CoverCache {
         let lock = self.entry_lock(&dir).ok()?;
         let _guard = lock.lock().ok()?;
         if let Some(state) = read_state(&dir) {
+            if !state.wide_checked
+                && verified_steam_appid(game).is_some()
+                && !matches!(state.source.as_str(), "user override" | "steamgriddb")
+            {
+                return self.resolve(game, &dir);
+            }
             if state.source != "cleared" {
                 if let Some(path) = self.state_path(game, &dir, &state) {
                     return Some(path);
@@ -121,6 +129,7 @@ impl CoverCache {
             write_state(
                 &dir,
                 &State {
+                    wide_checked: true,
                     source: "cleared".into(),
                     file: None,
                 },
@@ -250,6 +259,7 @@ impl CoverCache {
         write_state(
             &dir,
             &State {
+                wide_checked: true,
                 source: source.into(),
                 file: Some(file),
             },
@@ -258,11 +268,19 @@ impl CoverCache {
     }
 
     fn resolve(&self, game: &Game, dir: &Path) -> Option<PathBuf> {
+        if let Some(appid) = verified_steam_appid(game) {
+            if let Some(path) = crate::steam_art::landscape_in(&self.steam_library_caches, appid) {
+                if let Some(result) = self.save_from_path(dir, &path, "steam local") {
+                    return Some(result);
+                }
+            }
+        }
         let legacy = self.legacy_path(game);
-        if legacy.as_ref().is_some_and(|path| is_portrait_file(path)) {
+        if legacy.as_ref().is_some_and(|path| is_landscape_file(path)) {
             return publish_automatic(
                 dir,
                 State {
+                    wide_checked: true,
                     source: "legacy cache".into(),
                     file: None,
                 },
@@ -270,19 +288,46 @@ impl CoverCache {
             );
         }
 
-        if let Some(appid) = verified_steam_appid(game) {
-            if let Some(path) = crate::steam_art::portrait_in(&self.steam_library_caches, appid) {
-                if let Some(result) = self.save_from_path(dir, &path, "steam local") {
-                    return Some(result);
-                }
-            }
-        }
         if game.platform != Platform::Steam {
             if let Some(result) = self.store_supplied(game, dir) {
                 return Some(result);
             }
         }
         if let Some(appid) = verified_steam_appid(game) {
+            if let Some(result) = self.store_supplied(game, dir) {
+                return Some(result);
+            }
+            let header =
+                format!("https://cdn.akamai.steamstatic.com/steam/apps/{appid}/header.jpg");
+            if let Some(result) = self.download_wide(dir, &header, "steam header") {
+                return Some(result);
+            }
+            let mut appdetails_fallback = None;
+            if let Some(body) = (self.fetcher)(&images::appdetails_url(appid)) {
+                for url in images::appdetails_image_urls(&body, appid) {
+                    if !safe_store_url(&url) {
+                        continue;
+                    }
+                    if let Some(bytes) = (self.fetcher)(&url) {
+                        if let Some(image) = crate::steam_art::decode_portrait_bytes(&bytes) {
+                            if image.width() > image.height() {
+                                if let Some(result) =
+                                    self.save_bytes(dir, &bytes, "steam appdetails")
+                                {
+                                    return Some(result);
+                                }
+                            } else if appdetails_fallback.is_none() {
+                                appdetails_fallback = Some(bytes);
+                            }
+                        }
+                    }
+                }
+            }
+            if let Some(path) = crate::steam_art::portrait_in(&self.steam_library_caches, appid) {
+                if let Some(result) = self.save_from_path(dir, &path, "steam local") {
+                    return Some(result);
+                }
+            }
             let body = (self.fetcher)(&images::store_items_url(appid));
             if let Some(url) = body
                 .as_deref()
@@ -292,19 +337,9 @@ impl CoverCache {
                     return Some(result);
                 }
             }
-            if let Some(result) = self.store_supplied(game, dir) {
-                return Some(result);
-            }
-            let header =
-                format!("https://cdn.akamai.steamstatic.com/steam/apps/{appid}/header.jpg");
-            if let Some(result) = self.download(dir, &header, "steam header") {
-                return Some(result);
-            }
-            if let Some(body) = (self.fetcher)(&images::appdetails_url(appid)) {
-                for url in images::appdetails_image_urls(&body, appid) {
-                    if let Some(result) = self.download(dir, &url, "steam appdetails") {
-                        return Some(result);
-                    }
+            if let Some(bytes) = appdetails_fallback {
+                if let Some(result) = self.save_bytes(dir, &bytes, "steam appdetails") {
+                    return Some(result);
                 }
             }
         }
@@ -321,6 +356,7 @@ impl CoverCache {
                 return publish_automatic(
                     dir,
                     State {
+                        wide_checked: true,
                         source: "exe icon".into(),
                         file: Some(file),
                     },
@@ -336,6 +372,7 @@ impl CoverCache {
         publish_automatic(
             dir,
             State {
+                wide_checked: true,
                 source: source.into(),
                 file: None,
             },
@@ -350,8 +387,24 @@ impl CoverCache {
         } else {
             url.to_string()
         };
-        supplied_url_matches_game(game, &url)
-            .then(|| self.download(dir, &url, "store supplied"))
+        if !supplied_url_matches_game(game, &url) {
+            return None;
+        }
+        if game.platform == Platform::Steam {
+            self.download_wide(dir, &url, "store supplied")
+        } else {
+            self.download(dir, &url, "store supplied")
+        }
+    }
+
+    fn download_wide(&self, dir: &Path, url: &str, label: &str) -> Option<PathBuf> {
+        if !safe_store_url(url) {
+            return None;
+        }
+        let bytes = (self.fetcher)(url)?;
+        let image = crate::steam_art::decode_portrait_bytes(&bytes)?;
+        (image.width() > image.height())
+            .then(|| self.save_bytes(dir, &bytes, label))
             .flatten()
     }
 
@@ -378,6 +431,7 @@ impl CoverCache {
         publish_automatic(
             dir,
             State {
+                wide_checked: true,
                 source: label.into(),
                 file: Some(file),
             },
@@ -457,6 +511,11 @@ fn publish_automatic(dir: &Path, candidate: State, path: Option<PathBuf>) -> Opt
         if matches!(state.source.as_str(), "user override" | "steamgriddb")
             || Some(*quality) >= candidate_quality
         {
+            if !state.wide_checked {
+                let mut checked = state.clone();
+                checked.wide_checked = true;
+                let _ = write_state(dir, &checked);
+            }
             return Some(previous_path.clone());
         }
     }
@@ -470,14 +529,14 @@ fn automatic_quality(path: &Path, source: &str) -> Option<(u8, bool, u64)> {
     let bytes = read_image_file(path).ok()?;
     let image = crate::steam_art::decode_portrait_bytes(&bytes)?;
     let (width, height) = image.dimensions();
-    // Actual cover artwork outranks logos/icons, then prefer portrait shape and
+    // Actual cover artwork outranks logos/icons, then prefer landscape shape and
     // usable pixel area. Equal-quality candidates leave the existing state alone.
     let kind = match source {
         "exe icon" => 0,
         "xbox local" => 1,
         _ => 2,
     };
-    Some((kind, height > width, u64::from(width) * u64::from(height)))
+    Some((kind, width > height, u64::from(width) * u64::from(height)))
 }
 
 fn verified_steam_appid(game: &Game) -> Option<u32> {
@@ -490,7 +549,7 @@ fn verified_steam_appid(game: &Game) -> Option<u32> {
         .then_some(appid)
 }
 
-fn is_portrait_file(path: &Path) -> bool {
+fn is_landscape_file(path: &Path) -> bool {
     fs::metadata(path)
         .ok()
         .is_some_and(|m| m.len() <= MAX_IMAGE_BYTES as u64)
@@ -499,7 +558,7 @@ fn is_portrait_file(path: &Path) -> bool {
             .and_then(|b| crate::steam_art::decode_portrait_bytes(&b))
             .is_some_and(|i| {
                 let (w, h) = i.dimensions();
-                h > w
+                w > h
             })
 }
 
@@ -870,6 +929,7 @@ mod exact_id_tests {
         let original =
             save_dynamic_image(dir.path(), image::DynamicImage::new_rgb8(120, 60)).unwrap();
         let original_state = State {
+            wide_checked: true,
             source: "steam header".into(),
             file: Some(original.file_name().unwrap().to_string_lossy().into_owned()),
         };
@@ -878,6 +938,7 @@ mod exact_id_tests {
         let result = publish_automatic(
             dir.path(),
             State {
+                wide_checked: true,
                 source: "exe icon".into(),
                 file: Some(icon.file_name().unwrap().to_string_lossy().into_owned()),
             },

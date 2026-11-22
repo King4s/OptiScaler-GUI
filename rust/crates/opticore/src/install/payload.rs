@@ -28,7 +28,11 @@ pub const LEGACY_PROXY_FILENAMES: &[&str] = &["nvngx.dll"];
 const STALE_LEGACY_FILES: &[&str] = &["nvapi64.dll", "nvngx.dll"];
 
 /// Release marker files never copied to the game dir.
-const PAYLOAD_EXCLUDED_FILENAMES: &[&str] = &["OptiScaler.dll", super::manifest::MANIFEST_FILENAME];
+const PAYLOAD_EXCLUDED_FILENAMES: &[&str] = &[
+    "OptiScaler.dll",
+    super::manifest::MANIFEST_FILENAME,
+    super::CACHE_INVENTORY,
+];
 const PAYLOAD_EXCLUDED_PREFIXES: &[&str] = &["!!"];
 
 /// Directories the legacy (manifest-less) uninstall removes.
@@ -330,6 +334,7 @@ mod tests {
         fs::create_dir_all(&dst).unwrap();
         for name in [
             "OptiScaler.dll",
+            super::super::CACHE_INVENTORY,
             "!! README_EXTRACT ALL FILES TO GAME FOLDER !!.txt",
             "fakenvapi.dll",
             "OptiScaler.ini",
@@ -342,10 +347,15 @@ mod tests {
         assert!(payload.files.contains(&"fakenvapi.dll".to_string()));
         assert!(payload.files.contains(&"Licenses/LICENSE.txt".to_string()));
         assert!(!payload.files.iter().any(|f| f.contains("OptiScaler.dll")));
+        assert!(!payload
+            .files
+            .iter()
+            .any(|f| f == super::super::CACHE_INVENTORY));
         assert!(!payload.files.iter().any(|f| f.starts_with("!!")));
         assert_eq!(payload.directories, vec!["Licenses"]);
         assert!(dst.join("fakenvapi.dll").exists());
         assert!(!dst.join("OptiScaler.dll").exists());
+        assert!(!dst.join(super::super::CACHE_INVENTORY).exists());
     }
 
     #[test]

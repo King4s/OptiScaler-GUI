@@ -27,6 +27,8 @@ pub struct StoreEntry {
 pub struct StoreScan {
     pub entries: Vec<StoreEntry>,
     pub warnings: Vec<String>,
+    /// Informational skips for the log, not the library warning banner.
+    pub notes: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -107,9 +109,31 @@ impl StoreScan {
         {
             return;
         }
-        if !path.is_dir() {
-            self.warn(format!("{platform:?}: stale install path for {id}"));
-            return;
+        match std::fs::metadata(&path) {
+            Ok(metadata) if metadata.is_dir() => {}
+            Err(error)
+                if platform == Platform::Ubisoft
+                    && error.kind() == std::io::ErrorKind::NotFound =>
+            {
+                if self.notes.len() < MAX_WARNINGS {
+                    self.notes.push(format!(
+                        "Ubisoft: skipped missing install path for {id} (stale registration)"
+                    ));
+                }
+                return;
+            }
+            Err(error) => {
+                self.warn(format!(
+                    "{platform:?}: cannot read install path for {id}: {error}"
+                ));
+                return;
+            }
+            Ok(_) => {
+                self.warn(format!(
+                    "{platform:?}: install path is not a directory for {id}"
+                ));
+                return;
+            }
         }
         let Some(facts) = folder_facts::collect(&path) else {
             self.warn(format!("{platform:?}: unreadable install path for {id}"));
@@ -131,6 +155,12 @@ impl StoreScan {
 
     fn extend(&mut self, other: StoreScan) {
         self.entries.extend(other.entries);
+        self.notes.extend(
+            other
+                .notes
+                .into_iter()
+                .take(MAX_WARNINGS - self.notes.len()),
+        );
         for warning in other.warnings {
             self.warn(warning);
         }

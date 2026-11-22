@@ -86,6 +86,26 @@ pub fn show(ctx: &egui::Context, state: &mut AppState, ops: &mut Ops) {
                 ));
         }
         toolbar(ui, ctx, state, ops);
+        ui.horizontal_wrapped(|ui| {
+            let mut candidates_only = state.config.candidates_only;
+            if ui
+                .checkbox(
+                    &mut candidates_only,
+                    state.i18n.tr("library.candidates_only"),
+                )
+                .on_hover_text(state.i18n.tr("library.candidates_hint"))
+                .changed()
+            {
+                state.set_candidates_only(candidates_only);
+            }
+            if state.config.candidates_only
+                && ui
+                    .small_button(state.i18n.tr("library.all_games"))
+                    .clicked()
+            {
+                state.clear_filters();
+            }
+        });
         if !state.scan_warnings.is_empty() {
             ui.collapsing(
                 RichText::new(state.i18n.tr("library.scan_warnings")).color(pal.badge_warn),
@@ -223,6 +243,7 @@ fn toolbar(ui: &mut egui::Ui, ctx: &egui::Context, state: &mut AppState, ops: &m
 /// shows how many filters are active (search box not counted — it's visible).
 fn filter_menu(ui: &mut egui::Ui, state: &mut AppState) {
     let active = [
+        state.config.candidates_only,
         state.platform_filter.is_some(),
         state.engine_filter.is_some(),
         state.optiscaler_filter.is_some(),

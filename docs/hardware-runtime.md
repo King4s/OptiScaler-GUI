@@ -18,7 +18,7 @@ No hardware upload is added; compatibility reports still require preview and exp
 
 | Family | Guidance, conditional on game support |
 |---|---|
-| Radeon RX 6000 (RDNA2) | Optional pinned community FSR 4.1.1b INT8 RDNA2 fix |
+| Radeon RX 6000 (RDNA2) | Try the official runtime first. [OptiScaler v0.9.5](https://github.com/optiscaler/OptiScaler/releases/tag/v0.9.5) includes FSR 4.1.2 INT8 for supported RDNA2 models and selected Ryzen APUs. The older community 4.1.1b fix remains opt-in. |
 | RX 7000 / RX 9000 (RDNA3/4) | Keep official FSR 4 |
 | NVIDIA RTX | Prefer native DLSS |
 | GTX / older Radeon RX | Consider XeSS or FSR 3.1 |

@@ -26,6 +26,7 @@ pub struct AppConfig {
     /// Games sort column: "name" (default), "platform", "engine", "optiscaler"
     pub sort_key: String,
     pub sort_ascending: bool,
+    pub candidates_only: bool,
     /// Explicit local library roots; disabled roots remain in the saved list.
     pub scan_roots: Vec<ScanRoot>,
     /// Fields we don't own (Python app settings) — preserved on save.
@@ -45,6 +46,7 @@ impl Default for AppConfig {
             view_mode: "cards_large".to_string(),
             sort_key: "name".to_string(),
             sort_ascending: true,
+            candidates_only: true,
             scan_roots: Vec::new(),
             passthrough: Map::new(),
         }
@@ -123,6 +125,11 @@ impl AppConfig {
                         config.sort_ascending = b;
                     }
                 }
+                "candidates_only" => {
+                    if let Some(b) = value.as_bool() {
+                        config.candidates_only = b;
+                    }
+                }
                 "scan_roots" => match serde_json::from_value::<Vec<ScanRoot>>(value.clone()) {
                     Ok(roots) => config.scan_roots = roots,
                     Err(_) => {
@@ -163,6 +170,7 @@ impl AppConfig {
         map.insert("view_mode".into(), Value::String(self.view_mode.clone()));
         map.insert("sort_key".into(), Value::String(self.sort_key.clone()));
         map.insert("sort_ascending".into(), Value::Bool(self.sort_ascending));
+        map.insert("candidates_only".into(), Value::Bool(self.candidates_only));
         if !self.scan_roots.is_empty() || !map.contains_key("scan_roots") {
             map.insert("scan_roots".into(), serde_json::to_value(&self.scan_roots)?);
         }

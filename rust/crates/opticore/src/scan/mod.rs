@@ -31,6 +31,7 @@ pub struct ScanConfig {
 pub struct ScanResult {
     pub games: Vec<Game>,
     pub warnings: Vec<String>,
+    pub notes: Vec<String>,
 }
 
 /// Community-verified game list bundled from the Python app's data file
@@ -130,6 +131,7 @@ fn build_game(
         engine_supported: folder_facts::is_engine_supported(engine),
         anti_cheat: folder_facts::detect_anti_cheat(facts),
         community_verified: false, // filled by caller (needs final name)
+        has_upscaler_hint: facts.has_upscaler_hint,
         optiscaler_installed: folder_facts::detect_optiscaler(path, facts),
         art_url: None,
     }
@@ -533,6 +535,7 @@ pub fn scan_all(config: &ScanConfig) -> ScanResult {
     ScanResult {
         games: dedup_games(games),
         warnings,
+        notes: stores.notes,
     }
 }
 
@@ -552,6 +555,15 @@ fn title_quality(source: TitleSource) -> u8 {
 /// Copy the facts `source` has and `target` lacks. Nothing is ever overwritten,
 /// so merging two hits for one install can only add information.
 fn fill_gaps(target: &mut Game, source: Game) {
+    target.has_upscaler_hint |= source.has_upscaler_hint;
+    target.community_verified |= source.community_verified;
+    target.optiscaler_installed |= source.optiscaler_installed;
+    target.engine_supported &= source.engine_supported;
+    for anti_cheat in source.anti_cheat {
+        if !target.anti_cheat.contains(&anti_cheat) {
+            target.anti_cheat.push(anti_cheat);
+        }
+    }
     if target.store_identity.is_none() {
         target.store_identity = source.store_identity;
     }

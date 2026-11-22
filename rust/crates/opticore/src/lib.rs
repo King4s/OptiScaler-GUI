@@ -17,6 +17,7 @@ pub mod model;
 pub mod observations;
 pub mod profiles;
 pub mod progress;
+pub mod release_defaults;
 pub mod report;
 pub mod resolver;
 pub mod scan;

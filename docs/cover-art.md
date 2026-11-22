@@ -31,16 +31,17 @@ user selections for another game. Cache clearing acquires each game lock in turn
 The directory contains append-only, versioned JPEGs and state records. Writes
 use a bounded image decoder, temporary file, sync, and rename; refresh does not
 purge caches. Existing `appid_<id>` and title-keyed files remain untouched and
-can be shown as read-only legacy fallback. A legacy landscape is offered an
-upgrade to an identified Steam portrait once, then a saved result/miss prevents
-repeat network traffic. Legacy title files lack store/path provenance; their
+can be shown as read-only legacy fallback. Existing landscape art is preserved.
+Older automatic Steam cache entries receive one wide-first lookup; failures
+retain their last usable cover without repeated requests. Explicit selections
+are never replaced. Legacy title files lack store/path provenance; their
 original ambiguity cannot be repaired by the new key. The new cache never writes
 to those names.
 
-Automatic lookup is local Steam portrait, an allowlisted HTTPS store-supplied
-URL, then Steam's portrait for an appid confirmed by both `steam_appid` and the
-observed Steam `StoreIdentity`; Steam's header and guarded appdetails
-header/capsule URLs follow. Xbox in-install logos and the executable icon remain
+For identified Steam games, automatic lookup prefers local wide artwork, then
+allowlisted store-supplied wide images, Steam's header and guarded appdetails
+images. Local and online portraits are fallbacks only. Both `steam_appid` and
+the observed Steam `StoreIdentity` must agree. Xbox in-install logos and the executable icon remain
 offline fallbacks. No fuzzy title
 lookup is used to infer a Steam appid. HTTPS downloads reject redirects, and
 untrusted store URLs are restricted to known store artwork domains. Failures

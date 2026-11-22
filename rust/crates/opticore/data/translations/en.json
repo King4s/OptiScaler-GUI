@@ -1,5 +1,8 @@
 {
   "library": {
+    "candidates_only": "Likely compatible",
+    "candidates_hint": "Shows games with upscaler DLL hints, a community report or an OptiScaler installation. Detected anti-cheat and unsupported engines are excluded. This is not a compatibility guarantee; unknown games may also work.",
+    "all_games": "Show all games",
     "roots": "Game library folders",
     "roots_hint": "Enable folders to scan. Removing a folder never deletes games. Changes take effect on rescan.",
     "add_root": "Add library folder",
@@ -466,7 +469,7 @@
     "failed": "Could not save or read local profile.",
     "restore_official": "Restore official runtime",
     "recommendations": "Hardware recommendations (advisory only)",
-    "rdna2": "RX 6000 / RDNA2: optional community FSR 4.1.1b INT8 fix; explicitly choose this game’s GPU and opt in.",
+    "rdna2": "RX 6000 / RDNA2: try the official runtime first. OptiScaler v0.9.5 includes FSR 4.1.2 INT8 for supported models. The older community 4.1.1b fix is optional.",
     "rdna34": "RX 7000/9000 / RDNA3/4: keep official FSR 4 where supported.",
     "rtx": "RTX: prefer native DLSS where the game supports it.",
     "arc": "Intel Arc: prefer XeSS where supported.",
@@ -476,6 +479,11 @@
     "community_warning": "Use the pinned community FSR 4.1.1b INT8 RDNA2 fix from the3rdparty1917/fsr4xyz? This is NOT an official AMD or OptiScaler runtime. Compatibility and stability are not guaranteed. Do not use mods in anti-cheat/online games; this provides no anti-cheat bypass. Yes opts in for this install/update only. No keeps the official payload."
   },
   "advice": {
+    "fetch_defaults": "Load defaults for",
+    "loading_defaults": "Loading defaults…",
+    "no_version_defaults": "Defaults unavailable: the installed OptiScaler version is unknown.",
+    "restore_defaults": "Restore defaults",
+    "version_changed": "The installed version changed. Reopen the editor before saving.",
     "title": "Recommended for this game",
     "refresh": "Refresh game observations",
     "pending": "Reading game files...",

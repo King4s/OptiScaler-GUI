@@ -19,6 +19,7 @@ pub enum Screen {
 
 /// Open OptiScaler.ini editing session for one game.
 pub struct EditorState {
+    pub installed_version: Option<String>,
     pub game_name: String,
     pub ini_path: PathBuf,
     pub doc: IniDocument,
@@ -131,24 +132,6 @@ pub enum ArtState {
 
 const TEXTURE_CACHE_CAP: usize = 128;
 const LOG_CAP: usize = 2000;
-
-/// Pristine OptiScaler.ini from the newest cached release payload
-/// (cache/optiscaler_downloads/extracted/*/OptiScaler.ini).
-fn load_default_ini() -> Option<IniDocument> {
-    let extracted = crate::ops::base_dir()
-        .join("cache")
-        .join("optiscaler_downloads")
-        .join("extracted");
-    let mut candidates: Vec<PathBuf> = std::fs::read_dir(&extracted)
-        .ok()?
-        .flatten()
-        .map(|e| e.path().join("OptiScaler.ini"))
-        .filter(|p| p.exists())
-        .collect();
-    candidates.sort();
-    let newest = candidates.pop()?;
-    opticore::ini::read_file(&newest)
-}
 
 pub struct AppState {
     pub cover_ui: crate::cover_ui::CoverUi,
@@ -266,12 +249,18 @@ impl AppState {
         };
         let ini_path = install_dir.join("OptiScaler.ini");
         if let Some(doc) = opticore::ini::read_file(&ini_path) {
+            let installed_version =
+                opticore::install::manifest::read(&install_dir).map(|m| m.optiscaler_version);
+            let defaults = installed_version.as_deref().and_then(|tag| {
+                opticore::release_defaults::cached(&crate::ops::downloads_dir(), tag)
+            });
             self.editor = Some(EditorState {
+                installed_version,
                 game_name: game.name.clone(),
                 ini_path,
                 original: doc.clone(),
                 doc,
-                defaults: load_default_ini(),
+                defaults,
                 dirty: false,
                 status: None,
                 applied_changes: Vec::new(),
@@ -300,6 +289,7 @@ impl AppState {
     /// True when any filter beyond the defaults is active.
     pub fn filters_active(&self) -> bool {
         !self.search.is_empty()
+            || self.config.candidates_only
             || self.platform_filter.is_some()
             || self.engine_filter.is_some()
             || self.optiscaler_filter.is_some()
@@ -307,11 +297,19 @@ impl AppState {
     }
 
     pub fn clear_filters(&mut self) {
+        self.set_candidates_only(false);
         self.search.clear();
         self.platform_filter = None;
         self.engine_filter = None;
         self.optiscaler_filter = None;
         self.anticheat_filter = None;
+    }
+
+    pub fn set_candidates_only(&mut self, enabled: bool) {
+        self.config.candidates_only = enabled;
+        if !self.config_path.as_os_str().is_empty() {
+            let _ = self.config.save(&self.config_path);
+        }
     }
 
     /// Set the sort column; a second click on the same column flips the
@@ -344,6 +342,7 @@ impl AppState {
             .enumerate()
             .filter(|(_, g)| {
                 (needle.is_empty() || g.key.name_lower.contains(&needle))
+                    && (!self.config.candidates_only || g.is_optiscaler_candidate())
                     && self.platform_filter.is_none_or(|p| g.platform == p)
                     && self.engine_filter.is_none_or(|e| g.engine == e)
                     && self
@@ -415,5 +414,28 @@ impl AppState {
             }
         }
         Some(handle)
+    }
+}
+
+#[cfg(test)]
+mod candidate_tests {
+    use super::*;
+
+    #[test]
+    fn default_filter_hides_unknown_games_and_can_be_cleared() {
+        let mut known = Game::new("Known", PathBuf::from("C:/known"), Platform::Steam);
+        known.community_verified = true;
+        let mut state = AppState {
+            games: vec![
+                Game::new("Unknown", PathBuf::from("C:/unknown"), Platform::Steam),
+                known,
+            ],
+            ..Default::default()
+        };
+        assert_eq!(state.filtered_indices(), vec![1]);
+        assert!(state.filters_active());
+        state.clear_filters();
+        assert_eq!(state.filtered_indices().len(), 2);
+        assert!(!state.filters_active());
     }
 }

@@ -37,7 +37,7 @@ This guide describes the Rust `2026.9.0` discovery/artwork features. See the [ve
 ## Loaded status or log evidence looks inconsistent
 
 - DLL names in the observation panel are hints, not ownership proof and not proof that Windows loaded the DLL into the game.
-- The `Init done` loaded indicator is parsed only for recorded OptiScaler v0.9.4 installs. It is derived from `OptiScaler.log` beside the selected game executable, not the proxy target folder. A matching line can be left over from an earlier launch; compare the displayed log modification time with the latest test and reproduce after starting the game.
+- GUI 2026.10.0 recognizes the `Init done` indicator only for recorded OptiScaler v0.9.4 installs. The unreleased compatibility fix also recognizes v0.9.5. The marker and both file log formats are verified against the tagged [initialization code](https://github.com/optiscaler/OptiScaler/blob/v0.9.5/OptiScaler/dllmain.cpp) and [logger](https://github.com/optiscaler/OptiScaler/blob/v0.9.5/OptiScaler/Logger.cpp). The GUI checks the log beside the selected EXE. Compare its timestamp with the latest launch: an old line is not proof of current loading, rendering or overlay operation.
 - If there is no matching line, the result is unknown rather than proof that OptiScaler failed to load. Other versions, malformed/oversized logs, or inaccessible files do not produce a positive result.
 - The GUI application log is under `logs/optiscaler-gui.log` beside the app executable; rotated output is `logs/optiscaler-gui.old.log`, and panic details are written to `logs/crash.log`. Use the Log screen or its folder button to locate logs. Review them before sharing because paths and diagnostic context may be sensitive.
 
@@ -47,20 +47,38 @@ Use the game's **Compatibility report** section to select your test result, prev
 
 ## A game is missing from the library
 
+- Choose **Show all games** before rescanning. **Likely compatible** hides unknown titles and known exclusions, not just games confirmed incompatible.
+
 - Rescan after launcher installation or metadata changes. Discovery depends on local installed-game records and existing directories; it cannot guarantee every game will appear.
 - Amazon uses its local installed-game SQLite database; Ubisoft uses launcher install registry keys; EA uses registry product IDs and installerdata XML in known or registry-linked locations; Battle.net uses Agent `product.db`. Incomplete, stale or inaccessible metadata can be skipped with warnings. See [store format limits](store-formats.md).
 - Add a specific local game-library folder, enable it and rescan. Removing a configured root only removes that scan setting; it does not delete games. A game may still appear through another enabled source.
 - Custom scanning is bounded. Drive, profile and system roots, network roots and link/reparse-point traversal are rejected. Choose a narrower real folder when a scan reaches its work limit.
 - Manual game selection remains available. A discovered store ID or folder does not bypass the normal executable and install-target review.
 
-## Artwork is missing, wrong or remains landscape
+## Artwork is missing, wrong or remains portrait
 
-- Cards preserve image aspect ratio and fit the whole cover. Empty space around a landscape image in a portrait area is expected.
+- Cards fit the entire cover without changing its proportions. A narrow fallback image can have empty space on either side.
 - The new cache separates installs by platform, observed store identity and normalized path. Existing legacy files remain readable and untouched, but old title-only art can still show an ambiguous match.
-- An identified Steam game can upgrade legacy landscape artwork using local or hosted portraits. Missing, invalid or wrong-ID images fall through to other sources, cached art or icons. Artwork does not affect game identity, compatibility or install targets.
+- An identified Steam game prefers its own local wide header. Missing or invalid wide sources fall back to other artwork, including portraits. Artwork does not affect game identity, compatibility or install targets.
 - Use the artwork controls to choose a local image, inspect its source, reset the current selection or refresh automatic sources. Refresh preserves a selected local or SteamGridDB image; reset the selection first if you want automatic artwork again. Reset does not delete the original image.
 - A saved miss avoids retrying downloads on every render. Refresh explicitly retries automatic sources when connectivity or metadata changes and preserves the last good artwork if replacement fails.
-- Clear cache only clears recognized automatic cache entries. Legacy files and entries with selected-art history are preserved; do not delete the entire image-cache folder to force a portrait upgrade.
+- Use Refresh to retry wide artwork. Do not delete the whole image cache: it may contain manual selections.
+
+## Restore defaults is unavailable
+
+- The INI editor uses defaults from the installed tag recorded in the game's manifest. An exact cached copy works offline. If it is missing, choose **Load defaults for** the displayed tag; no newer release is substituted. An unknown version or unavailable release leaves the game INI alone. Loading defaults is separate from previewing and saving changes.
+
+## Reproduce an upstream upgrade check
+
+The daily GitHub watcher selects one untested stable tag at a time, starting with v0.9.5. It records the Windows file-operation result and run link on the bot's tracking issue. It does not launch games or publish releases. To intentionally rerun the newest stable tag, use **Run workflow** and enable the rerun option.
+
+For a local reproduction, point `OPTISCALER_V094_ARCHIVE` to the official v0.9.4 archive, set `OPTISCALER_EXPECTED_TAG` to the tag being reviewed, and run this in `rust/`:
+
+```powershell
+cargo test -p opticore --locked --test upstream_upgrade_real -- --ignored
+```
+
+The test verifies the pinned baseline and downloads the exact target release. Both installation and uninstall operate inside a temporary directory, not an installed game.
 
 ## SteamGridDB artwork
 

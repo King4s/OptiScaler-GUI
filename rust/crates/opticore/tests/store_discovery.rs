@@ -89,6 +89,42 @@ fn amazon_locked_db_is_nonfatal_and_visible() {
 }
 
 #[test]
+fn missing_ubisoft_install_is_not_a_scan_warning() {
+    let tmp = tempfile::tempdir().unwrap();
+    let result = scan_ubisoft_records([RegistryRecord::new(
+        "5210",
+        Some(
+            tmp.path()
+                .join("removed_game")
+                .to_string_lossy()
+                .into_owned(),
+        ),
+        None,
+        None,
+    )]);
+    assert!(result.entries.is_empty());
+    assert!(result.warnings.is_empty(), "{:?}", result.warnings);
+    assert_eq!(result.notes.len(), 1);
+    assert!(result.notes[0].contains("5210"));
+    assert!(result.notes[0].contains("stale registration"));
+}
+
+#[test]
+fn ubisoft_install_path_that_is_a_file_remains_a_warning() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("not_a_directory");
+    std::fs::write(&path, b"invalid install target").unwrap();
+    let result = scan_ubisoft_records([RegistryRecord::new(
+        "5210",
+        Some(path.to_string_lossy().into_owned()),
+        None,
+        None,
+    )]);
+    assert!(result.entries.is_empty());
+    assert!(!result.warnings.is_empty());
+}
+
+#[test]
 fn ubisoft_requires_numeric_id_and_live_game_directory() {
     let tmp = tempfile::tempdir().unwrap();
     let installed = game_dir(tmp.path(), "New Location");

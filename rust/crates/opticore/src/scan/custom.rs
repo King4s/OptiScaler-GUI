@@ -235,6 +235,7 @@ impl Scanner<'_> {
                     facts.depth1_files.push(name.clone());
                 }
                 facts.found_exe |= name.ends_with(".exe");
+                facts.has_upscaler_hint |= folder_facts::is_upscaler_dll(&name);
                 facts.found_game_content |= [".pak", ".uasset", ".dll", ".bin", ".unity3d"]
                     .iter()
                     .any(|suffix| name.ends_with(suffix));

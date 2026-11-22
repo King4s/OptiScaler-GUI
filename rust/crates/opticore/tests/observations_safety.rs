@@ -74,7 +74,7 @@ fn missing_target_remains_unknown() {
 }
 
 #[test]
-fn verified_v094_info_marker_is_loading_evidence_only() {
+fn verified_v094_and_v095_info_markers_are_loading_evidence_only() {
     let tmp = tempfile::tempdir().unwrap();
     fs::write(tmp.path().join("Game.exe"), b"fixture").unwrap();
     fs::write(tmp.path().join("dxgi.dll"), b"proxy").unwrap();
@@ -86,17 +86,19 @@ fn verified_v094_info_marker_is_loading_evidence_only() {
         None,
         "fixture".into(),
     );
-    manifest::write(tmp.path(), &m).unwrap();
     let game = Game::new("Fixture", tmp.path().to_path_buf(), Platform::Gog);
-    // v0.9.4 Logger.cpp and dllmain.cpp: direct spdlog::info, no function prefix.
-    for line in [
-        "[12:34:56.123456] [I] Init done\n",
-        "12:34:56.123456\tI\tInit done\n",
-    ] {
-        fs::write(tmp.path().join("OptiScaler.log"), line).unwrap();
-        let observation = observe(&game);
-        assert_eq!(observation.loaded_from_log, Some(true));
-        assert!(observation.log_modified.is_some());
+    for version in ["v0.9.4", "v0.9.5"] {
+        m.optiscaler_version = version.into();
+        manifest::write(tmp.path(), &m).unwrap();
+        for line in [
+            "[12:34:56.123456] [I] Init done\n",
+            "12:34:56.123456\tI\tInit done\n",
+        ] {
+            fs::write(tmp.path().join("OptiScaler.log"), line).unwrap();
+            let observation = observe(&game);
+            assert_eq!(observation.loaded_from_log, Some(true), "{version}");
+            assert!(observation.log_modified.is_some());
+        }
     }
     for line in [
         "[12:34:56.123456] [E] Init done\n",
@@ -107,7 +109,7 @@ fn verified_v094_info_marker_is_loading_evidence_only() {
         fs::write(tmp.path().join("OptiScaler.log"), line).unwrap();
         assert_eq!(observe(&game).loaded_from_log, None);
     }
-    m.optiscaler_version = "v0.8.0".into();
+    m.optiscaler_version = "v0.9.6".into();
     manifest::write(tmp.path(), &m).unwrap();
     fs::write(
         tmp.path().join("OptiScaler.log"),
