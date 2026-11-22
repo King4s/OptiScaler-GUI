@@ -16,7 +16,7 @@ All upscaling technology — FSR, XeSS, DLSS integration, frame generation, the 
 
 ## Features
 
-2026.9.0 brings broader game discovery, configurable library folders and per-install artwork controls.
+**[2026.11.0 stable](https://github.com/King4s/OptiScaler-GUI/releases/tag/v2026.11.0)** adds wide Steam artwork, a likely-compatible game filter, verified cache repair and exact-version INI defaults.
 
 - **One-click install, update, and uninstall** of official OptiScaler releases
 - **Game discovery** for Steam, Epic Games, GOG Galaxy, Xbox Game Pass, Heroic Launcher, Amazon Games, Ubisoft Connect, EA app and Battle.net; configurable library folders can be enabled, removed and rescanned
@@ -40,12 +40,12 @@ All upscaling technology — FSR, XeSS, DLSS integration, frame generation, the 
 - RDNA3/4 keep official FSR 4; RTX native DLSS, Arc XeSS, and older GPUs XeSS/FSR 3.1 are suggestions only where supported. Unknown/APU/mixed hardware stays conservative until explicit per-game choice.
 - Legacy Python implementation, tests, requirements, PyInstaller tooling and Python CI removed; shared data/translations moved under `rust/crates/opticore/data/`. Historical release records remain history.
 
-See the [hardware/runtime feature guide](docs/hardware-runtime.md). These changes are implemented in source, **not a new released binary**, and do not prove gameplay compatibility.
+See the [hardware/runtime feature guide](docs/hardware-runtime.md). Hardware recommendations are advisory and do not prove gameplay compatibility.
 
 ## Getting started
 
-1. Download `OptiScaler-GUI.exe` from [GitHub Releases](https://github.com/King4s/OptiScaler-GUI/releases), the authority for available versions and downloads.
-2. Run it — no installation or extraction needed
+1. Download [the portable EXE](https://github.com/King4s/OptiScaler-GUI/releases/download/v2026.11.0/OptiScaler-GUI.exe) or [the same EXE in a 7z archive](https://github.com/King4s/OptiScaler-GUI/releases/download/v2026.11.0/OptiScaler-GUI.7z). Extract the archive if you chose the 7z.
+2. Run the EXE. No installer is needed.
 3. Scan for games (or browse to a game folder manually), select a game, click **Install**
 4. Launch the game and press **Insert** (**Alt+Insert** on non-US keyboard layouts) to configure upscaling in OptiScaler's overlay
 
@@ -53,21 +53,21 @@ Requires Windows 10/11. OptiScaler is downloaded from official GitHub releases. 
 
 ## OptiScaler compatibility
 
-In the next patch the library opens with **Likely compatible** enabled. This shortlist uses detected upscaler DLLs, a community report or an existing install, and excludes detected anti-cheat and unsupported engines. It is not a guarantee. Select **Show all games** to see unknown games too; the GUI remembers your choice.
+The library opens with **Likely compatible** enabled. This shortlist uses detected upscaler DLLs, a community report or an existing install, and excludes detected anti-cheat and unsupported engines. It is not a guarantee. Select **Show all games** to see unknown games too; the GUI remembers your choice.
 
-The GUI downloads the latest official OptiScaler release. The previously reviewed range was **v0.7.0 through v0.9.4**. On 22 November 2026, the unchanged GUI 2026.10.0 installer code also passed a real **v0.9.4 to [v0.9.5](https://github.com/optiscaler/OptiScaler/releases/tag/v0.9.5)** upgrade and uninstall in a disposable Windows game folder. Both new Vulkan DLLs were installed and removed, the original proxy was restored, and a customized INI and unrelated mod were preserved. This was a file-operation test, not an in-game test.
+The GUI downloads the latest official OptiScaler release. The previously reviewed range was **v0.7.0 through v0.9.4**. A [Windows upgrade test](https://github.com/King4s/OptiScaler-GUI/actions/runs/44971702304) also passed a real v0.9.4-to-v0.9.5 upgrade and uninstall in a disposable game folder. Both new Vulkan DLLs were installed and removed, the original proxy was restored, and a customized INI and unrelated mod were preserved. This was a file-operation test, not an in-game test.
 
-The published GUI 2026.10.0 still treats v0.9.5 log evidence as unknown and can show incorrect choices for the new INT8 setting. Fixes are listed under [Unreleased](CHANGELOG.md#unreleased). With v0.9.5, try the bundled FSR 4.1.2 runtime first on supported RDNA2 hardware; the older community runtime is optional.
+GUI 2026.11.0 recognizes v0.9.5 initialization log evidence and its numeric INT8 settings. With v0.9.5, try the bundled FSR 4.1.2 runtime first on supported RDNA2 hardware; the older community runtime is optional.
 
 ## Project status
 
-**2026.9.0 Standard** completes the discovery and artwork feature set, including four additional store adapters, custom scan roots and optional SteamGridDB matching. See the [release notes](docs/releases/2026.9.0.md), [verification record](docs/releases/2026.9.0-verification.md) and [GitHub Releases](https://github.com/King4s/OptiScaler-GUI/releases) for available builds.
+**2026.11.0 Standard:** see the [release notes](docs/releases/2026.11.0.md) and [verification record](docs/releases/2026.11.0-verification.md).
 
 Fatekeeper has a working user report from 2026-09-25; fresh-version gameplay and manual visual testing are not claimed. Discovery, artwork, hardware advice and log observations do not establish compatibility with all games. A detected `Init done` line can be stale.
 
 | Track | Where | Status |
 |---|---|---|
-| Rust app (CalVer `2026.x`) | `rust/` | 2026.9.0 Standard feature set; consult [GitHub Releases](https://github.com/King4s/OptiScaler-GUI/releases) for availability. |
+| Rust app (CalVer `2026.x`) | `rust/` | 2026.11.0 Standard; consult [GitHub Releases](https://github.com/King4s/OptiScaler-GUI/releases) for availability. |
 | Historical Python app (v0.x) | Git history / old releases only | Implementation and Python tooling removed from current source. Legacy game files/manifests remain preserved. |
 
 ## Supported discovery sources
@@ -85,7 +85,7 @@ These are best-effort discovery sources, not a guarantee that every installed ga
 
 ## Cover artwork and privacy
 
-Cards fit images without stretching. The next patch prefers Steam's local wide header for the exact app ID, tries online wide sources when needed, and keeps portraits as fallbacks. Automatic covers from older versions get one wide-first lookup; manual selections and legacy files stay untouched. The cache separates installs by platform, observed store identity and install path.
+Cards fit images without stretching. The GUI prefers Steam's local wide header for the exact app ID, tries online wide sources when needed, and keeps portraits as fallbacks. Automatic covers from older versions get one wide-first lookup; manual selections and legacy files stay untouched. The cache separates installs by platform, observed store identity and install path.
 
 Use the artwork controls to choose a local image, reset a selection or refresh automatic artwork. Refresh preserves an explicitly selected local or SteamGridDB cover and retains the last good artwork if replacement fails. Automatic sources use local artwork and identified store/Steam sources, with cached or icon fallbacks; availability is not guaranteed. No automatic SteamSpy title matching is used to infer a Steam identity.
 
