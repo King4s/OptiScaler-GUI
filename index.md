@@ -53,7 +53,11 @@ Requires Windows 10/11. OptiScaler is downloaded from official GitHub releases. 
 
 ## OptiScaler compatibility
 
-The current release supports OptiScaler **v0.7.0 through v0.9.4** and always downloads the latest official release. When a new OptiScaler version changes the payload layout, a compatibility update is released — see the [releases](https://github.com/King4s/OptiScaler-GUI/releases) for history.
+In the next patch the library opens with **Likely compatible** enabled. This shortlist uses detected upscaler DLLs, a community report or an existing install, and excludes detected anti-cheat and unsupported engines. It is not a guarantee. Select **Show all games** to see unknown games too; the GUI remembers your choice.
+
+The GUI downloads the latest official OptiScaler release. The previously reviewed range was **v0.7.0 through v0.9.4**. On 22 November 2026, the unchanged GUI 2026.10.0 installer code also passed a real **v0.9.4 to [v0.9.5](https://github.com/optiscaler/OptiScaler/releases/tag/v0.9.5)** upgrade and uninstall in a disposable Windows game folder. Both new Vulkan DLLs were installed and removed, the original proxy was restored, and a customized INI and unrelated mod were preserved. This was a file-operation test, not an in-game test.
+
+The published GUI 2026.10.0 still treats v0.9.5 log evidence as unknown and can show incorrect choices for the new INT8 setting. Fixes are listed under [Unreleased](CHANGELOG.md#unreleased). With v0.9.5, try the bundled FSR 4.1.2 runtime first on supported RDNA2 hardware; the older community runtime is optional.
 
 ## Project status
 
@@ -81,7 +85,7 @@ These are best-effort discovery sources, not a guarantee that every installed ga
 
 ## Cover artwork and privacy
 
-Cards fit images within their bounds while preserving aspect ratio. The new `cover_art` cache hashes platform, observed store identity and install path, so new artwork for separate installs does not share a title-only key. Legacy cache files remain readable and untouched; a cached landscape can be upgraded to an identified Steam portrait. Legacy title-only artwork can still be ambiguous.
+Cards fit images without stretching. The next patch prefers Steam's local wide header for the exact app ID, tries online wide sources when needed, and keeps portraits as fallbacks. Automatic covers from older versions get one wide-first lookup; manual selections and legacy files stay untouched. The cache separates installs by platform, observed store identity and install path.
 
 Use the artwork controls to choose a local image, reset a selection or refresh automatic artwork. Refresh preserves an explicitly selected local or SteamGridDB cover and retains the last good artwork if replacement fails. Automatic sources use local artwork and identified store/Steam sources, with cached or icon fallbacks; availability is not guaranteed. No automatic SteamSpy title matching is used to infer a Steam identity.
 
