@@ -200,11 +200,23 @@ impl App {
                     }
                     self.state.gui_update_phase = Some((phase, label));
                 }
-                TaskEvent::DefaultsFetched { ini_path, message } => {
+                TaskEvent::DefaultsFetched {
+                    game_ini,
+                    tag,
+                    result,
+                } => {
+                    let message = match &result {
+                        Ok(_) => format!("Defaults loaded from OptiScaler {tag}"),
+                        Err(error) => format!("Defaults unavailable for OptiScaler {tag}: {error}"),
+                    };
                     self.state.push_log(message.clone());
-                    if let Some(editor) = self.state.editor.as_mut() {
+                    if let Some(editor) = self.state.editor.as_mut().filter(|e| {
+                        e.fetching_defaults
+                            && e.ini_path == game_ini
+                            && e.installed_version.as_deref() == Some(tag.as_str())
+                    }) {
                         editor.fetching_defaults = false;
-                        editor.defaults = ini_path.as_deref().and_then(opticore::ini::read_file);
+                        editor.defaults = result.ok();
                         editor.status = Some(message);
                     }
                 }
@@ -220,14 +232,6 @@ impl App {
             .resizable(false)
             .show(ctx, |ui| {
                 ui.add_space(10.0);
-                ui.label(
-                    RichText::new("OPTISCALER")
-                        .strong()
-                        .size(15.0)
-                        .color(pal.accent),
-                );
-                ui.label(RichText::new("GUI").size(12.0).color(pal.text_dim));
-                ui.add_space(16.0);
 
                 for (screen, label) in [
                     (

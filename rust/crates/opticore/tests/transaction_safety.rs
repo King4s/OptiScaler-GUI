@@ -114,6 +114,20 @@ fn fresh_install_records_checksums_and_owned_paths() {
 }
 
 #[test]
+fn cache_inventory_is_not_installed_or_owned() {
+    let fixture = Fixture::new();
+    fixture.add_payload(".optiscaler-cache-inventory.json", b"cache metadata");
+    let installed = fixture.install(false).unwrap();
+    assert!(!fixture
+        .game
+        .join(".optiscaler-cache-inventory.json")
+        .exists());
+    assert!(!installed
+        .owned_files
+        .contains_key(".optiscaler-cache-inventory.json"));
+}
+
+#[test]
 fn overwrite_backs_up_foreign_dll_and_uninstall_restores_it() {
     let fixture = Fixture::new();
     fs::write(fixture.game.join("dxgi.dll"), b"game-original").unwrap();

@@ -35,6 +35,10 @@ fn cache_dir() -> PathBuf {
     base_dir().join("cache").join("game_images")
 }
 
+pub(crate) fn downloads_dir() -> PathBuf {
+    base_dir().join("cache").join("optiscaler_downloads")
+}
+
 impl Ops {
     pub fn new() -> Self {
         let (tx, rx) = channel();
@@ -68,8 +72,8 @@ impl Ops {
         std::thread::spawn(move || {
             let t0 = std::time::Instant::now();
             let result = scan_all(&config);
-            for warning in &result.warnings {
-                let _ = tx.send(TaskEvent::Log(warning.clone()));
+            for message in result.notes.iter().chain(&result.warnings) {
+                let _ = tx.send(TaskEvent::Log(message.clone()));
             }
             let _ = tx.send(TaskEvent::Log(format!(
                 "Scan finished: {} games in {:.2}s",
@@ -146,48 +150,27 @@ impl Ops {
     }
 
     fn downloads_dir(&self) -> PathBuf {
-        // sibling of cache/game_images → cache/optiscaler_downloads (Python layout)
-        let base = std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-            .unwrap_or_else(|| PathBuf::from("."));
-        base.join("cache").join("optiscaler_downloads")
+        downloads_dir()
     }
 
-    /// Download + extract the latest OptiScaler release into the cache so the
-    /// INI editor's "Restore defaults" has a pristine OptiScaler.ini. Reuses
-    /// the already-extracted payload when present (e.g. right after an
-    /// install); only needed when the download cache was cleared.
-    pub fn spawn_fetch_defaults(&self, ctx: &egui::Context) {
+    pub fn spawn_fetch_defaults(&self, ctx: &egui::Context, game_ini: PathBuf, tag: String) {
         let tx = self.tx.clone();
         let ctx = ctx.clone();
         let downloads = self.downloads_dir();
         std::thread::spawn(move || {
             let installer = Installer::new(&downloads);
-            let event = match installer.prepare_payload(|_| {}) {
-                Ok((extracted, release)) => {
-                    let ini_path = extracted.join("OptiScaler.ini");
-                    if ini_path.exists() {
-                        TaskEvent::DefaultsFetched {
-                            ini_path: Some(ini_path),
-                            message: format!(
-                                "Defaults loaded from OptiScaler {}",
-                                release.version_label()
-                            ),
-                        }
-                    } else {
-                        TaskEvent::DefaultsFetched {
-                            ini_path: None,
-                            message: "OptiScaler.ini missing in the release payload".into(),
-                        }
-                    }
-                }
-                Err(e) => TaskEvent::DefaultsFetched {
-                    ini_path: None,
-                    message: format!("Could not fetch defaults: {e}"),
-                },
-            };
-            let _ = tx.send(event);
+            let result = opticore::release_defaults::fetch_exact(&tag).and_then(|release| {
+                let extracted = installer
+                    .prepare_release(&release, |_| {})
+                    .map_err(|e| e.to_string())?;
+                opticore::ini::read_file(&extracted.join("OptiScaler.ini"))
+                    .ok_or_else(|| "No readable OptiScaler.ini in release".into())
+            });
+            let _ = tx.send(TaskEvent::DefaultsFetched {
+                game_ini,
+                tag,
+                result,
+            });
             ctx.request_repaint();
         });
     }

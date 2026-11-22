@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Prefer local wide Steam artwork without stretching. The game library defaults to **Likely compatible** with a visible **Show all games** option and a saved filter preference.
+- Verify official extracted payloads before reuse and rebuild incomplete caches in staging. Large release downloads have a separate timeout and only replace the cached archive after size and available checksum checks. Restore INI defaults from the game's exact recorded upstream tag; when unavailable, do not substitute the latest release.
+- For each new upstream tag, the release watcher runs the real Windows upgrade/uninstall test in a disposable game folder and records the result on the tracking issue. It does not publish a GUI build.
+
+- Recognize OptiScaler v0.9.5's verified initialization marker. It is log evidence only, not confirmation that upscaling, frame generation or the overlay worked.
+- Show the v0.9.5 INT8 mode choices and contrast setting correctly, even when an upgrade kept an older INI. No user values are changed automatically. Recommend the official FSR 4.1.2 payload first for supported RX 6000 models in English, Danish and Polish.
+- Verified the existing Windows installer with the [official v0.9.5 archive](https://github.com/optiscaler/OptiScaler/releases/tag/v0.9.5) (SHA-256 `77e3ed76bed04e1fb32bacb5a72799ff172f3da22ed5231c0cf3e84fe6761662`). The v0.9.4 upgrade retained the recorded proxy and custom INI; uninstall restored the original proxy and removed the two new Vulkan DLLs. The separately pinned community-runtime and cache checks also passed. No gameplay verification or GUI release is claimed.
+
 ## 2026.10.0 — Rust hardware recommendations and optional RDNA2 runtime
 
 - Collect fresh local DXGI facts on a startup worker regardless of update checks; show family recommendations and manual refresh on every screen in da/en/pl.

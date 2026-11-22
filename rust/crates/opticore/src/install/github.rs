@@ -146,17 +146,33 @@ pub fn download_archive(
         if verify_digest(&target, asset.digest.as_deref()).is_ok() && size_ok {
             return Ok(target);
         }
-        let _ = std::fs::remove_file(&target);
     }
 
     let mut resp = crate::images::http_agent()
         .get(&asset.browser_download_url)
+        .config()
+        .timeout_global(Some(std::time::Duration::from_secs(600)))
+        .timeout_connect(Some(std::time::Duration::from_secs(15)))
+        .build()
         .header("User-Agent", "OptiScaler-GUI")
         .call()
         .map_err(|e| DownloadError::Network(e.to_string()))?;
+    cache_response(resp.body_mut().as_reader(), &target, asset, &mut progress)?;
+    Ok(target)
+}
+
+fn cache_response(
+    mut reader: impl Read,
+    target: &Path,
+    asset: &AssetInfo,
+    mut progress: impl FnMut(u64, u64),
+) -> Result<(), DownloadError> {
     let total = asset.size;
-    let mut out = std::fs::File::create(&target).map_err(|e| DownloadError::Io(e.to_string()))?;
-    let mut reader = resp.body_mut().as_reader();
+    let parent = target
+        .parent()
+        .ok_or_else(|| DownloadError::Io("missing cache directory".into()))?;
+    let mut out =
+        tempfile::NamedTempFile::new_in(parent).map_err(|e| DownloadError::Io(e.to_string()))?;
     let mut buf = vec![0u8; 64 * 1024];
     let mut downloaded: u64 = 0;
     loop {
@@ -166,22 +182,23 @@ pub fn download_archive(
         if n == 0 {
             break;
         }
+        downloaded += n as u64;
+        if total > 0 && downloaded > total {
+            return Err(DownloadError::Network(
+                "download exceeds expected size".into(),
+            ));
+        }
         std::io::Write::write_all(&mut out, &buf[..n])
             .map_err(|e| DownloadError::Io(e.to_string()))?;
-        downloaded += n as u64;
         progress(downloaded, total);
     }
-    drop(out);
-
-    if total > 0 && std::fs::metadata(&target).map(|m| m.len()).unwrap_or(0) != total {
-        let _ = std::fs::remove_file(&target);
+    if total > 0 && downloaded != total {
         return Err(DownloadError::Network("download size mismatch".into()));
     }
-    if let Err(e) = verify_digest(&target, asset.digest.as_deref()) {
-        let _ = std::fs::remove_file(&target);
-        return Err(e);
-    }
-    Ok(target)
+    verify_digest(out.path(), asset.digest.as_deref())?;
+    out.persist(target)
+        .map_err(|e| DownloadError::Io(e.to_string()))?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -202,6 +219,28 @@ mod tests {
         .unwrap();
         assert_eq!(release.archive_asset().unwrap().name, "Optiscaler_0.9.3.7z");
         assert_eq!(release.version_label(), "v0.9.3");
+    }
+
+    #[test]
+    fn archive_is_published_only_after_size_and_digest_match() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("release.7z");
+        std::fs::write(&dest, b"previous").unwrap();
+        let asset = AssetInfo {
+            name: "release.7z".into(),
+            browser_download_url: String::new(),
+            size: 5,
+            digest: Some(
+                "sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824".into(),
+            ),
+        };
+        for data in [b"he".as_slice(), b"wrong", b"oversize"] {
+            assert!(cache_response(data, &dest, &asset, |_, _| {}).is_err());
+            assert_eq!(std::fs::read(&dest).unwrap(), b"previous");
+            assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+        }
+        cache_response(b"hello".as_slice(), &dest, &asset, |_, _| {}).unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), b"hello");
     }
 
     #[test]

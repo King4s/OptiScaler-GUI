@@ -1,5 +1,8 @@
 {
   "library": {
+    "candidates_only": "Sandsynligvis kompatible",
+    "candidates_hint": "Viser spil med upscaler-DLL-fund, en community-rapport eller en OptiScaler-installation. Spil med registreret anti-cheat eller ikke-understøttet engine skjules. Det er ikke en kompatibilitetsgaranti; ukendte spil kan også virke.",
+    "all_games": "Vis alle spil",
     "roots": "Mapper med spilbiblioteker",
     "roots_hint": "Vælg mapper til scanning. Fjernelse af en mappe sletter aldrig spil. Ændringer gælder ved næste scanning.",
     "add_root": "Tilføj spilmappe",
@@ -460,7 +463,7 @@
     "failed": "Den lokale profil kunne ikke gemmes eller læses.",
     "restore_official": "Gendan officiel runtime",
     "recommendations": "Hardwareanbefalinger (kun vejledning)",
-    "rdna2": "RX 6000 / RDNA2: valgfri community FSR 4.1.1b INT8-rettelse; vælg spillets GPU eksplicit og giv samtykke.",
+    "rdna2": "RX 6000 / RDNA2: prøv den officielle pakke først. OptiScaler v0.9.5 indeholder FSR 4.1.2 INT8 til understøttede modeller. Den ældre 4.1.1b-rettelse fra fællesskabet er valgfri.",
     "rdna34": "RX 7000/9000 / RDNA3/4: behold officiel FSR 4, hvor den understøttes.",
     "rtx": "RTX: foretræk spillets native DLSS, hvis det understøttes.",
     "arc": "Intel Arc: foretræk XeSS, hvor det understøttes.",
@@ -470,6 +473,11 @@
     "community_warning": "Brug den fastlåste community FSR 4.1.1b INT8 RDNA2-rettelse fra the3rdparty1917/fsr4xyz? Dette er IKKE en officiel AMD- eller OptiScaler-runtime. Kompatibilitet og stabilitet garanteres ikke. Brug ikke mods i anti-cheat-/onlinespil; dette omgår ikke anti-cheat. Ja giver kun samtykke til denne installation/opdatering. Nej beholder den officielle pakke."
   },
   "advice": {
+    "fetch_defaults": "Hent standardværdier for",
+    "loading_defaults": "Henter standardværdier…",
+    "no_version_defaults": "Standardværdier er ikke tilgængelige: Den installerede OptiScaler-version er ukendt.",
+    "restore_defaults": "Gendan standardværdier",
+    "version_changed": "Den installerede version er ændret. Åbn editoren igen, før du gemmer.",
     "title": "Anbefalet til dette spil",
     "refresh": "Opdater spilobservationer",
     "pending": "Læser spilfiler...",

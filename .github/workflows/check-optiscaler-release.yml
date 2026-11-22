@@ -4,38 +4,196 @@ on:
   schedule:
     - cron: '0 6 * * *'
   workflow_dispatch:
+    inputs:
+      rerun_upgrade_test:
+        description: 'Rerun the real upgrade test for the latest upstream release'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
-  issues: write
+
+concurrency:
+  group: check-optiscaler-upstream-release
+  cancel-in-progress: false
 
 jobs:
-  check-release:
+  prepare:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    outputs:
+      should_run: ${{ steps.tracking.outputs.should_run }}
+      tag: ${{ steps.tracking.outputs.tag }}
+      issue_number: ${{ steps.tracking.outputs.issue_number }}
+      comment_id: ${{ steps.tracking.outputs.comment_id }}
     steps:
-      - name: Notify maintainers without changing application code
+      - uses: actions/checkout@v5
+      - name: Verify release selection and issue ownership
+        run: node --test scripts/tests/upstream-release-watcher.test.cjs
+      - name: Find canonical issue and claim this release test
+        id: tracking
         uses: actions/github-script@v7
+        env:
+          FORCE_RERUN: ${{ inputs.rerun_upgrade_test }}
         with:
           script: |
+            const {
+              findCanonicalIssue, findAttemptComment, shouldRunTest,
+              stableReleasesFrom, selectNextUnclaimedRelease, latestStableRelease
+            } = require('./scripts/upstream-release-watcher.cjs');
             const upstream = {owner: 'optiscaler', repo: 'OptiScaler'};
-            const {data: release} = await github.rest.repos.getLatestRelease(upstream);
-            const title = `OptiScaler ${release.tag_name} released — review for GUI compatibility`;
-            const issues = await github.paginate(github.rest.issues.listForRepo, {
-              ...context.repo, state: 'all', labels: 'optiscaler-update', per_page: 100
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              ...upstream, per_page: 100
             });
-            if (issues.some(issue => issue.title === title)) return;
-            try {
-              await github.rest.issues.createLabel({...context.repo, name: 'optiscaler-update', color: '0075ca', description: 'Upstream release notification'});
-            } catch (error) {
-              if (error.status !== 422) throw error;
+            const matches = await github.paginate(github.rest.issues.listForRepo, {
+              ...context.repo, state: 'all', per_page: 100
+            });
+            const allStable = stableReleasesFrom(releases);
+            const force = context.eventName === 'workflow_dispatch' && process.env.FORCE_RERUN === 'true';
+            const attempted = new Set();
+            let selected = force ? latestStableRelease(allStable) : undefined;
+            let issue;
+            let prior;
+
+            while (!selected && (selected = selectNextUnclaimedRelease(allStable, attempted))) {
+              const candidateTitle = `OptiScaler ${selected.tag_name} released — review for GUI compatibility`;
+              const candidateIssue = findCanonicalIssue(matches, candidateTitle, 'github-actions[bot]');
+              if (candidateIssue) {
+                const candidateComments = await github.paginate(github.rest.issues.listComments, {
+                  ...context.repo, issue_number: candidateIssue.number, per_page: 100
+                });
+                const candidateMarker = `<!-- optiscaler-real-upgrade-test:${selected.tag_name} -->`;
+                const candidatePrior = findAttemptComment(candidateComments, candidateMarker, 'github-actions[bot]');
+                if (candidatePrior) {
+                  attempted.add(selected.tag_name);
+                  selected = undefined;
+                  continue;
+                }
+                issue = candidateIssue;
+              }
+              break;
             }
-            await github.rest.issues.create({
-              ...context.repo, title, labels: ['optiscaler-update'],
-              body: `Review the official release: ${release.html_url}\n\n` +
-                '- [ ] Check `rust/crates/opticore/src/install/github.rs` endpoint, archive selection and digest handling.\n' +
-                '- [ ] Exercise real 7z extraction and transactional install/update/uninstall in disposable folders.\n' +
-                '- [ ] Review payload filenames, resolver targets and config changes.\n' +
-                '- [ ] Verify separate pinned community runtime behavior without modifying official caches.\n' +
-                '- [ ] Update CHANGELOG/docs and run locked workspace tests, fmt and strict Clippy.\n\n' +
-                'Notification only; no automatic application commit, version bump or release.'
+
+            if (!selected) {
+              core.info('No unclaimed stable upstream releases remain.');
+              core.setOutput('should_run', 'false');
+              return;
+            }
+
+            const release = selected;
+            const tag = release.tag_name;
+            const title = `OptiScaler ${tag} released — review for GUI compatibility`;
+            if (!issue) issue = findCanonicalIssue(matches, title, 'github-actions[bot]');
+            if (!issue) {
+              try {
+                await github.rest.issues.createLabel({
+                  ...context.repo, name: 'optiscaler-update', color: '0075ca',
+                  description: 'Upstream release notification'
+                });
+              } catch (error) {
+                if (error.status !== 422) throw error;
+              }
+              const created = await github.rest.issues.create({
+                ...context.repo, title, labels: ['optiscaler-update'],
+                body: `Review the official release: ${release.html_url}\n\n` +
+                  '- [ ] Check `rust/crates/opticore/src/install/github.rs` endpoint, archive selection and digest handling.\n' +
+                  '- [ ] Review payload filenames, resolver targets and config changes.\n' +
+                  '- [ ] Verify separate pinned community runtime behavior without modifying official caches.\n' +
+                  '- [ ] Update CHANGELOG/docs and run locked workspace tests, fmt and strict Clippy.\n\n' +
+                  'The real Windows upgrade/uninstall test result is recorded below. No application release is published automatically.'
+              });
+              issue = created.data;
+            }
+
+            const marker = `<!-- optiscaler-real-upgrade-test:${tag} -->`;
+            if (!prior && force) {
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                ...context.repo, issue_number: issue.number, per_page: 100
+              });
+              prior = findAttemptComment(comments, marker, 'github-actions[bot]');
+            }
+            if (!shouldRunTest(prior, force)) {
+              core.info(`A real upgrade test was already attempted for ${tag}; skipping.`);
+              core.setOutput('should_run', 'false');
+            } else {
+              const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+              const body = `${marker}\nReal Windows upgrade/uninstall test for **${tag}**: **started**.\nRun: ${runUrl}`;
+              let comment;
+              if (prior) {
+                comment = await github.rest.issues.updateComment({
+                  ...context.repo, comment_id: prior.id, body
+                });
+              } else {
+                comment = await github.rest.issues.createComment({
+                  ...context.repo, issue_number: issue.number, body
+                });
+              }
+              core.setOutput('should_run', 'true');
+              core.setOutput('tag', tag);
+              core.setOutput('issue_number', String(issue.number));
+              core.setOutput('comment_id', String(comment.data.id));
+            }
+
+  real-upgrade-test:
+    needs: prepare
+    if: needs.prepare.outputs.should_run == 'true'
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Download v0.9.4 baseline archive
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          $archiveDir = Join-Path $env:RUNNER_TEMP 'opti-v094'
+          New-Item -ItemType Directory -Force -Path $archiveDir | Out-Null
+          gh release download v0.9.4 --repo optiscaler/OptiScaler --pattern '*.7z' --dir $archiveDir
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to download the v0.9.4 baseline archive' }
+          $archives = @(Get-ChildItem $archiveDir -Filter '*.7z')
+          if ($archives.Count -ne 1) { throw "Expected exactly one v0.9.4 7z archive; found $($archives.Count)" }
+          "OPTISCALER_V094_ARCHIVE=$($archives[0].FullName)" | Out-File -Append $env:GITHUB_ENV
+          "OPTISCALER_EXPECTED_TAG=$env:RELEASE_TAG" | Out-File -Append $env:GITHUB_ENV
+
+      - name: Run real upgrade and uninstall integration test
+        id: upgrade
+        working-directory: rust
+        run: cargo test -p opticore --locked --test upstream_upgrade_real -- --ignored
+
+  report-result:
+    needs: [prepare, real-upgrade-test]
+    if: always() && needs.prepare.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: Record test result on canonical issue
+        uses: actions/github-script@v7
+        env:
+          TEST_RESULT: ${{ needs.real-upgrade-test.result }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          ISSUE_NUMBER: ${{ needs.prepare.outputs.issue_number }}
+          COMMENT_ID: ${{ needs.prepare.outputs.comment_id }}
+        with:
+          script: |
+            const {statusForJobResult} = require('./scripts/upstream-release-watcher.cjs');
+            const outcome = process.env.TEST_RESULT || 'failure';
+            const tag = process.env.RELEASE_TAG;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const marker = `<!-- optiscaler-real-upgrade-test:${tag} -->`;
+            const result = statusForJobResult(outcome);
+            await github.rest.issues.updateComment({
+              ...context.repo,
+              comment_id: Number(process.env.COMMENT_ID),
+              body: `${marker}\nReal Windows upgrade/uninstall test for **${tag}**: **${result}**.\nRun: ${runUrl}`
             });
+            if (outcome !== 'success') core.setFailed(`Real upgrade test ${result} for ${tag}`);

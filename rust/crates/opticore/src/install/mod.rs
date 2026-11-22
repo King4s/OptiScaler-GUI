@@ -11,7 +11,202 @@ pub mod transaction;
 use crate::archive;
 use github::ReleaseInfo;
 use manifest::InstallManifest;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::io::Read;
 use std::path::{Path, PathBuf};
+
+const CACHE_INVENTORY: &str = ".optiscaler-cache-inventory.json";
+
+#[derive(Serialize, Deserialize)]
+struct CacheInventory {
+    archive_sha256: String,
+    files: std::collections::BTreeMap<String, String>,
+}
+
+fn file_sha256(path: &Path) -> Result<String, InstallError> {
+    let mut file = std::fs::File::open(path).map_err(|e| InstallError::Io(e.to_string()))?;
+    let mut hash = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let count = file
+            .read(&mut buffer)
+            .map_err(|e| InstallError::Io(e.to_string()))?;
+        if count == 0 {
+            break;
+        }
+        hash.update(&buffer[..count]);
+    }
+    Ok(hash
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
+}
+
+pub(crate) fn reject_reparse(path: &Path) -> Result<(), InstallError> {
+    let meta = std::fs::symlink_metadata(path).map_err(|e| InstallError::Io(e.to_string()))?;
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        if meta.file_attributes() & 0x400 != 0 {
+            return Err(InstallError::Extraction(
+                "cache contains a reparse point".into(),
+            ));
+        }
+    }
+    #[cfg(not(windows))]
+    if meta.file_type().is_symlink() {
+        return Err(InstallError::Extraction("cache contains a symlink".into()));
+    }
+    Ok(())
+}
+
+fn cache_lock(path: &Path) -> Result<std::fs::File, InstallError> {
+    if std::fs::symlink_metadata(path).is_ok() {
+        reject_reparse(path)?;
+    }
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(path)
+        .map_err(|e| InstallError::Io(e.to_string()))?;
+    file.lock().map_err(|e| InstallError::Io(e.to_string()))?;
+    Ok(file)
+}
+
+fn payload_inventory(
+    root: &Path,
+) -> Result<std::collections::BTreeMap<String, String>, InstallError> {
+    fn visit(
+        root: &Path,
+        dir: &Path,
+        files: &mut std::collections::BTreeMap<String, String>,
+    ) -> Result<(), InstallError> {
+        for entry in std::fs::read_dir(dir).map_err(|e| InstallError::Io(e.to_string()))? {
+            let entry = entry.map_err(|e| InstallError::Io(e.to_string()))?;
+            let path = entry.path();
+            reject_reparse(&path)?;
+            let kind = entry
+                .file_type()
+                .map_err(|e| InstallError::Io(e.to_string()))?;
+            if kind.is_dir() {
+                visit(root, &path, files)?;
+            } else if kind.is_file() {
+                let rel = path
+                    .strip_prefix(root)
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                if rel != CACHE_INVENTORY {
+                    files.insert(rel, file_sha256(&path)?);
+                }
+            } else {
+                return Err(InstallError::Extraction(
+                    "release contains a non-regular file".into(),
+                ));
+            }
+        }
+        Ok(())
+    }
+    let mut files = std::collections::BTreeMap::new();
+    reject_reparse(root)?;
+    visit(root, root, &mut files)?;
+    Ok(files)
+}
+
+fn prepare_extraction(
+    archive_path: &Path,
+    extract_dir: &Path,
+    extract: impl Fn(&Path) -> Result<(), InstallError>,
+) -> Result<PathBuf, InstallError> {
+    let parent = extract_dir
+        .parent()
+        .ok_or_else(|| InstallError::Io("cache has no parent".into()))?;
+    std::fs::create_dir_all(parent).map_err(|e| InstallError::Io(e.to_string()))?;
+    reject_reparse(parent)?;
+    let lock_path = parent.join(format!(
+        "{}.lock",
+        extract_dir.file_name().unwrap().to_string_lossy()
+    ));
+    let _lock = cache_lock(&lock_path)?;
+    reject_reparse(archive_path)?;
+    let archive_sha256 = file_sha256(archive_path)?;
+    if std::fs::symlink_metadata(extract_dir).is_ok() {
+        reject_reparse(extract_dir)?;
+    }
+    if std::fs::symlink_metadata(extract_dir.join(CACHE_INVENTORY)).is_ok() {
+        reject_reparse(&extract_dir.join(CACHE_INVENTORY))?;
+    }
+    let existing_files = if extract_dir.exists() {
+        Some(payload_inventory(extract_dir)?)
+    } else {
+        None
+    };
+    if let Ok(bytes) = std::fs::read(extract_dir.join(CACHE_INVENTORY)) {
+        if let Ok(saved) = serde_json::from_slice::<CacheInventory>(&bytes) {
+            if saved.archive_sha256 == archive_sha256
+                && saved.files.contains_key("OptiScaler.dll")
+                && existing_files.as_ref() == Some(&saved.files)
+            {
+                return Ok(extract_dir.to_path_buf());
+            }
+        }
+    }
+
+    let stage = tempfile::Builder::new()
+        .prefix(".extract-")
+        .tempdir_in(parent)
+        .map_err(|e| InstallError::Io(e.to_string()))?;
+    extract(stage.path())?;
+    let files = payload_inventory(stage.path())?;
+    if !files.contains_key("OptiScaler.dll") {
+        return Err(InstallError::DllNotFound);
+    }
+    let inventory = CacheInventory {
+        archive_sha256,
+        files,
+    };
+    let bytes = serde_json::to_vec(&inventory).map_err(|e| InstallError::Io(e.to_string()))?;
+    std::fs::write(stage.path().join(CACHE_INVENTORY), bytes)
+        .map_err(|e| InstallError::Io(e.to_string()))?;
+
+    publish_stage(stage, extract_dir, |_, _| {})?;
+    Ok(extract_dir.to_path_buf())
+}
+
+fn publish_stage(
+    stage: tempfile::TempDir,
+    extract_dir: &Path,
+    after_backup: impl FnOnce(&Path, &Path),
+) -> Result<(), InstallError> {
+    let parent = extract_dir.parent().unwrap();
+    let backup = tempfile::Builder::new()
+        .prefix(".replaced-")
+        .tempdir_in(parent)
+        .map_err(|e| InstallError::Io(e.to_string()))?;
+    let old = backup.path().join("old");
+    let had_old = std::fs::symlink_metadata(extract_dir).is_ok();
+    if had_old {
+        std::fs::rename(extract_dir, &old).map_err(|e| InstallError::Io(e.to_string()))?;
+    }
+    after_backup(&old, extract_dir);
+    if let Err(error) = std::fs::rename(stage.path(), extract_dir) {
+        if had_old {
+            if let Err(restore_error) = std::fs::rename(&old, extract_dir) {
+                let preserved = backup.keep();
+                return Err(InstallError::Io(format!(
+                    "cache publication failed: {error}; restore failed: {restore_error}; previous cache preserved at {}",
+                    preserved.display()
+                )));
+            }
+        }
+        return Err(InstallError::Io(error.to_string()));
+    }
+    Ok(())
+}
 
 #[derive(Debug, Clone)]
 pub struct InstallOptions {
@@ -94,6 +289,7 @@ fn iso_now() -> String {
 
 pub struct Installer {
     pub download_dir: PathBuf,
+    pinned_release: Option<ReleaseInfo>,
 }
 
 fn confirmed_directory(
@@ -115,18 +311,62 @@ impl Installer {
     pub fn new(download_dir: &Path) -> Self {
         Self {
             download_dir: download_dir.to_path_buf(),
+            pinned_release: None,
         }
     }
 
-    /// Download (or reuse) the latest release archive and extract it.
+    /// Test a specific upstream release using the same upgrade path as the GUI.
+    pub fn at_release(download_dir: &Path, release: ReleaseInfo) -> Self {
+        Self {
+            pinned_release: Some(release),
+            ..Self::new(download_dir)
+        }
+    }
+
+    /// Download (or reuse) the selected release archive, latest by default.
     /// Returns (extracted payload dir, release info).
     pub fn prepare_payload(
         &self,
         mut progress: impl FnMut(InstallStage),
     ) -> Result<(PathBuf, ReleaseInfo), InstallError> {
-        progress(InstallStage::FetchingRelease);
-        let release = github::fetch_latest_release().map_err(InstallError::Download)?;
-        let archive_path = github::download_archive(&release, &self.download_dir, |done, total| {
+        let release = match &self.pinned_release {
+            Some(release) => release.clone(),
+            None => {
+                progress(InstallStage::FetchingRelease);
+                github::fetch_latest_release().map_err(InstallError::Download)?
+            }
+        };
+        let extract_dir = self.prepare_release(&release, progress)?;
+        Ok((extract_dir, release))
+    }
+
+    /// Prepare a specific official release and return its verified payload directory.
+    pub fn prepare_release(
+        &self,
+        release: &github::ReleaseInfo,
+        mut progress: impl FnMut(InstallStage),
+    ) -> Result<PathBuf, InstallError> {
+        let asset = release.archive_asset().ok_or(InstallError::Download(
+            github::DownloadError::NoArchiveAsset,
+        ))?;
+        if Path::new(&asset.name)
+            .file_name()
+            .is_none_or(|name| name != asset.name.as_str())
+        {
+            return Err(InstallError::Extraction("unsafe archive asset name".into()));
+        }
+        std::fs::create_dir_all(&self.download_dir).map_err(|e| InstallError::Io(e.to_string()))?;
+        reject_reparse(&self.download_dir)?;
+        let _download_lock = cache_lock(
+            &self
+                .download_dir
+                .join(format!("{}.download.lock", asset.name)),
+        )?;
+        let archive_file = self.download_dir.join(&asset.name);
+        if std::fs::symlink_metadata(&archive_file).is_ok() {
+            reject_reparse(&archive_file)?;
+        }
+        let archive_path = github::download_archive(release, &self.download_dir, |done, total| {
             progress(InstallStage::Downloading { done, total })
         })
         .map_err(InstallError::Download)?;
@@ -138,16 +378,14 @@ impl Installer {
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_default(),
         );
-        // Fresh extraction dir per archive version; reuse if already populated
-        if !extract_dir.join("OptiScaler.dll").exists() {
-            std::fs::create_dir_all(&extract_dir).map_err(|e| InstallError::Io(e.to_string()))?;
-            let absolute = extract_dir
-                .canonicalize()
-                .map_err(|e| InstallError::Io(e.to_string()))?;
-            archive::extract_7z(&archive_path, &absolute)
-                .map_err(|e| InstallError::Extraction(e.to_string()))?;
+        let payload_dir = prepare_extraction(&archive_path, &extract_dir, |stage| {
+            archive::extract_7z(&archive_path, stage)
+                .map_err(|e| InstallError::Extraction(e.to_string()))
+        })?;
+        if let Some(tag) = release.tag_name.as_deref() {
+            let _ = crate::release_defaults::remember(&self.download_dir, tag, &payload_dir);
         }
-        Ok((extract_dir, release))
+        Ok(payload_dir)
     }
 
     /// Full install into a game directory. Port of `install_optiscaler`.
@@ -313,6 +551,163 @@ mod tests {
     use super::*;
     use std::fs::{self, File};
     use std::io::Write;
+
+    fn cache_fixture(root: &Path, extract: impl Fn(&Path) -> Result<(), InstallError>) -> PathBuf {
+        let archive = root.join("release.7z");
+        fs::write(&archive, b"archive identity").unwrap();
+        prepare_extraction(&archive, &root.join("extracted/release"), extract).unwrap()
+    }
+
+    fn write_fixture_payload(dir: &Path) -> Result<(), InstallError> {
+        fs::create_dir_all(dir).map_err(|e| InstallError::Io(e.to_string()))?;
+        fs::write(dir.join("OptiScaler.dll"), b"main").unwrap();
+        fs::write(dir.join("amd_fidelityfx_vk.dll"), b"vulkan").unwrap();
+        Ok(())
+    }
+
+    #[test]
+    fn extraction_cache_repairs_removed_and_modified_payload() {
+        let tmp = tempfile::tempdir().unwrap();
+        let calls = std::sync::atomic::AtomicUsize::new(0);
+        let extract = |dir: &Path| {
+            calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            write_fixture_payload(dir)
+        };
+        let cache = cache_fixture(tmp.path(), extract);
+        cache_fixture(tmp.path(), extract);
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+        fs::remove_file(cache.join("amd_fidelityfx_vk.dll")).unwrap();
+        cache_fixture(tmp.path(), extract);
+        assert_eq!(
+            fs::read(cache.join("amd_fidelityfx_vk.dll")).unwrap(),
+            b"vulkan"
+        );
+        fs::write(cache.join("amd_fidelityfx_vk.dll"), b"changed").unwrap();
+        cache_fixture(tmp.path(), extract);
+        assert_eq!(
+            fs::read(cache.join("amd_fidelityfx_vk.dll")).unwrap(),
+            b"vulkan"
+        );
+        fs::write(cache.join("OptiScaler.dll"), b"changed").unwrap();
+        cache_fixture(tmp.path(), extract);
+        assert_eq!(fs::read(cache.join("OptiScaler.dll")).unwrap(), b"main");
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 4);
+    }
+
+    #[test]
+    fn failed_rebuild_does_not_publish_partial_payload() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cache = cache_fixture(tmp.path(), write_fixture_payload);
+        fs::remove_file(cache.join("amd_fidelityfx_vk.dll")).unwrap();
+        let archive = tmp.path().join("release.7z");
+        let result = prepare_extraction(&archive, &cache, |stage| {
+            fs::write(stage.join("partial.dll"), b"partial").unwrap();
+            Err(InstallError::Extraction("rejected".into()))
+        });
+        assert!(result.is_err());
+        assert!(!cache.join("partial.dll").exists());
+        assert!(cache.join("OptiScaler.dll").exists());
+    }
+
+    #[test]
+    fn failed_restore_preserves_the_only_old_cache_copy() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cache = tmp.path().join("release");
+        fs::create_dir(&cache).unwrap();
+        fs::write(cache.join("sentinel"), b"old").unwrap();
+        let stage = tempfile::tempdir_in(tmp.path()).unwrap();
+        fs::write(stage.path().join("OptiScaler.dll"), b"new").unwrap();
+        let error = publish_stage(stage, &cache, |_, target| {
+            fs::create_dir(target).unwrap();
+            fs::write(target.join("blocker"), b"foreign").unwrap();
+        })
+        .unwrap_err();
+        assert!(error.to_string().contains("previous cache preserved at"));
+        let backups: Vec<_> = fs::read_dir(tmp.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| {
+                path.file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .starts_with(".replaced-")
+            })
+            .collect();
+        assert_eq!(backups.len(), 1);
+        assert_eq!(fs::read(backups[0].join("old/sentinel")).unwrap(), b"old");
+    }
+
+    #[test]
+    fn rejected_payload_does_not_create_cache() {
+        let tmp = tempfile::tempdir().unwrap();
+        let archive = tmp.path().join("release.7z");
+        fs::write(&archive, b"archive").unwrap();
+        let cache = tmp.path().join("extracted/release");
+        let result = prepare_extraction(&archive, &cache, |stage| {
+            fs::write(stage.join("amd_fidelityfx_vk.dll"), b"partial").unwrap();
+            Ok(())
+        });
+        assert!(matches!(result, Err(InstallError::DllNotFound)));
+        assert!(!cache.exists());
+    }
+
+    #[test]
+    fn concurrent_preparation_extracts_once() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().to_path_buf();
+        let archive = root.join("release.7z");
+        fs::write(&archive, b"archive identity").unwrap();
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let mut threads = Vec::new();
+        for _ in 0..4 {
+            let root = root.clone();
+            let calls = calls.clone();
+            threads.push(std::thread::spawn(move || {
+                prepare_extraction(
+                    &root.join("release.7z"),
+                    &root.join("extracted/release"),
+                    |dir| {
+                        calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        write_fixture_payload(dir)
+                    },
+                )
+                .unwrap()
+            }));
+        }
+        let paths: Vec<_> = threads.into_iter().map(|t| t.join().unwrap()).collect();
+        assert!(paths.iter().all(|path| path == &paths[0]));
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn reparse_cache_root_and_child_never_touch_foreign_tree() {
+        fn junction(link: &Path, target: &Path) {
+            let status = std::process::Command::new("cmd")
+                .args(["/C", "mklink", "/J"])
+                .arg(link)
+                .arg(target)
+                .status()
+                .unwrap();
+            assert!(status.success());
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let archive = tmp.path().join("release.7z");
+        fs::write(&archive, b"archive").unwrap();
+        let outside = tmp.path().join("outside");
+        fs::create_dir(&outside).unwrap();
+        fs::write(outside.join("sentinel.txt"), b"keep").unwrap();
+        let parent = tmp.path().join("extracted");
+        fs::create_dir(&parent).unwrap();
+        let cache = parent.join("release");
+        junction(&cache, &outside);
+        assert!(prepare_extraction(&archive, &cache, write_fixture_payload).is_err());
+        fs::remove_dir(&cache).unwrap();
+        fs::create_dir(&cache).unwrap();
+        junction(&cache.join("nested"), &outside);
+        assert!(prepare_extraction(&archive, &cache, write_fixture_payload).is_err());
+        assert_eq!(fs::read(outside.join("sentinel.txt")).unwrap(), b"keep");
+    }
 
     #[test]
     fn confirmed_target_rejects_changed_executable_choice() {

@@ -9,7 +9,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use opticore::images::{ArtRequest, ImageCache};
-use opticore::steam_art::{decode_portrait, library_caches_from, portrait_file_in, portrait_in};
+use opticore::steam_art::{
+    decode_portrait, landscape_in, library_caches_from, portrait_file_in, portrait_in,
+};
 
 /// A real 6x9 PNG, one flat magenta plane: the pipeline rescales whatever it
 /// caches to 300x450, so a colour no store image has is what tells the local
@@ -54,6 +56,91 @@ fn write(path: &Path, bytes: &[u8]) {
         fs::create_dir_all(parent).unwrap();
     }
     fs::write(path, bytes).unwrap();
+}
+
+fn write_landscape(path: &Path) {
+    let image = image::RgbImage::from_pixel(9, 6, image::Rgb([12, 34, 56]));
+    let mut bytes = std::io::Cursor::new(Vec::new());
+    image.write_to(&mut bytes, image::ImageFormat::Png).unwrap();
+    write(path, bytes.get_ref());
+}
+
+#[test]
+fn landscape_prefers_header_over_other_wide_names() {
+    let cache = library_cache();
+    let dir = app_dir(cache.path(), APP_ID);
+    let header = dir.join("header.jpg");
+    write_landscape(&header);
+    write_landscape(&dir.join("library_header.jpg"));
+    write_landscape(&dir.join("library_hero.jpg"));
+
+    assert_eq!(
+        landscape_in(&[cache.path().to_path_buf()], APP_ID),
+        Some(header)
+    );
+}
+
+#[test]
+fn landscape_finds_a_single_nested_candidate() {
+    let cache = library_cache();
+    let nested = app_dir(cache.path(), APP_ID)
+        .join("58f55d2df14d0a1aae932baf05a0abca52da5352")
+        .join("library_header.jpg");
+    write_landscape(&nested);
+
+    assert_eq!(
+        landscape_in(&[cache.path().to_path_buf()], APP_ID),
+        Some(nested)
+    );
+}
+
+#[test]
+fn landscape_never_uses_another_app_ids_art_or_a_logo() {
+    let cache = library_cache();
+    write_landscape(&app_dir(cache.path(), OTHER_APP_ID).join("header.jpg"));
+    write_landscape(&app_dir(cache.path(), APP_ID).join("logo.png"));
+
+    assert_eq!(landscape_in(&[cache.path().to_path_buf()], APP_ID), None);
+}
+
+#[test]
+fn corrupt_landscape_falls_back_to_the_next_filename() {
+    let cache = library_cache();
+    let dir = app_dir(cache.path(), APP_ID);
+    write(&dir.join("header.jpg"), b"corrupt");
+    let fallback = dir.join("library_header.jpg");
+    write_landscape(&fallback);
+
+    assert_eq!(
+        landscape_in(&[cache.path().to_path_buf()], APP_ID),
+        Some(fallback)
+    );
+}
+
+#[test]
+fn portrait_shaped_landscape_candidate_is_rejected() {
+    let cache = library_cache();
+    write(
+        &app_dir(cache.path(), APP_ID).join("header.jpg"),
+        PORTRAIT_PNG,
+    );
+
+    assert_eq!(landscape_in(&[cache.path().to_path_buf()], APP_ID), None);
+}
+
+#[test]
+fn ambiguous_nested_landscapes_fall_back_by_filename() {
+    let cache = library_cache();
+    let dir = app_dir(cache.path(), APP_ID);
+    write_landscape(&dir.join("aaaa").join("header.jpg"));
+    write_landscape(&dir.join("bbbb").join("header.jpg"));
+    let fallback = dir.join("library_hero.jpg");
+    write_landscape(&fallback);
+
+    assert_eq!(
+        landscape_in(&[cache.path().to_path_buf()], APP_ID),
+        Some(fallback)
+    );
 }
 
 fn request(name: &str, appid: Option<u32>) -> ArtRequest {

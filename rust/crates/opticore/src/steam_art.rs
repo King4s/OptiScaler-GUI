@@ -8,11 +8,8 @@
 //! (225), `library_hero.jpg` (123) and `logo.png` (108) are landscape or logo
 //! art. The flat `<appid>_library_600x900.jpg` spelling is retired: 0 of 485.
 //!
-//! Only the portrait name is accepted. Handing a landscape file back as a
-//! portrait would be a guess, and the network fallbacks in [`crate::images`]
-//! already cover that job. The lookup never walks the cache: it stats one known
-//! path and lists one directory, and both belong to the app id it was asked
-//! about.
+//! Portrait and landscape lookups are separate: neither hands back the other
+//! shape. Both only inspect the requested app id's directory.
 //!
 //! See `tasks/spec-steam-local-art.md`.
 
@@ -23,6 +20,8 @@ use crate::scan::steam;
 
 /// The one file name Steam writes for a library portrait.
 const PORTRAIT_FILE: &str = "library_600x900.jpg";
+const LANDSCAPE_FILES: [&str; 3] = ["header.jpg", "library_header.jpg", "library_hero.jpg"];
+const MAX_APP_DIR_ENTRIES: usize = 512;
 
 /// Largest local portrait we will read. The largest found in a real cache was
 /// 575 KB, so this is about seven times the worst case.
@@ -103,6 +102,53 @@ pub fn portrait_in(library_caches: &[PathBuf], appid: u32) -> Option<PathBuf> {
 /// The portrait for this app id in any Steam installation on this machine.
 pub fn portrait_file(appid: u32) -> Option<PathBuf> {
     portrait_in(&library_caches(), appid)
+}
+
+/// The first decodable wide image for this exact app id, preferring Steam's
+/// header, then library header, then hero across the supplied installations.
+pub fn landscape_in(library_caches: &[PathBuf], appid: u32) -> Option<PathBuf> {
+    for filename in LANDSCAPE_FILES {
+        for cache in library_caches {
+            let app_dir = cache.join(appid.to_string());
+            let direct = app_dir.join(filename);
+            if valid_landscape(&direct) {
+                return Some(direct);
+            }
+            if let Some(nested) = nested_landscape(&app_dir, filename) {
+                return Some(nested);
+            }
+        }
+    }
+    None
+}
+
+fn valid_landscape(path: &Path) -> bool {
+    // Do not follow a symlink out of the requested app id's cache directory.
+    std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_file())
+        && decode_portrait(path).is_some_and(|image| image.width() > image.height())
+}
+
+fn nested_landscape(app_dir: &Path, filename: &str) -> Option<PathBuf> {
+    let mut candidate = None;
+    let mut entries = 0;
+    for entry in std::fs::read_dir(app_dir).ok()? {
+        entries += 1;
+        if entries > MAX_APP_DIR_ENTRIES {
+            return None;
+        }
+        let entry = entry.ok()?;
+        if !entry.file_type().ok()?.is_dir() {
+            continue;
+        }
+        let path = entry.path().join(filename);
+        if std::fs::symlink_metadata(&path).is_ok_and(|metadata| metadata.file_type().is_file()) {
+            if candidate.is_some() {
+                return None;
+            }
+            candidate = Some(path);
+        }
+    }
+    candidate.filter(|path| valid_landscape(path))
 }
 
 /// Read and decode a candidate portrait under hard size and pixel bounds.

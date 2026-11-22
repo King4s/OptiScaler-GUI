@@ -219,6 +219,7 @@ fn collect(
         let name = entry.file_name().to_string_lossy().to_string();
         if name.starts_with("!!")
             || name.eq_ignore_ascii_case("OptiScaler.dll")
+            || name.eq_ignore_ascii_case(super::CACHE_INVENTORY)
             || name.eq_ignore_ascii_case(manifest::MANIFEST_FILENAME)
             || name.to_ascii_lowercase().ends_with(".bat")
             || name.to_ascii_lowercase().ends_with(".cmd")

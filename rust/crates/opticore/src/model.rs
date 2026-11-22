@@ -208,6 +208,9 @@ pub struct Game {
     pub engine_supported: bool,
     pub anti_cheat: Vec<AntiCheat>,
     pub community_verified: bool,
+    /// A file-name hint only, not proof of active upscaling or compatibility.
+    #[serde(default)]
+    pub has_upscaler_hint: bool,
     pub optiscaler_installed: bool,
     /// Artwork URL supplied by the store's own metadata (e.g. Heroic
     /// library art), tried before store-search fallbacks.
@@ -215,6 +218,13 @@ pub struct Game {
 }
 
 impl Game {
+    /// Conservative library shortlist, not authorization to install.
+    pub fn is_optiscaler_candidate(&self) -> bool {
+        self.anti_cheat.is_empty()
+            && self.engine_supported
+            && (self.has_upscaler_hint || self.community_verified || self.optiscaler_installed)
+    }
+
     pub fn new(name: impl Into<String>, path: PathBuf, platform: Platform) -> Self {
         let name = name.into();
         let key = GameKey {
@@ -234,6 +244,7 @@ impl Game {
             engine_supported: true,
             anti_cheat: Vec::new(),
             community_verified: false,
+            has_upscaler_hint: false,
             optiscaler_installed: false,
             art_url: None,
         }

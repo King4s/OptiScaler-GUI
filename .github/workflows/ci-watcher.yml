@@ -1,0 +1,19 @@
+name: CI (upstream watcher)
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/check-optiscaler-release.yml'
+      - '.github/workflows/ci-watcher.yml'
+      - 'scripts/upstream-release-watcher.cjs'
+      - 'scripts/tests/upstream-release-watcher.test.cjs'
+
+permissions:
+  contents: read
+
+jobs:
+  watcher-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: node --test scripts/tests/upstream-release-watcher.test.cjs

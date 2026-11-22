@@ -89,13 +89,18 @@ pub fn observe(game: &crate::model::Game) -> GameObservation {
                 .ok()
         });
 
-    if observation.installed && observation.optiscaler_version.as_deref() == Some("v0.9.4") {
-        observation.loaded_from_log = log_path.as_deref().and_then(v094_log_loaded);
+    if observation.installed
+        && matches!(
+            observation.optiscaler_version.as_deref(),
+            Some("v0.9.4" | "v0.9.5")
+        )
+    {
+        observation.loaded_from_log = log_path.as_deref().and_then(log_loaded);
     }
     observation
 }
 
-fn v094_log_loaded(path: &Path) -> Option<bool> {
+fn log_loaded(path: &Path) -> Option<bool> {
     const MAX_LOG_BYTES: u64 = 1024 * 1024;
     let file = std::fs::File::open(path).ok()?;
     let mut bytes = Vec::new();
@@ -104,10 +109,10 @@ fn v094_log_loaded(path: &Path) -> Option<bool> {
         return None;
     }
     let text = std::str::from_utf8(&bytes).ok()?;
-    text.lines().any(v094_init_line).then_some(true)
+    text.lines().any(init_line).then_some(true)
 }
 
-fn v094_init_line(line: &str) -> bool {
+fn init_line(line: &str) -> bool {
     let line = line.trim_end_matches('\r');
     let Some((timestamp, message)) = line
         .strip_prefix('[')

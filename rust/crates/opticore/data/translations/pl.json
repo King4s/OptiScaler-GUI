@@ -1,5 +1,8 @@
 {
   "library": {
+    "candidates_only": "Prawdopodobnie zgodne",
+    "candidates_hint": "Pokazuje gry z bibliotekami upscalera, raportem społeczności lub instalacją OptiScaler. Wykryty anti-cheat i nieobsługiwane silniki są wykluczone. To nie gwarantuje zgodności; nieznane gry też mogą działać.",
+    "all_games": "Pokaż wszystkie gry",
     "roots": "Foldery bibliotek gier",
     "roots_hint": "Wybierz foldery do skanowania. Usunięcie folderu z listy nie usuwa gier. Zmiany dotyczą następnego skanowania.",
     "add_root": "Dodaj folder biblioteki",
@@ -457,7 +460,7 @@
     "failed": "Nie udało się zapisać ani odczytać lokalnego profilu.",
     "restore_official": "Przywróć oficjalny runtime",
     "recommendations": "Zalecenia sprzętowe (tylko wskazówki)",
-    "rdna2": "RX 6000 / RDNA2: opcjonalna poprawka społeczności FSR 4.1.1b INT8; wybierz GPU gry i wyraź zgodę.",
+    "rdna2": "RX 6000 / RDNA2: zacznij od oficjalnego pakietu. OptiScaler v0.9.5 zawiera FSR 4.1.2 INT8 dla obsługiwanych modeli. Starsza poprawka 4.1.1b od społeczności jest opcjonalna.",
     "rdna34": "RX 7000/9000 / RDNA3/4: zachowaj oficjalne FSR 4, jeśli jest obsługiwane.",
     "rtx": "RTX: preferuj natywne DLSS, jeśli gra je obsługuje.",
     "arc": "Intel Arc: preferuj XeSS, jeśli jest obsługiwane.",
@@ -467,6 +470,11 @@
     "community_warning": "Użyć przypiętej poprawki społeczności FSR 4.1.1b INT8 RDNA2 z the3rdparty1917/fsr4xyz? To NIE jest oficjalny runtime AMD ani OptiScaler. Zgodność i stabilność nie są gwarantowane. Nie używaj modów w grach online/z anti-cheat; to nie omija anti-cheat. Tak oznacza zgodę tylko na tę instalację/aktualizację. Nie zachowuje oficjalny pakiet."
   },
   "advice": {
+    "fetch_defaults": "Pobierz ustawienia domyślne dla",
+    "loading_defaults": "Wczytywanie ustawień domyślnych…",
+    "no_version_defaults": "Brak ustawień domyślnych: zainstalowana wersja OptiScaler jest nieznana.",
+    "restore_defaults": "Przywróć ustawienia domyślne",
+    "version_changed": "Zainstalowana wersja uległa zmianie. Otwórz edytor ponownie przed zapisem.",
     "title": "Zalecane dla tej gry",
     "refresh": "Odśwież informacje o grze",
     "pending": "Odczytywanie plików gry...",

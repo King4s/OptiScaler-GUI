@@ -57,25 +57,31 @@ pub fn show(ctx: &egui::Context, state: &mut AppState, ops: &mut Ops) {
                 editor.status = Some(state.i18n.tr("advice.restart"));
             }
 
-            // Restore upstream defaults from the cached release payload;
-            // when the cache is empty (fresh setup / after Clear cache) the
-            // click fetches the release in the background first.
             if editor.fetching_defaults {
                 ui.spinner();
-                ui.label(RichText::new("Fetching defaults…").color(pal.text_dim));
+                ui.label(
+                    RichText::new(state.i18n.tr("advice.loading_defaults")).color(pal.text_dim),
+                );
             } else if editor.defaults.is_none() {
-                if ui
-                    .button("↩ Restore defaults")
-                    .on_hover_text(
-                        "Downloads the OptiScaler release once to read its default settings",
-                    )
-                    .clicked()
+                if let Some(tag) = editor
+                    .installed_version
+                    .as_deref()
+                    .filter(|tag| opticore::release_defaults::valid_tag(tag))
                 {
-                    editor.fetching_defaults = true;
-                    editor.status = Some("Downloading OptiScaler release for defaults…".into());
-                    ops.spawn_fetch_defaults(ctx);
+                    if ui
+                        .button(format!("{} {tag}", state.i18n.tr("advice.fetch_defaults")))
+                        .clicked()
+                    {
+                        editor.fetching_defaults = true;
+                        ops.spawn_fetch_defaults(ctx, editor.ini_path.clone(), tag.to_string());
+                    }
+                } else {
+                    ui.label(state.i18n.tr("advice.no_version_defaults"));
                 }
-            } else if ui.button("↩ Restore defaults").clicked() {
+            } else if ui
+                .button(state.i18n.tr("advice.restore_defaults"))
+                .clicked()
+            {
                 if let Some(defaults) = editor.defaults.clone() {
                     let mut changes = Vec::new();
                     for section in &defaults.sections {
@@ -121,6 +127,15 @@ pub fn show(ctx: &egui::Context, state: &mut AppState, ops: &mut Ops) {
                         .show()
                         == rfd::MessageDialogResult::Yes;
                 if !confirmed {
+                    return;
+                }
+                let current_version = editor
+                    .ini_path
+                    .parent()
+                    .and_then(opticore::install::manifest::read)
+                    .map(|m| m.optiscaler_version);
+                if current_version != editor.installed_version {
+                    editor.status = Some(state.i18n.tr("advice.version_changed"));
                     return;
                 }
                 let current = opticore::ini::read_file(&editor.ini_path);
@@ -200,7 +215,19 @@ pub fn show(ctx: &egui::Context, state: &mut AppState, ops: &mut Ops) {
                         for entry_idx in 0..editor.doc.sections[section_idx].entries.len() {
                             let (key, comment, kind) = {
                                 let e = &editor.doc.sections[section_idx].entries[entry_idx];
-                                (e.key.clone(), e.comment.clone(), e.kind.clone())
+                                if let Some(hint) = opticore::ini::versioned_hint(
+                                    editor.installed_version.as_deref(),
+                                    &section_name,
+                                    &e.key,
+                                ) {
+                                    (
+                                        e.key.clone(),
+                                        hint.to_string(),
+                                        opticore::ini::infer_kind(&e.value, hint),
+                                    )
+                                } else {
+                                    (e.key.clone(), e.comment.clone(), e.kind.clone())
+                                }
                             };
                             if !needle.is_empty()
                                 && !key.to_lowercase().contains(&needle)

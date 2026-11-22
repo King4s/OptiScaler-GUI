@@ -66,11 +66,43 @@ impl IniDocument {
     }
 }
 
-/// Port of `_infer_type`: comment text drives bool/enum detection, then
-/// int/float probes, else free text.
+/// Verified setting descriptions for upgrades that keep an older INI.
+/// These drive editor controls only; never rewrite comments or values on load.
+pub fn versioned_hint(version: Option<&str>, section: &str, key: &str) -> Option<&'static str> {
+    if version != Some("v0.9.5") {
+        return None;
+    }
+    if section.eq_ignore_ascii_case("FSR") && key.eq_ignore_ascii_case("Fsr4ForceEnableInt8") {
+        Some("0 = Disabled, 1 = Force INT8, 2 = Force INT8 RDNA2, 3 = Force INT8 Lite\nDefault (auto) is 0")
+    } else if section.eq_ignore_ascii_case("CAS") && key.eq_ignore_ascii_case("Contrast") {
+        Some("0.0 - 2.0 - Default (auto) is 0.0")
+    } else {
+        None
+    }
+}
+
 pub fn infer_kind(value: &str, comment: &str) -> ValueKind {
     let comment_lower = comment.to_lowercase();
     let value_lower = value.to_lowercase();
+    if let Some(mut choices) = comment.lines().find_map(comma_choices) {
+        if value_lower == "auto" || comment_lower.contains("default (auto)") {
+            choices.insert("auto".into(), "auto".into());
+        }
+        return ValueKind::Options(choices);
+    }
+    // A numeric range with an automatic default also accepts "auto"; a
+    // numeric-only widget would coerce it to zero on edit.
+    if !comment.contains('=')
+        && comment_lower.lines().any(|line| {
+            let mut words = line.split_whitespace();
+            words.next().is_some_and(|s| s.parse::<f64>().is_ok())
+                && words.next() == Some("-")
+                && words.next().is_some_and(|s| s.parse::<f64>().is_ok())
+                && line.contains("default (auto)")
+        })
+    {
+        return ValueKind::Text;
+    }
     if comment_lower.contains("true or false")
         || (["true", "false", "auto"].contains(&value_lower.as_str())
             && comment_lower.contains("auto"))
@@ -97,6 +129,20 @@ pub fn infer_kind(value: &str, comment: &str) -> ValueKind {
         return ValueKind::Float;
     }
     ValueKind::Text
+}
+
+fn comma_choices(line: &str) -> Option<BTreeMap<String, String>> {
+    if !line.contains(',') {
+        return None;
+    }
+    line.split(',')
+        .map(|part| {
+            let (key, label) = part.split_once('=')?;
+            let (key, label) = (key.trim(), label.trim());
+            (!key.is_empty() && key.bytes().all(|b| b.is_ascii_digit()) && !label.is_empty())
+                .then(|| (key.to_string(), label.to_string()))
+        })
+        .collect()
 }
 
 /// Find a `<digits> = label (| <digits> = label)*` run inside the comment.
@@ -420,6 +466,51 @@ LogFile=auto ; inline comment here
 
         // inline comment stripped
         assert_eq!(doc.get("Log", "LogFile").unwrap().value, "auto");
+    }
+
+    #[test]
+    fn v095_auto_values_follow_the_upstream_setting_type() {
+        let choices = "0 = Disabled, 1 = Force INT8, 2 = Force INT8 RDNA2, 3 = Force INT8 Lite\n0 - 3 - Default (auto) is 0";
+        for value in ["auto", "2"] {
+            let ValueKind::Options(options) = infer_kind(value, choices) else {
+                panic!("INT8 mode should offer numeric options");
+            };
+            assert_eq!(options.len(), 5);
+            for (key, label) in [
+                ("0", "Disabled"),
+                ("1", "Force INT8"),
+                ("2", "Force INT8 RDNA2"),
+                ("3", "Force INT8 Lite"),
+                ("auto", "auto"),
+            ] {
+                assert_eq!(options[key], label);
+            }
+        }
+        assert_eq!(
+            infer_kind("auto", "0.0 - 2.0  - Default (auto) is 0.0"),
+            ValueKind::Text
+        );
+        assert_eq!(
+            infer_kind("auto", "true or false - Default (auto) is false"),
+            ValueKind::BoolOptions
+        );
+    }
+
+    #[test]
+    fn upgraded_ini_uses_verified_controls_without_migrating_user_values() {
+        let doc =
+            parse("[FSR]\n; true or false - Default (auto) is false\nFsr4ForceEnableInt8=true");
+        let entry = doc.get("FSR", "Fsr4ForceEnableInt8").unwrap();
+        assert_eq!(entry.kind, ValueKind::BoolOptions);
+        let hint = versioned_hint(Some("v0.9.5"), "fsr", &entry.key).unwrap();
+        assert!(matches!(
+            infer_kind(&entry.value, hint),
+            ValueKind::Options(_)
+        ));
+        assert!(serialize(&doc).contains("Fsr4ForceEnableInt8=true"));
+        for version in [None, Some("v0.9.4"), Some("nightly")] {
+            assert!(versioned_hint(version, "FSR", &entry.key).is_none());
+        }
     }
 
     #[test]
