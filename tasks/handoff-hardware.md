@@ -1,5 +1,13 @@
 # Hardware/RDNA2 and Rust-only feature handoff
 
+## Completed release and issue-review follow-up
+
+Public download: [v2026.10.0](https://github.com/King4s/OptiScaler-GUI/releases/tag/v2026.10.0), tag commit `9ad183c017279d53a526b6106e14b130e59b3679`, release workflow `37200607827` passed. Downloaded EXE/7z checksums, archive integrity, extracted-EXE identity and published-binary startup da/en/pl passed. Exact hashes and evidence are in `docs/releases/2026.10.0-verification.md`.
+
+All three open issues (#30 Palworld, #31 Hogwarts, #38 v0.9.4 review) were reviewed and answered with verified scope and retest instructions; no game compatibility claim or issue closure. Additional synthetic target regression passed after respecting explicit selection for ambiguous layouts. Both real-artifact canaries were rerun and passed (144.71 seconds; first 120-second tool window was insufficient).
+
+Git Bash was already present. User-scoped `jqlang.jq` 1.8.2 installed with winget; `jq --version` and JSON generation passed via `%LOCALAPPDATA%/Microsoft/WinGet/Links/jq.exe`. Existing shells may need reopening for the PATH alias. Original dirty project checkout remains untouched. No gameplay/manual visual/anti-cheat test; Palworld and Hogwarts await reporter confirmation.
+
 Release follow-up: 2026.10.0 was authorized after this feature handoff. See docs/releases/2026.10.0-verification.md and GitHub Releases for release evidence; the no-release statements below describe the original feature phase.
 
 Branch: `hermes/hardware-recommendations-rdna2`.
